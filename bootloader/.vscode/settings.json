@@ -1,0 +1,9 @@
+{
+    "C_Cpp.errorSquiggles": "enabled",
+    "cmake.configureOnOpen": true,
+    "files.associations": {
+        "cstdint": "c",
+        "stdint.h": "c",
+        "ch.h": "c"
+    }
+}

@@ -1,0 +1,57 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build",
+            "command": "make",
+            "options": {
+                "statusbar": {
+                    "label": "$(gear) Build"
+                }
+            },
+            "problemMatcher": [
+                "$gcc"
+            ],
+        },
+        {
+            "label": "Flash",
+            "command": "make",
+            "args": [
+                "flash"
+            ],
+            "dependsOn": [
+                "Build"
+            ],
+            "options": {
+                "statusbar": {
+                    "label": "$(arrow-right) Flash"
+                }
+            }
+        },
+        {
+            "label": "Clean",
+            "command": "make",
+            "args": [
+                "clean"
+            ],
+            "options": {
+                "statusbar": {
+                    "label": "$(trash) Clean"
+                }
+            }
+        },
+        {
+            "label": "Serial monitor",
+            "type": "shell",
+            "command": "python3",
+            "args": [
+                "-m","serial.tools.miniterm", "/dev/ttyACMbmp", "115200", "--filter=direct"
+            ],
+            "options": {
+                "statusbar": {
+                    "label": "Serial monitor $(plug)"
+                }
+            }
+        }
+    ]
+}
