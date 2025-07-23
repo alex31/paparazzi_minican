@@ -1,0 +1,16 @@
+{
+	"folders": [
+		{
+			"path": "."
+		}
+	],
+	"settings": {
+		"files.associations": {
+			"cstdint": "c",
+			"stdint.h": "c",
+			"ch.h": "c",
+			"stdutil.h": "c",
+			"wind_sensors.h": "c"
+		}
+	}
+}

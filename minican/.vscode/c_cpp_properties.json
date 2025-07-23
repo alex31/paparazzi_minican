@@ -1,0 +1,61 @@
+{
+    "env": {
+        "CHIBISTUDIO": "${env:HOME}/CHIBISTUDIO",
+        "CHIBIOS": "${CHIBISTUDIO}/ChibiOS_21.11_stable"
+    },
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "/usr/local/arm-none-eabi-gcc/arm-none-eabi/include",
+                "/usr/local/arm-none-eabi-gcc/lib/gcc/arm-none-eabi/**",
+                "${workspaceFolder}/cfg",
+                "${CHIBIOS}/os/license",
+                "${CHIBIOS}/os/common/portability/GCC",
+                "${CHIBIOS}/os/common/startup/ARMCMx/compilers/GCC",
+                "${CHIBIOS}/os/common/startup/ARMCMx/devices/STM32F4xx",
+                "${CHIBIOS}/os/common/ext/ARM/CMSIS/Core/Include",
+                "${CHIBIOS}/os/common/ext/ST/STM32F4xx",
+                "${CHIBIOS}/os/hal/include",
+                "${CHIBIOS}/os/hal/ports/common/ARMCMx",
+                "${CHIBIOS}/os/hal/ports/STM32/STM32F4xx",
+                "${CHIBIOS}/os/hal/ports/STM32/LLD/ADCv2",
+                "${CHIBIOS}/os/hal/ports/STM32/LLD/CANv1",
+                "${CHIBIOS}/os/hal/ports/STM32/LLD/CRYPv1",
+                "${CHIBIOS}/os/hal/ports/STM32/LLD/DACv1",
+                "${CHIBIOS}/os/hal/ports/STM32/LLD/DMAv2",
+                "${CHIBIOS}/os/hal/ports/STM32/LLD/EXTIv1",
+                "${CHIBIOS}/os/hal/ports/STM32/LLD/GPIOv2",
+                "${CHIBIOS}/os/hal/ports/STM32/LLD/I2Cv1",
+                "${CHIBIOS}/os/hal/ports/STM32/LLD/MACv1",
+                "${CHIBIOS}/os/hal/ports/STM32/LLD/OTGv1",
+                "${CHIBIOS}/os/hal/ports/STM32/LLD/QUADSPIv1",
+                "${CHIBIOS}/os/hal/ports/STM32/LLD/RTCv2",
+                "${CHIBIOS}/os/hal/ports/STM32/LLD/SPIv1",
+                "${CHIBIOS}/os/hal/ports/STM32/LLD/SDIOv1",
+                "${CHIBIOS}/os/hal/ports/STM32/LLD/SYSTICKv1",
+                "${CHIBIOS}/os/hal/ports/STM32/LLD/TIMv1",
+                "${CHIBIOS}/os/hal/ports/STM32/LLD/USART",
+                "${CHIBIOS}/os/hal/ports/STM32/LLD/USARTv1",
+                "${CHIBIOS}/os/hal/ports/STM32/LLD/xWDGv1",
+                "${CHIBIOS}/os/hal/osal/rt-nil",
+                "${CHIBIOS}/os/rt/include",
+                "${CHIBIOS}/os/oslib/include",
+                "${CHIBIOS}/os/common/portability/GCC",
+                "${CHIBIOS}/os/common/ports/ARM-common",
+                "${CHIBIOS}/os/common/ports/ARMv7-M",
+                "${CHIBISTUDIO}/COMMON/various",
+                "${CHIBISTUDIO}/COMMON/various/Chibios-USB-Devices"
+            ],
+            "defines": [],
+            "cStandard": "c17",
+            "cppStandard": "gnu++17",
+            "intelliSenseMode": "gcc-arm",
+            "compilerPath": "/usr/local/arm-none-eabi-gcc/bin/arm-none-eabi-gcc",
+            "compilerArgs": ["-Wall"]
+            
+        }
+    ],
+    "version": 4
+}
