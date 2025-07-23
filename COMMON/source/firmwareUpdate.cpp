@@ -148,6 +148,7 @@ namespace {
       firmwareHeader.size += FirmwareUpdater::sectorBuffer->size();
     }
     if (final) {
+      firmwareHeader.magicNumber = firmwareHeader.magicNumberCheck;
       firmwareHeader.flashAddress = &application_start; // get from .ld file
       firmwareHeader.crc32k4 = crcGetFinalValue(&CRCD1);
       //      DebugTrace("crc = 0x%lx", firmwareHeader.crc32k4);

@@ -20,6 +20,7 @@ namespace FirmwareUpdater {
   using SectorBuffer_t = etl::vector<uint8_t, 512>;
   
   struct FirmwareHeader_t {
+    uint32_t magicNumber;
     etl::string<32> version = {};
     uint32_t size = 0;
     uint32_t crc32k4 = 0;
@@ -28,6 +29,7 @@ namespace FirmwareUpdater {
     bool     bootloaderFlashSuccess = false;
     uint8_t  bankInUse = 0;
     uint16_t headerLen = 0;
+    static constexpr uint32_t magicNumberCheck = 0xF0CACC1A;
     static constexpr uint32_t headerEepromAddr = 1024*1024;
     static constexpr uint32_t bank1EepromAddr = headerEepromAddr + 512;
     static constexpr uint32_t bank2EepromAddr = bank1EepromAddr + (512 * 1024);
