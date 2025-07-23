@@ -21,7 +21,7 @@ namespace  {
   Eeprom_M95::Device *m95p = nullptr;
 
   bool storeSectorBufferInEeprom(bool final = false);
-  const CRCConfig crcK4Config = {
+  const CRCConfig crcConfig = {
     .poly_size = 32,
     .poly = 0xC9D204F5,
     .initial_val = 0xFFFFFFFF,
@@ -29,7 +29,6 @@ namespace  {
     .reflect_data = true,
     .reflect_remainder = true
   };
-  CRCDriver crcK4;
   FirmwareUpdater::FirmwareHeader_t firmwareHeader;
   static_assert(sizeof(firmwareHeader) <= 512);
 }
@@ -43,8 +42,7 @@ bool FirmwareUpdater::start(UAVCAN::Node *node, const uavcan_protocol_file_Path 
   bool wrongFileName = false;
   m95p = MFS::getDevice();
   crcInit();
-  crcObjectInit(&crcK4);
-  crcStart(&crcK4, &crcK4Config);
+  crcStart(&CRCD1, &crcConfig);
   
   auto doResp = [&resp] (uint8_t err, etl::string_view str) {
     resp.error = err;
@@ -115,21 +113,25 @@ bool FirmwareUpdater::newChunk(CanardRxTransfer *transfer,
   }
   
   if (firmwareChunk.data.len == 0) {
+    // DebugTrace("DBG> end of file");
     storeSectorBufferInEeprom(true);
     delete sectorBuffer;
     sectorBuffer = nullptr;
+    currentFileIndex = 0;
   } else {
     const size_t transferSize = std::min(sectorBuffer->available(),
 					 static_cast<size_t>(firmwareChunk.data.len));
-    sectorBuffer->insert(sectorBuffer->end(), firmwareChunk.data.data, firmwareChunk.data.data + transferSize);
+    sectorBuffer->insert(sectorBuffer->end(), firmwareChunk.data.data,
+			 firmwareChunk.data.data + transferSize);
     currentFileIndex += firmwareChunk.data.len;
     // ask for next chunk
     readReq.offset = currentFileIndex;
-    slaveNode->sendRequest(readReq, CANARD_TRANSFER_PRIORITY_MEDIUM, transfer->source_node_id);
+    // DebugTrace("DBG> ask for offset %u", currentFileIndex);
     if (sectorBuffer->full()) {
       storeSectorBufferInEeprom();
       sectorBuffer->assign(firmwareChunk.data.data + transferSize, firmwareChunk.data.data + firmwareChunk.data.len);
     }
+    slaveNode->sendRequest(readReq, CANARD_TRANSFER_PRIORITY_MEDIUM, transfer->source_node_id);
   }
   
   return true;
@@ -138,18 +140,22 @@ bool FirmwareUpdater::newChunk(CanardRxTransfer *transfer,
 extern uint32_t application_start;
 namespace {
   bool storeSectorBufferInEeprom(bool final) {
-    crcCalc(&crcK4, FirmwareUpdater::sectorBuffer->data(), FirmwareUpdater::sectorBuffer->size());
-    m95p->writePage(firmwareHeader.bank1EepromAddr + firmwareHeader.size,
-		    *FirmwareUpdater::sectorBuffer);
-    firmwareHeader.size += FirmwareUpdater::sectorBuffer->size();
+    if (not FirmwareUpdater::sectorBuffer->empty()) {
+      crcCalc(&CRCD1, FirmwareUpdater::sectorBuffer->data(),
+       	      FirmwareUpdater::sectorBuffer->size());
+      m95p->write(firmwareHeader.bank1EepromAddr + firmwareHeader.size,
+      		  *FirmwareUpdater::sectorBuffer);
+      firmwareHeader.size += FirmwareUpdater::sectorBuffer->size();
+    }
     if (final) {
       firmwareHeader.flashAddress = &application_start; // get from .ld file
-      firmwareHeader.crc32k4 = crcGetFinalValue(&crcK4);
+      firmwareHeader.crc32k4 = crcGetFinalValue(&CRCD1);
+      //      DebugTrace("crc = 0x%lx", firmwareHeader.crc32k4);
       firmwareHeader.flashToMCU = true;
       firmwareHeader.headerLen = sizeof firmwareHeader;
-      m95p->writePage(firmwareHeader.headerEepromAddr,
-		      std::span(reinterpret_cast<const uint8_t*>(&firmwareHeader), sizeof(firmwareHeader)));
-      crcReset(&crcK4);
+      m95p->write(firmwareHeader.headerEepromAddr,
+		  std::span(reinterpret_cast<const uint8_t*>(&firmwareHeader), sizeof(firmwareHeader)));
+      crcReset(&CRCD1);
     }
     return true;
   }
