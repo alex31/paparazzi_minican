@@ -140,7 +140,7 @@ endif
 #
 
 # Define project name here
-PROJECT = ch
+PROJECT = minican
 
 # Target settings.
 MCU  = cortex-m4
