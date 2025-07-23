@@ -70,8 +70,7 @@ namespace {
     .TDCR = timings.tdcr,
     .CCCR = FDCAN_CONFIG_CCCR_BRSE, // Bit-Rate Switch Enable
     .TEST = 0,
-    .RXGFC = FDCAN_CONFIG_RXGFC_RRFS | FDCAN_CONFIG_RXGFC_ANFS_REJECT |
-             FDCAN_CONFIG_RXGFC_ANFE_REJECT
+    .RXGFC = FDCAN_CONFIG_RXGFC_RRFS // disable hardware filtering : filter table too small
   };
 
   UAVCAN::Node *slaveNode = nullptr;
