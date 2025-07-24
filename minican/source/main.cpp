@@ -16,8 +16,7 @@
 /*
   TODO :
 
-  ° tester ce qui se passe quand on a plus que 8 filtres pour une minican ?
-  ° utiliser les paramètres can bit_rate en considerant 3 options :
+  ° tester l'utilisation de  paramètres can bit_rate en considerant 3 options :
     + CAN   à 1Mb si 1'000'000
     + FDCAN à 5Mb si 5'000'000
     + FDCAN à 8Mb si 8'000'000
@@ -39,26 +38,7 @@
 
   ° bootloader + firmware
 
-  ° flash du firmware via UAVCan
-    + prevoir la possibilité de changer uavcan.protocol.NodeStatus.mode -> MODE_SOFTWARE_UPDATE
-      pendant l'update
-    + la GCS initie la maj avec protocol/file/40.BeginFirmwareUpdate.uavcan
-    + le node va chercher le firmware par chunks avec 48.Read.uavcan
-      * bufferise un block de 512 avant de l'écrire en eeprom M95P à @1M+512
-      * calcul du CRC32 sur le block
-     
-    + quand 48.Read.uavcan renvoie len==0 :
-      * calcul du CRC32 sur le dernier block (on pad avec des 0xFF)
-      * flush le buffer dans M95P
-      * ecriture d'un header @1M {
-        ¤ length
-        ¤ crc32
-        ¤ flash@next_start
-        ¤ lastFlashStatus
-	}
-      * reboot to bootloader
-
-   BOOTLOADER :
+     BOOTLOADER :
    ° check  header @1M
      si flash@next_start -> {
      + calcul CRC32 du firmware stocké dans M95P
@@ -81,6 +61,28 @@
        
  */
 
+namespace {
+  /*
+    watchdog reset : reset in a low priority thread, so it should catch
+    ° hardware fault
+    ° RT stalled
+    ° thread wild loop that use 100% CPU
+   */
+  const WDGConfig wdgcfg = {
+    .pr  = STM32_IWDG_PR_32,
+    .rlr = STM32_IWDG_RL(300),  // timeout ≈ 300 ms
+    .winr = STM32_IWDG_WIN_DISABLED,
+  };
+
+  THD_WORKING_AREA(waWatchdogReset, 256) __attribute__((section(FAST_SECTION "_clear")));
+  void  watchdogReset (void *) {
+    wdgStart(&WDGD1, &wdgcfg);
+    while(true) {
+      wdgReset(&WDGD1);
+      chThdSleepMilliseconds(100);
+    }
+  }
+}
 
 void _init_chibios() __attribute__ ((constructor(101)));
 void _init_chibios() {
@@ -92,15 +94,16 @@ void _init_chibios() {
 
 int main(void)
 {
-/*
- * System initializations.
- * - HAL initialization, this also initializes the configured device drivers
- *   and performs the board-specific initializations.
- * - Kernel initialization, the main() function becomes a thread and the
- *   RTOS is active.
- */
+  /*
+   * System initializations.
+   * - HAL initialization, this also initializes the configured device drivers
+   *   and performs the board-specific initializations.
+   * - Kernel initialization, the main() function becomes a thread and the
+   *   RTOS is active.
+   */
+  chThdCreateStatic(waWatchdogReset, sizeof(waWatchdogReset), LOWPRIO, &watchdogReset, NULL);
   RgbLed::start();
-
+  
 #ifdef TRACE
   consoleInit();
   consoleLaunch();
