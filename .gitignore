@@ -1,0 +1,10 @@
+*.o
+*.d
+**/*.tmp
+test
+result
+build
+*~
+
+
+
