@@ -100,9 +100,12 @@ int main(void)
  *   RTOS is active.
  */
   RgbLed::start();
+
+#ifdef TRACE
   consoleInit();
   consoleLaunch();
-
+#endif
+  
   RgbLed::setColor(HSV{0.3, 1, 0.1});
   RgbLed::setMotif(500, 0b1010101010101010);
   if (not DynPin::isFirmwareMatchHardware()) {
@@ -111,7 +114,12 @@ int main(void)
   }
 
   Adc::start([](float psBat, float coreTemp) {
+#ifdef TRACE
     DebugTrace("psBat = %.2f, coreTemp = %.1f", psBat, coreTemp);
+#else
+    (void) psBat;
+    (void) coreTemp;
+#endif
   });
   
   if (mfs_error_t status = MFS::start(); status != MFS_NO_ERROR) {

@@ -29,6 +29,7 @@ using Value = std::variant<struct uavcan_protocol_param_Empty, int64_t, float, b
 
 
  */
+#ifdef TRACE
 
 #if CONSOLE_DEV_USB
 #include "usb_serial.h"
@@ -732,3 +733,4 @@ static float stampISRGetCpuPercent (const ThreadCpuInfo *ti)
 }
 #endif // CH_DBG_STATISTICS
 #endif // CONSOLE_DEV_SD
+#endif // TRACE

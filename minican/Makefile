@@ -56,7 +56,7 @@ endif
 ifeq ($(EXECMODE),$(OPT_SIZE)) 
   USE_OPT =  -Os -flto  -Wall -Wextra \
 	    -falign-functions=16 -fomit-frame-pointer \
-            -fipa-pta \
+            -fipa-pta --specs=nano.specs \
             -DCH_DBG_SYSTEM_STATE_CHECK=0 -DCH_DBG_ENABLE_CHECKS=0 \
             -DCH_DBG_ENABLE_ASSERTS=0 -DCH_DBG_ENABLE_STACK_CHECK=0 \
             -DCH_DBG_FILL_THREADS=0 \
@@ -274,9 +274,12 @@ CPPWARN = -Wall -Wextra -Wundef
 #
 
 # List all user C define here, like -D_DEBUG=1
-UDEFS = -DTRACE -DCANARD_ENABLE_CANFD=true -DDRONECAN_CXX_WRAPPERS=true -DR1M8M \
-                -DFROZEN_NO_EXCEPTIONS=1
-
+UDEFS = -DCANARD_ENABLE_CANFD=true -DDRONECAN_CXX_WRAPPERS=true -DR1M8M \
+        -DFROZEN_NO_EXCEPTIONS=1 
+ifeq ($(EXECMODE),$(DEBUG))
+UDEFS += -DTRACE
+endif
+#
 # Define ASM defines here
 UADEFS =
 

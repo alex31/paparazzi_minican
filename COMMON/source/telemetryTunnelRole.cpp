@@ -45,7 +45,7 @@ namespace {
 
 }
 
-void TelemetryTunnel::trapError_s2u(uint32_t v, uint32_t i)
+void TelemetryTunnel::trapError_s2u([[maybe_unused]] uint32_t v, [[maybe_unused]] uint32_t i)
 {
   DebugTrace("CRC err -> %lu valid / %lu invalid", v, i); 
 };
@@ -167,6 +167,7 @@ void TelemetryTunnel::processPaparazziTelemetryCommand_s2u(PprzPolicy pol,
       break;
     }
     default: {
+      out.xbeeHeader.union_tag = PAPARAZZI_TUNNEL_XBEEHEADER_NONE;
       DebugTrace("role 0x%x is neither Tx(0x1) or Rx(0x81)",
 		 std::to_underlying(xbh.role));
     }

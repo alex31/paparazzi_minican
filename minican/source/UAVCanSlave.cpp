@@ -80,6 +80,7 @@ namespace {
   void processNodeStatus(CanardRxTransfer *transfer,
 			 const uavcan_protocol_NodeStatus &nodeStatus)
   {
+#ifdef TRACE
     static bool done = false;
 
     if (not done) {
@@ -89,15 +90,23 @@ namespace {
 		 nodeStatus.uptime_sec);
       done = true;
     }
+#else
+    (void) transfer;
+    (void) nodeStatus;
+#endif
   }
 
   void processNodeInfoRequest(CanardRxTransfer *transfer,
 			      const uavcan_protocol_GetNodeInfoRequest &)
   {
+#ifdef TRACE
     DebugTrace("request node info CB source %u with id %u\n",
 	       transfer->source_node_id,
 	       transfer->data_type_id
 	       );
+#else
+    (void) transfer;
+#endif
   }
 
   void processFirmwareUpdateRequest(CanardRxTransfer *transfer,
@@ -117,7 +126,7 @@ namespace {
 	.offset = 0,
 	.path = msg.image_file_remote_path,
       };
-      uavcan_protocol_NodeStatus nodeStatus;
+      uavcan_protocol_NodeStatus nodeStatus = {};
       nodeStatus.mode = UAVCAN_PROTOCOL_NODESTATUS_MODE_SOFTWARE_UPDATE;
       slaveNode->setStatus(nodeStatus);
       slaveNode->sendRequest(readReq, CANARD_TRANSFER_PRIORITY_MEDIUM, transfer->source_node_id);
@@ -133,6 +142,7 @@ namespace {
   void processNodeInfoResponse(CanardRxTransfer *transfer,
 			       const uavcan_protocol_GetNodeInfoResponse &nodeInfoResp)
   {
+#ifdef TRACE
     DebugTrace("response node info CB source %u with id %u\n"
 	       "name = %s uptime = %lu  health = %u hw = %u.%u sw = %u.%u",
 	       transfer->source_node_id,
@@ -145,6 +155,10 @@ namespace {
 	       nodeInfoResp.software_version.major,
 	       nodeInfoResp.software_version.minor
 	       );
+#else
+    (void) transfer;
+    (void) nodeInfoResp;
+#endif
   }
 
 
@@ -270,11 +284,15 @@ namespace CANSlave {
 
       .flagCb = [] -> uint8_t {return nodeId;},
       .errorCb = [](const etl::string_view sv) {
+#ifdef TRACE
 	static uint32_t count = 4U;
 	if (count) {
 	  DebugTrace("UAVDbg : %s", sv.data());
 	  --count;
 	}
+#else
+	(void) sv;
+#endif
       }
     };
   

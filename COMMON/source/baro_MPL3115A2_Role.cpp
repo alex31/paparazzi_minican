@@ -100,11 +100,15 @@ DeviceStatus Baro_MPL3115A2_Role::start(UAVCAN::Node& node)
 
 DeviceStatus Baro_MPL3115A2_Role::printPressure()
 {
+#ifdef TRACE
   float pressure;
   const DeviceStatus status = getPressure(&pressure);
   if (status) 
     DebugTrace("Pressure = %.2f millibar", pressure);
   return status;
+#else
+  return DeviceStatus(DeviceStatus::MPL3115A2);
+#endif
 }
 
 DeviceStatus Baro_MPL3115A2_Role::getPressure(float *pressure)
