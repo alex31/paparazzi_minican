@@ -5,7 +5,7 @@
 #include "hal_mfs.h"
 #include "stdutil.h"
 #include <array>
-
+#include "etl/span.h"
 
 namespace {
   hal_xsnor_stm_m95p_c m95p;

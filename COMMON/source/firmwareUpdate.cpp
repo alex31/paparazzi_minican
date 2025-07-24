@@ -6,7 +6,7 @@
 #include "eeprom_stm_m95p.hpp"
 #include "MFS.hpp"
 #include "etl/string_view.h"
-
+#include "etl/span.h"
 /*
   TODO :
  */
@@ -155,7 +155,7 @@ namespace {
       firmwareHeader.flashToMCU = true;
       firmwareHeader.headerLen = sizeof firmwareHeader;
       m95p->write(firmwareHeader.headerEepromAddr,
-		  std::span(reinterpret_cast<const uint8_t*>(&firmwareHeader), sizeof(firmwareHeader)));
+		  etl::span(reinterpret_cast<const uint8_t*>(&firmwareHeader), sizeof(firmwareHeader)));
       crcReset(&CRCD1);
     }
     return true;

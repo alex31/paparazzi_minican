@@ -6,6 +6,7 @@
 #include "roleStatus.hpp"
 #include "roleBase.hpp"
 #include "pprzLink.hpp"
+#include "etl/span.h"
 
 
 class TelemetryTunnel final : public RoleBase, public RoleCrtp<TelemetryTunnel> {
@@ -17,7 +18,7 @@ private:
   void processPaparazziTelemetryCommand_u2s(CanardRxTransfer *,
 					    const  paparazzi_tunnel_Telemetry &msg);
   void processPaparazziTelemetryCommand_s2u(PprzPolicy pol,
-					    std::span<const uint8_t> msg);
+					    etl::span<const uint8_t> msg);
   static void trapError_s2u(uint32_t v, uint32_t i);
  
   void periodic(void *);

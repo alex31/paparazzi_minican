@@ -78,7 +78,7 @@ void TelemetryTunnel::processPaparazziTelemetryCommand_u2s(CanardRxTransfer *,
     return;
   }
 						
-  std::span<const uint8_t> payload(msg.payload.data, msg.payload.len);
+  etl::span<const uint8_t> payload(msg.payload.data, msg.payload.len);
 
   switch (msg.xbeeHeader.union_tag) {
   case PAPARAZZI_TUNNEL_XBEEHEADER_TX: {
@@ -140,7 +140,7 @@ void TelemetryTunnel::processPaparazziTelemetryCommand_u2s(CanardRxTransfer *,
 
 
 void TelemetryTunnel::processPaparazziTelemetryCommand_s2u(PprzPolicy pol,
-							   std::span<const uint8_t> in)
+							   etl::span<const uint8_t> in)
 {
   paparazzi_tunnel_Telemetry out;
 
@@ -243,9 +243,9 @@ void TelemetryTunnel::periodic(void *)
     uartReceiveTimeout(&RoleUartDriver, &size, frame, TIME_INFINITE);
     if (size) {
       if (xbeeFrame) {
-	xbS2UBuffer->feed(std::span(frame, size));
+	xbS2UBuffer->feed(etl::span(frame, size));
       } else {
-	ppS2UBuffer->feed(std::span(frame, size));
+	ppS2UBuffer->feed(etl::span(frame, size));
       }
     }
   }
