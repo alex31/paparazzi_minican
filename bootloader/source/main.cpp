@@ -170,6 +170,9 @@ namespace {
       }
     }
 
+    m95p.write(firmwareHeader.headerEepromAddr,
+	       etl::span(reinterpret_cast<const uint8_t*>(&firmwareHeader), sizeof(firmwareHeader)));
+    
     if (crcGetFinalValue(&CRCD1) != firmwareHeader.crc32k4) {
       DebugTrace("crc error %lu != %lu", crcGetFinalValue(&CRCD1), firmwareHeader.crc32k4);
       // Critical error: CRC mismatch. Signal error and halt.
@@ -177,10 +180,8 @@ namespace {
       RgbLed::setMotif(100, 0b1010101010101010);
       chThdSleep(TIME_INFINITE);
     }
-
-    m95p.write(firmwareHeader.headerEepromAddr,
-	       etl::span(reinterpret_cast<const uint8_t*>(&firmwareHeader), sizeof(firmwareHeader)));
     
+     
     elapsed = chTimeDiffX(now, chVTGetSystemTimeX());
     
     DebugTrace("flash prog sector take %lu milliseconds with err = %d",
