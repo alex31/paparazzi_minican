@@ -3,80 +3,99 @@ use strict;
 use warnings;
 use File::Slurp;
 
-my ($expected_size_str, $boot_ld, $app_ld) = @ARGV;
-die <<"USAGE" unless $expected_size_str && $boot_ld && $app_ld;
+#----------------------------------------------------------------------#
+# Usage
+#----------------------------------------------------------------------#
+my ($boot_size_str, $boot_ld, $app_ld) = @ARGV;
+die <<"USAGE" unless defined $boot_size_str && defined $boot_ld && defined $app_ld;
 Usage:
-  $0 <expected_size> <bootloader.ld> <application.ld>
+  $0 <boot_size> <bootloader.ld> <application.ld>
 
-Examples:
+Example:
   $0 64k bootloader/cfg/STM32G474xE.ld application/cfg/STM32G474xE.ld
 USAGE
 
+#----------------------------------------------------------------------#
+# Parse a length literal like "64k", "0x10000", "512k - 32k" → bytes
+#----------------------------------------------------------------------#
 sub parse_length {
-    my $len = shift;
-    if ($len =~ /^0x[0-9a-f]+$/i) {
-        return hex($len);
-    } elsif ($len =~ /^(\d+(?:\.\d+)?)k$/i) {
-        return int($1 * 1024);
-    } elsif ($len =~ /^(\d+(?:\.\d+)?)m$/i) {
-        return int($1 * 1024 * 1024);
-    } elsif ($len =~ /^\d+$/) {
-        return int($len);
-    } else {
-        die "Unrecognized length format: '$len'";
+    my $v = shift;
+    $v =~ s/\s//g;
+    return hex($v)                     if $v =~ /^0x[0-9a-f]+$/i;
+    return int($1*1024)                if $v =~ /^(\d+(?:\.\d+)?)k$/i;
+    return int($1*1024*1024)           if $v =~ /^(\d+(?:\.\d+)?)m$/i;
+    return int($v)                     if $v =~ /^\d+$/;
+    die "Can't parse length literal '$v'";
+}
+
+#----------------------------------------------------------------------#
+# Format bytes → "Nk" if divisible by 1024, else raw bytes
+#----------------------------------------------------------------------#
+sub format_length {
+    my $b = shift;
+    return ($b % 1024)==0
+         ? sprintf("%dk", $b/1024)
+         : $b;
+}
+
+# Taille du bootloader en octets
+my $boot_bytes = parse_length($boot_size_str);
+
+#----------------------------------------------------------------------#
+# Traitement du bootloader
+#----------------------------------------------------------------------#
+{
+    # File::Slurp: en list context, read_file retourne une ligne par élément
+    my @lines = read_file($boot_ld);
+    open my $out, '>', "$boot_ld.tmp" or die $!;
+
+    my $found = 0;
+    foreach my $line (@lines) {
+        if ($line =~ /^(\s*)flash0\s*\([^)]*\)\s*:\s*org\s*=\s*(0x[0-9A-Fa-f]+)\s*,\s*len\s*=\s*[^\s}]+/) {
+            my ($ws, $base) = ($1, $2);
+            print $out sprintf("%sflash0 (rx) : org = %s, len = %s\n",
+                               $ws, $base, $boot_size_str);
+            $found = 1;
+        }
+        else {
+            print $out $line;
+        }
     }
+    close $out;
+    die "❌ flash0 not found in $boot_ld\n" unless $found;
+    rename("$boot_ld.tmp", $boot_ld) or die $!;
 }
 
-sub extract_flash0_length {
-    my $file = shift;
-    my $text = read_file($file);
-    if ($text =~ /flash0\s*\([^)]*\)\s*:\s*org\s*=\s*[^,]+,\s*len\s*=\s*([^\s]+)/) {
-        return ($1, $text);
+#----------------------------------------------------------------------#
+# Traitement de l'application
+#----------------------------------------------------------------------#
+{
+    my @lines = read_file($app_ld);
+    open my $out, '>', "$app_ld.tmp" or die $!;
+
+    my $found = 0;
+    foreach my $line (@lines) {
+        if ($line =~ /^(\s*)flash0\s*\([^)]*\)\s*:\s*org\s*=\s*(0x[0-9A-Fa-f]+)\s*\+\s*([^\s,]+)\s*,\s*len\s*=\s*([^\s}]+)/) {
+            my ($ws, $base, $old_off_str, $old_len_expr) = ($1, $2, $3, $4);
+
+            # extrait FLASH_TOTAL_LITERAL (avant le '-')
+            my ($flash_total_literal) = $old_len_expr =~ /^\s*([^\s-]+)/;
+
+            # génère la nouvelle ligne
+            print $out sprintf(
+                "%sflash0 (rx) : org = %s + %s, len = %s - %s\n",
+                $ws, $base, $boot_size_str,
+                $flash_total_literal, $boot_size_str
+            );
+            $found = 1;
+        }
+        else {
+            print $out $line;
+        }
     }
-    die "Couldn't find flash0 length in $file";
+    close $out;
+    die "❌ flash0 not found in $app_ld\n" unless $found;
+    rename("$app_ld.tmp", $app_ld) or die $!;
 }
 
-sub extract_application_offset {
-    my $file = shift;
-    my $text = read_file($file);
-    if ($text =~ /flash0\s*\([^)]*\)\s*:\s*org\s*=\s*0x08000000\s*\+\s*([^\s,]+)/) {
-        return ($1, $text);
-    }
-    die "Couldn't find flash0 origin offset in $file";
-}
-
-sub update_file {
-    my ($file, $text) = @_;
-    write_file($file, $text);
-    print "🔧 Updated $file\n";
-}
-
-# parse expected size
-my $expected_bytes = parse_length($expected_size_str);
-
-# bootloader.ld
-my ($boot_val, $boot_text) = extract_flash0_length($boot_ld);
-my $boot_bytes = parse_length($boot_val);
-
-# application.ld
-my ($app_val, $app_text) = extract_application_offset($app_ld);
-my $app_bytes = parse_length($app_val);
-
-# compare
-if ($boot_bytes == $expected_bytes && $app_bytes == $expected_bytes) {
-    print "✅ Bootloader size is up to date: $expected_bytes bytes\n";
-    exit 0;
-}
-
-# replace only if needed
-if ($boot_bytes != $expected_bytes) {
-    $boot_text =~ s/(flash0\s*\([^)]*\)\s*:\s*org\s*=\s*[^,]+,\s*len\s*=\s*)([^\s]+)/$1$expected_size_str/;
-    update_file($boot_ld, $boot_text);
-}
-
-if ($app_bytes != $expected_bytes) {
-    $app_text =~ s/(flash0\s*\([^)]*\)\s*:\s*org\s*=\s*0x08000000\s*\+\s*)([^\s,]+)/$1$expected_size_str/;
-    update_file($app_ld, $app_text);
-}
-
-print "✅ Bootloader size updated to $expected_size_str ($expected_bytes bytes)\n";
+print "✅ flash0 lines regenerated with boot size $boot_size_str\n";
