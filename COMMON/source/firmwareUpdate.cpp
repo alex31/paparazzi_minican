@@ -105,11 +105,11 @@ bool FirmwareUpdater::newChunk(CanardRxTransfer *transfer,
   }
   
   if (firmwareChunk.data.len == 0) {
-    // DebugTrace("DBG> end of file");
     storeSectorBufferInEeprom(true);
     delete sectorBuffer;
     sectorBuffer = nullptr;
     currentFileIndex = 0;
+    DebugTrace("DBG> end of file");
   } else {
     const size_t transferSize = std::min(sectorBuffer->available(),
 					 static_cast<size_t>(firmwareChunk.data.len));
@@ -149,6 +149,7 @@ namespace {
       m95p->write(firmwareHeader.headerEepromAddr,
 		  etl::span(reinterpret_cast<const uint8_t*>(&firmwareHeader), sizeof(firmwareHeader)));
       crcReset(&CRCD1);
+      m95p->waitReady(); // ensure that header is written to flash before continuing
     }
     return true;
   }
