@@ -159,6 +159,7 @@ namespace {
        m95p.read(firmwareHeader.bank1EepromAddr + bytes_written,
       		  std::span(buffer.begin(), transferSize));
        err = efl_lld_program(&EFLD1, offset, transferSize, buffer.data());
+       chThdYield();
        bytes_written += transferSize;
        offset += transferSize;
        remain -= transferSize;
