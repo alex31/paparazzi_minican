@@ -155,7 +155,7 @@
  */
 #define STM32_ADC_DUAL_MODE                 FALSE
 #define STM32_ADC_COMPACT_SAMPLES           FALSE
-#define STM32_ADC_USE_ADC1                  TRUE
+#define STM32_ADC_USE_ADC1                  FALSE
 #define STM32_ADC_USE_ADC2                  FALSE
 #define STM32_ADC_USE_ADC3                  FALSE
 #define STM32_ADC_USE_ADC4                  FALSE
@@ -405,11 +405,16 @@
 #define STM32_WSPI_QUADSPI1_DMA_STREAM      STM32_DMA_STREAM_ID_ANY
 #define STM32_WSPI_QUADSPI1_PRESCALER_VALUE 1
 
+/*
+ * EFL driver system settings.
+ */
+#define HAL_EFL_SECTION_HOOK __attribute__((section(".ram2_init"), noinline, long_call))
+
 // local defs
 #define CH_HEAP_SIZE (32*1024)
 #define CH_HEAP_USE_TLSF 0 // if 0 or undef, chAlloc will be used
 #define CONSOLE_DEV_SD LPSD1
 #define CONSOLE_DEV_USB 0
-#define CHPRINTF_USE_STDLIB   1
+#define CHPRINTF_USE_STDLIB   0
 
 #endif /* MCUCONF_H */

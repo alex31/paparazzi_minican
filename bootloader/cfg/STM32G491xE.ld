@@ -19,7 +19,7 @@
  */
 MEMORY
 {
-    flash0 (rx) : org = 0x08000000, len = 512k
+    flash0 (rx) : org = 0x08000000, len = 64k
     flash1 (rx) : org = 0x00000000, len = 0
     flash2 (rx) : org = 0x00000000, len = 0
     flash3 (rx) : org = 0x00000000, len = 0
@@ -82,7 +82,7 @@ REGION_ALIAS("BSS_RAM", ram1);
 REGION_ALIAS("HEAP_RAM", ram1);
 
 /* will be used by the UAVCAN bootloader/uploader system */
-PROVIDE(application_start = ORIGIN(flash0));
+PROVIDE(application_start = (ORIGIN (flash0) + LENGTH (flash0)));
 
 /* Generic rules inclusion.*/
 INCLUDE rules.ld

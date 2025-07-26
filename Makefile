@@ -1,14 +1,14 @@
 .PHONY: all bootloader minican clean
 
 BOOTLOADER_SIZE := 64k
-BOOTLOADER_LD := bootloader/cfg/STM32G474xE.ld
-MINICAN_LD := minican/cfg/STM32G474xE.ld
+BOOTLOADER_LD := bootloader/cfg/STM32G491xE.ld
+MINICAN_LD := minican/cfg/STM32G491xE.ld
 
 
 
 
-all: minican
-#all: check-bootloader-size bootloader minican
+#all: minican
+all: check-bootloader-size bootloader minican
 
 bootloader:
 	$(MAKE) -C bootloader

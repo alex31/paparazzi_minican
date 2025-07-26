@@ -21,15 +21,7 @@ namespace  {
   Eeprom_M95::Device *m95p = nullptr;
 
   bool storeSectorBufferInEeprom(bool final = false);
-  const CRCConfig crcConfig = {
-    .poly_size = 32,
-    .poly = 0xC9D204F5,
-    .initial_val = 0xFFFFFFFF,
-    .final_val = 0xFFFFFFFF,
-    .reflect_data = true,
-    .reflect_remainder = true
-  };
-  FirmwareUpdater::FirmwareHeader_t firmwareHeader;
+  Firmware::FirmwareHeader_t firmwareHeader;
   static_assert(sizeof(firmwareHeader) <= 512);
 }
 
@@ -42,7 +34,7 @@ bool FirmwareUpdater::start(UAVCAN::Node *node, const uavcan_protocol_file_Path 
   bool wrongFileName = false;
   m95p = MFS::getDevice();
   crcInit();
-  crcStart(&CRCD1, &crcConfig);
+  crcStart(&CRCD1, &Firmware::crcK4Config);
   
   auto doResp = [&resp] (uint8_t err, etl::string_view str) {
     resp.error = err;
@@ -149,7 +141,7 @@ namespace {
     }
     if (final) {
       firmwareHeader.magicNumber = firmwareHeader.magicNumberCheck;
-      firmwareHeader.flashAddress = &application_start; // get from .ld file
+      firmwareHeader.flashAddress = (uint32_t) &application_start; // get from .ld file
       firmwareHeader.crc32k4 = crcGetFinalValue(&CRCD1);
       //      DebugTrace("crc = 0x%lx", firmwareHeader.crc32k4);
       firmwareHeader.flashToMCU = true;

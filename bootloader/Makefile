@@ -10,9 +10,9 @@ DEBUG := 1
 OPT_SPEED := 2
 OPT_SIZE := 3
 
-#EXECMODE := $(DEBUG)
+EXECMODE := $(DEBUG)
 #EXECMODE := $(OPT_SPEED)
-EXECMODE := $(OPT_SIZE)
+#EXECMODE := $(OPT_SIZE)
 
 GCCVERSIONGTEQ10 := $(shell expr `arm-none-eabi-gcc -dumpversion | cut -f1 -d.` \>= 10)
 GCC_DIAG =  -Werror -Wno-error=unused-variable -Wno-error=format \
@@ -112,7 +112,7 @@ endif
 # Stack size to be allocated to the Cortex-M process stack. This stack is
 # the stack used by the main() thread.
 ifeq ($(USE_PROCESS_STACKSIZE),)
-  USE_PROCESS_STACKSIZE = 0x1000
+  USE_PROCESS_STACKSIZE = 0x1a00
 endif
 
 # Stack size to the allocated to the Cortex-M main/exceptions stack. This
@@ -203,7 +203,8 @@ CSRC = $(ALLCSRC) \
        $(VARIOUS)/printf.c \
        $(VARIOUS)/microrl/microrlShell.c \
        $(VARIOUS)/microrl/microrl.c \
-       $(VARIOUS)/hal_stm32_dma.c
+       $(VARIOUS)/hal_stm32_dma.c \
+       $(VARIOUS)/hal_stm32_crc_v1.c
 
 # C++ sources that can be compiled in ARM or THUMB mode depending on the global
 # setting.

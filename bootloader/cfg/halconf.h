@@ -66,7 +66,7 @@
  * @brief   Enables the ADC subsystem.
  */
 #if !defined(HAL_USE_ADC) || defined(__DOXYGEN__)
-#define HAL_USE_ADC                         TRUE
+#define HAL_USE_ADC                         FALSE
 #endif
 
 /**
@@ -94,7 +94,15 @@
  * @brief   Enables the EFlash subsystem.
  */
 #if !defined(HAL_USE_EFL) || defined(__DOXYGEN__)
-#define HAL_USE_EFL                         FALSE
+#define HAL_USE_EFL                         TRUE
+#endif
+
+/**
+ * @brief   Enables the EFlash subsystem erase an program function HOOK.
+ * @note    Useful to run function in RAM for single bank device
+ */
+#if !defined(HAL_EFL_SECTION_HOOK) || defined(__DOXYGEN__)
+#undef HAL_EFL_SECTION_HOOK 
 #endif
 
 /**
@@ -151,7 +159,7 @@
  * @brief   Enables the RTC subsystem.
  */
 #if !defined(HAL_USE_RTC) || defined(__DOXYGEN__)
-#define HAL_USE_RTC                         TRUE
+#define HAL_USE_RTC                         FALSE
 #endif
 
 /**
@@ -438,7 +446,7 @@
  *          buffers.
  */
 #if !defined(SERIAL_BUFFERS_SIZE) || defined(__DOXYGEN__)
-#define SERIAL_BUFFERS_SIZE                 128
+#define SERIAL_BUFFERS_SIZE                 16
 #endif
 
 /*===========================================================================*/
@@ -528,7 +536,7 @@
  * @note    Disabling this option saves both code and data space.
  */
 #if !defined(UART_USE_WAIT) || defined(__DOXYGEN__)
-#define UART_USE_WAIT                       TRUE
+#define UART_USE_WAIT                       FALSE
 #endif
 
 /**

@@ -87,8 +87,9 @@ static inline const SPIConfig eepromSpiCfg = {
 };  
 
 // Common uart on the minican and microcan connectors
+#if HAL_USE_UART
 static constexpr UARTDriver& RoleUartDriver = UARTD2;
-
+#endif
 
 /*
 #                                                    
