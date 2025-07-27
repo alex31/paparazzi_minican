@@ -21,7 +21,7 @@ namespace  {
   Eeprom_M95::Device *m95p = nullptr;
 
   bool storeSectorBufferInEeprom(bool final = false);
-  Firmware::FirmwareHeader_t firmwareHeader;
+  Firmware::FirmwareHeader_t  IN_DMA_SECTION(firmwareHeader);
   static_assert(sizeof(firmwareHeader) <= 512);
 }
 
@@ -35,7 +35,10 @@ bool FirmwareUpdater::start(UAVCAN::Node *node, const uavcan_protocol_file_Path 
   m95p = MFS::getDevice();
   crcInit();
   crcStart(&CRCD1, &Firmware::crcK4Config);
-  
+
+  m95p->read(firmwareHeader.headerEepromAddr,
+	     etl::span(reinterpret_cast<uint8_t*>(&firmwareHeader), sizeof(firmwareHeader)));
+  firmwareHeader.size = 0;
   auto doResp = [&resp] (uint8_t err, etl::string_view str) {
     resp.error = err;
     resp.optional_error_message.len = str.size();
@@ -109,7 +112,6 @@ bool FirmwareUpdater::newChunk(CanardRxTransfer *transfer,
     delete sectorBuffer;
     sectorBuffer = nullptr;
     currentFileIndex = 0;
-    DebugTrace("DBG> end of file");
   } else {
     const size_t transferSize = std::min(sectorBuffer->available(),
 					 static_cast<size_t>(firmwareChunk.data.len));
@@ -140,11 +142,13 @@ namespace {
       firmwareHeader.size += FirmwareUpdater::sectorBuffer->size();
     }
     if (final) {
-      firmwareHeader.magicNumber = firmwareHeader.magicNumberCheck;
+      if (firmwareHeader.magicNumber != firmwareHeader.magicNumberCheck) {
+	firmwareHeader.magicNumber = firmwareHeader.magicNumberCheck;
+	firmwareHeader.eepromCycleCount = 1;
+      } 
       firmwareHeader.versionProtocol = firmwareHeader.versionProtocolCheck;
       firmwareHeader.flashAddress = (uint32_t) &application_start; // get from .ld file
       firmwareHeader.crc32k4 = crcGetFinalValue(&CRCD1);
-      //      DebugTrace("crc = 0x%lx", firmwareHeader.crc32k4);
       firmwareHeader.state = Firmware::Flash::REQUIRED;
       firmwareHeader.headerLen = sizeof firmwareHeader;
       m95p->write(firmwareHeader.headerEepromAddr,

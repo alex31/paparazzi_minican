@@ -113,6 +113,12 @@ namespace {
       return false;
     }
 
+    if (firmwareHeader.versionProtocol != firmwareHeader.versionProtocolCheck) {
+      DebugTrace("protocol version mismatch");
+      firmwareHeader.state = Firmware::Flash::PROTOCOL_VERSION_MISMATCH;
+      return false;
+    }
+
     if (firmwareHeader.headerLen != sizeof(firmwareHeader)) {
       DebugTrace("header structure length mismatch : recompile bootloader and application");
       firmwareHeader.state = Firmware::Flash::LEN_ERROR;
@@ -152,7 +158,7 @@ namespace {
     }
 
     if (crcGetFinalValue(&CRCD1) != firmwareHeader.crc32k4) {
-      DebugTrace("Pre-flash CRC check failed. Expected %lu, got %lu",
+      DebugTrace("Pre-flash CRC check failed. Expected 0x%lx, got 0x%lx",
                  firmwareHeader.crc32k4, crcGetFinalValue(&CRCD1));
       firmwareHeader.state = Firmware::Flash::CRC_ERROR;
       return false;
@@ -256,7 +262,7 @@ namespace {
       }
       
       firmwareHeader.state = Firmware::Flash::DONE;
-      DebugTrace("Firmware update successful.");
+      DebugTrace("Firmware update successful cycle n° %lu", ++firmwareHeader.eepromCycleCount);
     } else {
       DebugTrace("Firmware in an unhandled state: %d", static_cast<int>(firmwareHeader.state));
     }

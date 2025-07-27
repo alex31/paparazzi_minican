@@ -6,7 +6,8 @@
 namespace Firmware {
   enum class Flash {REQUIRED, STARTED, DONE, CRC_ERROR, 
 		    LEN_ERROR, MAGIC_ERROR, INVALID_SIZE,
-		    ADDRESS_MISMATCH, APPLICATION_CORRUPTED};
+		    ADDRESS_MISMATCH, APPLICATION_CORRUPTED,
+		    PROTOCOL_VERSION_MISMATCH};
   struct FirmwareHeader_t {
     etl::string<32> version = {};
     uint32_t magicNumber;
@@ -17,8 +18,10 @@ namespace Firmware {
     uint32_t flashAddress = 0x0;
     Flash    state;
     uint8_t  bankInUse = 0;
+    uint32_t eepromCycleCount = 0;
+    
     static constexpr uint32_t magicNumberCheck = 0xF0CACC1A;
-    static constexpr uint32_t versionProtocolCheck = 1;
+    static constexpr uint32_t versionProtocolCheck = 2;
     static constexpr uint32_t headerEepromAddr = 1024*1024;
     static constexpr uint32_t bank1EepromAddr = headerEepromAddr + 512;
     static constexpr uint32_t bank2EepromAddr = bank1EepromAddr + (512 * 1024);
