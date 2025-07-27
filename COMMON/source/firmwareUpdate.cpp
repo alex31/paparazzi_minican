@@ -19,7 +19,9 @@ namespace  {
   size_t currentFileIndex = 0;
   UAVCAN::Node *slaveNode = nullptr;
   Eeprom_M95::Device *m95p = nullptr;
-
+  systime_t timestamp = 0;
+  // it it goes 10 seconds withoud fileread response, current update is canceled
+  static constexpr sysinterval_t firmwareUpdateTimout = TIME_S2I(10);
   bool storeSectorBufferInEeprom(bool final = false);
   Firmware::FirmwareHeader_t  IN_DMA_SECTION(firmwareHeader);
   static_assert(sizeof(firmwareHeader) <= 512);
@@ -35,6 +37,7 @@ bool FirmwareUpdater::start(UAVCAN::Node *node, const uavcan_protocol_file_Path 
   m95p = MFS::getDevice();
   crcInit();
   crcStart(&CRCD1, &Firmware::crcK4Config);
+  bool aborted = false;
 
   m95p->read(firmwareHeader.headerEepromAddr,
 	     etl::span(reinterpret_cast<uint8_t*>(&firmwareHeader), sizeof(firmwareHeader)));
@@ -45,6 +48,7 @@ bool FirmwareUpdater::start(UAVCAN::Node *node, const uavcan_protocol_file_Path 
     memcpy(resp.optional_error_message.data, str.data(),
 	   std::min(sizeof(resp.optional_error_message.data), str.size()));
   };
+
   /*
     ° if filename is *NOT* suitable for minican -> answer error "incompatible", return
     ° if filename is same as stored in header : answer error "same version", return
@@ -73,19 +77,28 @@ bool FirmwareUpdater::start(UAVCAN::Node *node, const uavcan_protocol_file_Path 
 
   // will need to be deallocated after last chunk of firmware is received and written to SPI EEPROM
   if (sectorBuffer != nullptr)  {
-    // timout management ?
-    doResp(UAVCAN_PROTOCOL_FILE_BEGINFIRMWAREUPDATE_RESPONSE_ERROR_IN_PROGRESS,
-	   "update in progress");
-    return false;
+    if (chTimeDiffX(timestamp, chVTGetSystemTimeX()) < firmwareUpdateTimout) {
+      doResp(UAVCAN_PROTOCOL_FILE_BEGINFIRMWAREUPDATE_RESPONSE_ERROR_IN_PROGRESS,
+	     "update in progress");
+      return false;
+    } else {
+      delete sectorBuffer;
+      sectorBuffer = nullptr;
+      currentFileIndex = 0;
+      aborted = true;
+    }
   }
   
   if (FirmwareUpdater::sectorBuffer = new SectorBuffer_t; FirmwareUpdater::sectorBuffer == nullptr) {
-    // timout management ?
     doResp(UAVCAN_PROTOCOL_FILE_BEGINFIRMWAREUPDATE_RESPONSE_ERROR_UNKNOWN,
 	   "internal malloc error");
     return false;
   }
-  
+  timestamp = chVTGetSystemTimeX();
+
+  doResp(UAVCAN_PROTOCOL_FILE_BEGINFIRMWAREUPDATE_RESPONSE_ERROR_OK,
+	 aborted ? "previous attempt aborted, restart update" :
+	 "start update");
   return true;
 }
 
@@ -104,9 +117,11 @@ bool FirmwareUpdater::newChunk(CanardRxTransfer *transfer,
   if (firmwareChunk.error.value != UAVCAN_PROTOCOL_FILE_ERROR_OK) {
     delete sectorBuffer;
     sectorBuffer = nullptr;
+    currentFileIndex = 0;
     return false;
   }
   
+  timestamp = chVTGetSystemTimeX();
   if (firmwareChunk.data.len == 0) {
     storeSectorBufferInEeprom(true);
     delete sectorBuffer;
