@@ -89,8 +89,8 @@ void  EscDshot::periodic(void *)
   uavcan_equipment_esc_Status msgEscStatus = {};
 #endif
     
-  auto now = chVTGetSystemTimeX();
-  while(chTimeDiffX(chVTGetSystemTimeX(), now) < TIME_MS2I(1000)) {
+  const auto start = chVTGetSystemTimeX();
+  while(chTimeDiffX(start, chVTGetSystemTimeX()) < TIME_MS2I(1000)) {
     dshotSendSpecialCommand(&dshotd, DSHOT_ALL_MOTORS, DSHOT_CMD_MOTOR_STOP);
     chThdSleepMicroseconds(500);
 #if DSHOT_BIDIR
@@ -98,7 +98,7 @@ void  EscDshot::periodic(void *)
     chThdSleepMicroseconds(500);
 #endif
   }
-    
+  
   while(true) {
     const systime_t ts = chVTGetSystemTimeX();
     for (size_t i = 0; i <  numChannels; i++) {
