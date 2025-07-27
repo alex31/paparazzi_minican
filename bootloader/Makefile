@@ -10,9 +10,9 @@ DEBUG := 1
 OPT_SPEED := 2
 OPT_SIZE := 3
 
-EXECMODE := $(DEBUG)
+#EXECMODE := $(DEBUG)
 #EXECMODE := $(OPT_SPEED)
-#EXECMODE := $(OPT_SIZE)
+EXECMODE := $(OPT_SIZE)
 
 GCCVERSIONGTEQ10 := $(shell expr `arm-none-eabi-gcc -dumpversion | cut -f1 -d.` \>= 10)
 GCC_DIAG =  -Werror -Wno-error=unused-variable -Wno-error=format \
@@ -56,7 +56,7 @@ endif
 ifeq ($(EXECMODE),$(OPT_SIZE)) 
   USE_OPT =  -Os -flto  -Wall -Wextra \
 	    -falign-functions=16 -fomit-frame-pointer \
-            -fipa-pta \
+            -fipa-pta --specs=nano.specs \
             -DCH_DBG_SYSTEM_STATE_CHECK=0 -DCH_DBG_ENABLE_CHECKS=0 \
             -DCH_DBG_ENABLE_ASSERTS=0 -DCH_DBG_ENABLE_STACK_CHECK=0 \
             -DCH_DBG_FILL_THREADS=0 \
@@ -112,13 +112,13 @@ endif
 # Stack size to be allocated to the Cortex-M process stack. This stack is
 # the stack used by the main() thread.
 ifeq ($(USE_PROCESS_STACKSIZE),)
-  USE_PROCESS_STACKSIZE = 0x2000
+  USE_PROCESS_STACKSIZE = 0x1000
 endif
 
 # Stack size to the allocated to the Cortex-M main/exceptions stack. This
 # stack is used for processing interrupts and exceptions.
 ifeq ($(USE_EXCEPTIONS_STACKSIZE),)
-  USE_EXCEPTIONS_STACKSIZE = 0x1000
+  USE_EXCEPTIONS_STACKSIZE = 0x600
 endif
 
 # Enables the use of FPU (no, softfp, hard).
@@ -200,12 +200,15 @@ CSRC = $(ALLCSRC) \
        $(TESTSRC) \
        $(CHIBIOS)/os/various/syscalls.c \
        $(VARIOUS)/stdutil.c \
-       $(VARIOUS)/printf.c \
-       $(VARIOUS)/microrl/microrlShell.c \
-       $(VARIOUS)/microrl/microrl.c \
        $(VARIOUS)/hal_stm32_dma.c \
        $(VARIOUS)/hal_stm32_crc_v1.c
 
+ifeq ($(EXECMODE),$(DEBUG))
+CSRC += $(VARIOUS)/printf.c \
+        $(VARIOUS)/microrl/microrlShell.c \
+        $(VARIOUS)/microrl/microrl.c 
+
+endif
 # C++ sources that can be compiled in ARM or THUMB mode depending on the global
 # setting.
 CPPSRC = $(ALLCPPSRC) \
@@ -240,7 +243,10 @@ CPPWARN = -Wall -Wextra -Wundef
 #
 
 # List all user C define here, like -D_DEBUG=1
-UDEFS = -DTRACE
+ifeq ($(EXECMODE),$(DEBUG))
+UDEFS += -DTRACE
+endif
+
 
 # Define ASM defines here
 UADEFS =

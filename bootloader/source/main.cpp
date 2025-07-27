@@ -176,7 +176,9 @@ namespace {
     const flash_sector_t sectorStart = offset / sectorSize;
     const size_t nbSectorsToErase = (firmwareHeader.size + sectorSize - 1U) / sectorSize;
     
+#ifdef TRACE
     systime_t now = chVTGetSystemTimeX();
+#endif
     for(size_t s=0; s < nbSectorsToErase; s++) {
       flash_error_t err = efl_lld_start_erase_sector(&EFLD1, sectorStart + s);
       if (err != FLASH_NO_ERROR) {
@@ -187,8 +189,10 @@ namespace {
         chThdSleepMilliseconds(STM32_FLASH_WAIT_TIME_MS);
       };
     }
+#ifdef TRACE
     sysinterval_t elapsed = chTimeDiffX(now, chVTGetSystemTimeX());
     DebugTrace("flash erase sector take %lu milliseconds", chTimeI2MS(elapsed));
+#endif
   }
 
   // Programs the flash from EEPROM and verifies the CRC
@@ -196,8 +200,9 @@ namespace {
     constexpr uint32_t flash_start = 0x08000000;
     uint32_t offset = (uint32_t)&application_start - flash_start;
     flash_error_t err = FLASH_NO_ERROR;
-
+#ifdef TRACE    
     systime_t now = chVTGetSystemTimeX();
+#endif
     size_t remain = firmwareHeader.size;
     size_t bytes_written = 0;
     crcReset(&CRCD1); // Re-initialize CRC for the second pass
@@ -223,9 +228,10 @@ namespace {
       firmwareHeader.state =  Firmware::Flash::APPLICATION_CORRUPTED;
       return false;
     }
-    
+#ifdef TRACE    
     sysinterval_t elapsed = chTimeDiffX(now, chVTGetSystemTimeX());
     DebugTrace("flash prog sector take %lu milliseconds with err = %d", chTimeI2MS(elapsed), err);
+#endif
     return true;
   }
 

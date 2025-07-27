@@ -15,6 +15,7 @@
 #include "printf.h"
 #include "etl/string.h"
 
+#ifdef TRACE
 
 using FixedString = etl::string<128>;
 using Value = std::variant<struct uavcan_protocol_param_Empty, int64_t, float, bool, FixedString>;
@@ -358,3 +359,4 @@ static float stampISRGetCpuPercent (const ThreadCpuInfo *ti)
 }
 #endif // CH_DBG_STATISTICS
 #endif // CONSOLE_DEV_SD
+#endif

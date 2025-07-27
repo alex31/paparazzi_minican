@@ -173,7 +173,11 @@
  * @brief   Enables the SERIAL subsystem.
  */
 #if !defined(HAL_USE_SERIAL) || defined(__DOXYGEN__)
+#ifdef TRACE
 #define HAL_USE_SERIAL                      TRUE
+#else
+#define HAL_USE_SERIAL                      FALSE
+#endif
 #endif
 
 /**
