@@ -4,17 +4,21 @@
 #include "hal_stm32_crc_v1.h"
 
 namespace Firmware {
+  enum class Flash {REQUIRED, STARTED, DONE, CRC_ERROR, 
+		    LEN_ERROR, MAGIC_ERROR, INVALID_SIZE,
+		    ADDRESS_MISMATCH, APPLICATION_CORRUPTED};
   struct FirmwareHeader_t {
-    uint32_t magicNumber;
     etl::string<32> version = {};
+    uint32_t magicNumber;
+    uint16_t versionProtocol = 0;
+    uint16_t headerLen = 0;
     uint32_t size = 0;
     uint32_t crc32k4 = 0;
     uint32_t flashAddress = 0x0;
-    bool     flashToMCU = false;
-    bool     bootloaderFlashSuccess = false;
+    Flash    state;
     uint8_t  bankInUse = 0;
-    uint16_t headerLen = 0;
     static constexpr uint32_t magicNumberCheck = 0xF0CACC1A;
+    static constexpr uint32_t versionProtocolCheck = 1;
     static constexpr uint32_t headerEepromAddr = 1024*1024;
     static constexpr uint32_t bank1EepromAddr = headerEepromAddr + 512;
     static constexpr uint32_t bank2EepromAddr = bank1EepromAddr + (512 * 1024);

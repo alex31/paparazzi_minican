@@ -141,10 +141,11 @@ namespace {
     }
     if (final) {
       firmwareHeader.magicNumber = firmwareHeader.magicNumberCheck;
+      firmwareHeader.versionProtocol = firmwareHeader.versionProtocolCheck;
       firmwareHeader.flashAddress = (uint32_t) &application_start; // get from .ld file
       firmwareHeader.crc32k4 = crcGetFinalValue(&CRCD1);
       //      DebugTrace("crc = 0x%lx", firmwareHeader.crc32k4);
-      firmwareHeader.flashToMCU = true;
+      firmwareHeader.state = Firmware::Flash::REQUIRED;
       firmwareHeader.headerLen = sizeof firmwareHeader;
       m95p->write(firmwareHeader.headerEepromAddr,
 		  etl::span(reinterpret_cast<const uint8_t*>(&firmwareHeader), sizeof(firmwareHeader)));

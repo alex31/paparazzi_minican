@@ -85,115 +85,197 @@ namespace {
   std::array<uint8_t, 16384> buffer;
   Firmware::FirmwareHeader_t firmwareHeader = {};
 
-  void flashApplication()
-  {
+  // Updates the firmware header in EEPROM
+  void updateFirmwareHeader(Eeprom_M95::Device& m95p) {
+    m95p.write(firmwareHeader.headerEepromAddr,
+               etl::span(reinterpret_cast<const uint8_t*>(&firmwareHeader), sizeof(firmwareHeader)));
+  }
+
+  void haltAndCatchFire(systime_t wait) {
+    if (wait == TIME_INFINITE) {
+      RgbLed::setColor(HSV{0.0f, 1.0f, 0.5f}); // Red
+    } else {
+      RgbLed::setColor(HSV{60/360.0, 1.0f, 0.5f}); // yellow
+    }
+    RgbLed::setMotif(100, 0b1010101010101010);
+    chThdSleep(wait);
+  }
+
+  // Reads and validates the firmware header from EEPROM
+  bool readAndValidateHeader(Eeprom_M95::Device& m95p) {
+    m95p.read(firmwareHeader.headerEepromAddr,
+              etl::span(reinterpret_cast<uint8_t*>(&firmwareHeader),
+                        sizeof(firmwareHeader)));
+
+    if (firmwareHeader.magicNumber != firmwareHeader.magicNumberCheck) {
+      DebugTrace("magic number not found in header");
+      firmwareHeader.state = Firmware::Flash::MAGIC_ERROR;
+      return false;
+    }
+
+    if (firmwareHeader.headerLen != sizeof(firmwareHeader)) {
+      DebugTrace("header structure length mismatch : recompile bootloader and application");
+      firmwareHeader.state = Firmware::Flash::LEN_ERROR;
+      return false;
+    }
+
+    if (firmwareHeader.flashAddress != (uint32_t) &application_start) {
+      DebugTrace("application start address mismatch bootloader : 0x%lx application : 0x%lx",
+                 firmwareHeader.flashAddress, (uint32_t) &application_start);
+      firmwareHeader.state = Firmware::Flash::ADDRESS_MISMATCH;
+      return false;
+    }
+    
+    constexpr uint32_t flash_start = 0x08000000;
+    uint32_t offset = (uint32_t)&application_start - flash_start;
+    if ((firmwareHeader.size < 48000) || (firmwareHeader.size > (512 * 1024) - offset)) {
+      firmwareHeader.state = Firmware::Flash::INVALID_SIZE;
+      DebugTrace("invalid firmware size");
+      return false;
+    }
+    
+    return true;
+  }
+
+  // Verifies the CRC of the firmware stored in EEPROM
+  bool verifyEepromFirmware(Eeprom_M95::Device& m95p) {
+    crcStart(&CRCD1, &Firmware::crcK4Config);
+    size_t remain = firmwareHeader.size;
+    size_t bytes_read = 0;
+    while(remain > 0) {
+      const size_t transferSize = std::min(buffer.size(), remain);
+      m95p.read(firmwareHeader.bank1EepromAddr + bytes_read,
+                std::span(buffer.begin(), transferSize));
+      crcCalc(&CRCD1, buffer.data(), transferSize);
+      bytes_read += transferSize;
+      remain -= transferSize;
+    }
+
+    if (crcGetFinalValue(&CRCD1) != firmwareHeader.crc32k4) {
+      DebugTrace("Pre-flash CRC check failed. Expected %lu, got %lu",
+                 firmwareHeader.crc32k4, crcGetFinalValue(&CRCD1));
+      firmwareHeader.state = Firmware::Flash::CRC_ERROR;
+      return false;
+    }
+
+    DebugTrace("Pre-flash CRC check success");
+    return true;
+  }
+
+  // Erases the application flash area
+  void eraseApplicationFlash() {
     constexpr uint32_t flash_start = 0x08000000;
     constexpr uint32_t sectorSize = 2048;
     uint32_t offset = (uint32_t)&application_start - flash_start;
     const flash_sector_t sectorStart = offset / sectorSize;
-    flash_error_t err = FLASH_NO_ERROR;
+    const size_t nbSectorsToErase = (firmwareHeader.size + sectorSize - 1U) / sectorSize;
     
+    systime_t now = chVTGetSystemTimeX();
+    for(size_t s=0; s < nbSectorsToErase; s++) {
+      flash_error_t err = efl_lld_start_erase_sector(&EFLD1, sectorStart + s);
+      if (err != FLASH_NO_ERROR) {
+        DebugTrace("Error erasing sector %lu", sectorStart + s);
+        chThdSleep(TIME_INFINITE);
+      }
+      while(efl_lld_query_erase(&EFLD1, nullptr) == FLASH_BUSY_ERASING) {
+        chThdSleepMilliseconds(STM32_FLASH_WAIT_TIME_MS);
+      };
+    }
+    sysinterval_t elapsed = chTimeDiffX(now, chVTGetSystemTimeX());
+    DebugTrace("flash erase sector take %lu milliseconds", chTimeI2MS(elapsed));
+  }
+
+  // Programs the flash from EEPROM and verifies the CRC
+  bool programFlashAndVerify(Eeprom_M95::Device& m95p) {
+    constexpr uint32_t flash_start = 0x08000000;
+    uint32_t offset = (uint32_t)&application_start - flash_start;
+    flash_error_t err = FLASH_NO_ERROR;
+
+    systime_t now = chVTGetSystemTimeX();
+    size_t remain = firmwareHeader.size;
+    size_t bytes_written = 0;
+    crcReset(&CRCD1); // Re-initialize CRC for the second pass
+
+    while(remain > 0) {
+      const size_t transferSize = std::min(buffer.size(), remain);
+      m95p.read(firmwareHeader.bank1EepromAddr + bytes_written,
+                std::span(buffer.begin(), transferSize));
+      err = efl_lld_program(&EFLD1, offset, transferSize, buffer.data());
+      chThdYield();
+      bytes_written += transferSize;
+      offset += transferSize;
+      remain -= transferSize;
+      crcCalc(&CRCD1, buffer.data(), transferSize);
+      if (err != FLASH_NO_ERROR) {
+        DebugTrace("Error programming err = %d", err);
+        chThdSleep(TIME_INFINITE);
+      }
+    }
+
+    if (crcGetFinalValue(&CRCD1) != firmwareHeader.crc32k4) {
+      DebugTrace("Post-flash CRC error %lu != %lu", crcGetFinalValue(&CRCD1), firmwareHeader.crc32k4);
+      firmwareHeader.state =  Firmware::Flash::APPLICATION_CORRUPTED;
+      return false;
+    }
+    
+    sysinterval_t elapsed = chTimeDiffX(now, chVTGetSystemTimeX());
+    DebugTrace("flash prog sector take %lu milliseconds with err = %d", chTimeI2MS(elapsed), err);
+    return true;
+  }
+
+
+  void flashApplication()
+  {
     eflStart(&EFLD1, NULL);
     Eeprom_M95::Device m95p(EepromSPID, eepromSpiCfg);
     spiStart(&EepromSPID, &eepromSpiCfg);
     m95p.start();
     crcInit();
-    crcStart(&CRCD1, &Firmware::crcK4Config);
-    
-    m95p.read(firmwareHeader.headerEepromAddr,
-	     etl::span(reinterpret_cast<uint8_t*>(&firmwareHeader),
-		       sizeof(firmwareHeader)));
-    if (firmwareHeader.magicNumber != firmwareHeader.magicNumberCheck)  {
-      DebugTrace("magic number not found in header");
+
+    if (!readAndValidateHeader(m95p)) {
+      goto exit;
+    }
+
+    if (firmwareHeader.state == Firmware::Flash::DONE) {
       return;
     }
 
-    if (firmwareHeader.headerLen != sizeof(firmwareHeader))  {
-      DebugTrace("header structure length mismatch : recompile bootloader and application");
-      return;
-    }
-
-    if (firmwareHeader.flashToMCU == false) {
-      DebugTrace("firmware already flashed");
-      return;
-    }
-    firmwareHeader.flashToMCU = false;
-    
-    size_t remain = firmwareHeader.size;
-    size_t bytes_written = 0;
-    
-    if ((remain < 48'000) or (remain > (512*1024) - offset))  {
-      DebugTrace("invalid firmware size");
-      return;
-    }
-    
-    if (firmwareHeader.flashAddress != (uint32_t) &application_start) {
-      DebugTrace("application start address mismatch bootloader : 0x%lx"
-		 " application : 0x%lx", firmwareHeader.flashAddress,
-		 (uint32_t) &application_start);
-    }
-    
-    const size_t nbSectorsToErase =
-      (firmwareHeader.size  + sectorSize - 1U) / sectorSize;
-    
-    systime_t now = chVTGetSystemTimeX();
-    for(size_t s=0; s < nbSectorsToErase; s++) {
-      err = efl_lld_start_erase_sector(&EFLD1, sectorStart + s);
-      if (err != FLASH_NO_ERROR) {
-	DebugTrace("Error erasing sector %lu", sectorStart + s);
-	chThdSleep(TIME_INFINITE);
+    if (firmwareHeader.state == Firmware::Flash::REQUIRED || firmwareHeader.state == Firmware::Flash::STARTED) {
+      DebugTrace("New firmware update process started.");
+      
+      firmwareHeader.state = Firmware::Flash::STARTED;
+      
+      if (!verifyEepromFirmware(m95p)) {
+        goto exit;
       }
-      while(efl_lld_query_erase(&EFLD1, nullptr) == FLASH_BUSY_ERASING) {
-	chThdSleepMilliseconds(STM32_FLASH_WAIT_TIME_MS);
-      };
-    }
-    sysinterval_t elapsed = chTimeDiffX(now, chVTGetSystemTimeX());
-    DebugTrace("flash erase sector take %lu milliseconds with last err = %d",
-	       chTimeI2MS(elapsed), err);
-    
-    
-    now = chVTGetSystemTimeX();
-
-    while(remain > 0) {
-      const size_t transferSize = std::min(buffer.size(), remain);
-       m95p.read(firmwareHeader.bank1EepromAddr + bytes_written,
-      		  std::span(buffer.begin(), transferSize));
-       err = efl_lld_program(&EFLD1, offset, transferSize, buffer.data());
-       chThdYield();
-       bytes_written += transferSize;
-       offset += transferSize;
-       remain -= transferSize;
-       crcCalc(&CRCD1, buffer.data(), transferSize);
-       if (err != FLASH_NO_ERROR) {
-	DebugTrace("Error programming err = %d", err);
-	chThdSleep(TIME_INFINITE);
+      
+      eraseApplicationFlash();
+      
+      if (!programFlashAndVerify(m95p)) {
+        goto exit;
       }
-    }
-
-    m95p.write(firmwareHeader.headerEepromAddr,
-	       etl::span(reinterpret_cast<const uint8_t*>(&firmwareHeader), sizeof(firmwareHeader)));
-    
-    if (crcGetFinalValue(&CRCD1) != firmwareHeader.crc32k4) {
-      DebugTrace("crc error %lu != %lu", crcGetFinalValue(&CRCD1), firmwareHeader.crc32k4);
-      // Critical error: CRC mismatch. Signal error and halt.
-      RgbLed::setColor(HSV{0.0f, 1.0f, 0.5f}); // Red
-      RgbLed::setMotif(100, 0b1010101010101010);
-      chThdSleep(TIME_INFINITE);
+      
+      firmwareHeader.state = Firmware::Flash::DONE;
+      DebugTrace("Firmware update successful.");
+    } else {
+      DebugTrace("Firmware in an unhandled state: %d", static_cast<int>(firmwareHeader.state));
     }
     
-     
-    elapsed = chTimeDiffX(now, chVTGetSystemTimeX());
-    
-    DebugTrace("flash prog sector take %lu milliseconds with err = %d",
-	       chTimeI2MS(elapsed), err);
-    chThdSleepMilliseconds(20);
+  exit:
+    updateFirmwareHeader(m95p);
+    switch (firmwareHeader.state) {
+    case Firmware::Flash::APPLICATION_CORRUPTED:
+      haltAndCatchFire(TIME_INFINITE); break;
+    case Firmware::Flash::DONE: break;
+    default: haltAndCatchFire(TIME_S2I(10));
+    }
   }
-
-
-  
-  void disable_and_reset_all_stm32g4_rcc_peripherals(void) {
-    // --- AHB1 ---
-    RCC->AHB1ENR &= ~(RCC_AHB1ENR_DMA1EN |
+    
+    
+    
+    void disable_and_reset_all_stm32g4_rcc_peripherals(void) {
+      // --- AHB1 ---
+      RCC->AHB1ENR &= ~(RCC_AHB1ENR_DMA1EN |
 		      RCC_AHB1ENR_DMA2EN |
 		      RCC_AHB1ENR_DMAMUX1EN |
 		      RCC_AHB1ENR_CRCEN);
