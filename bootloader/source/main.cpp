@@ -1,3 +1,27 @@
+/**
+ * @file main.cpp
+ * @author Alex Bustico
+ * @brief Bootloader for the MiniCAN G491 V4 board.
+ *
+ * @details This bootloader is responsible for updating the main application firmware.
+ * It checks for a new firmware image stored in an external M95P EEPROM,
+ * verifies its integrity, and flashes it to the MCU's internal flash memory.
+ * This two-step process ensures that the application is not corrupted if the
+ * update process is interrupted.
+ *
+ * The bootloader performs the following steps:
+ * 1. Initializes the system and peripherals.
+ * 2. Checks the firmware header in the EEPROM for a flash request.
+ * 3. If a new firmware is present and marked as `REQUIRED` or `STARTED`:
+ *    a. Verifies the CRC32 of the firmware image in the EEPROM.
+ *    b. Erases the application area in the internal flash.
+ *    c. Copies the firmware from the EEPROM to the internal flash.
+ *    d. Verifies the CRC32 of the newly written firmware in the flash.
+ *    e. Updates the header state to `DONE` on success or an error state on failure.
+ * 4. If no update is required or the update is complete, it jumps to the main application.
+ * 5. In case of a critical error, it enters an infinite loop with a specific RGB LED pattern.
+ */
+
 #include <ch.h>
 #include <hal.h>
 #include "stdutil.h"
@@ -8,53 +32,52 @@
 #include "firmwareHeader.hpp"
 #include "hardwareConf.hpp"
 
-/*
-  TODO :
-
-
-  BOOTLOADER :
-  ° check  header @1M
-  si flash@next_start -> {
-  + calcul CRC32 du firmware stocké dans M95P
-  + si CRC correct :
-  * copie M95P -> eeprom @address recuperée depuis un marqueur exporté par le linker script
-  * flash@next_start = false
-  * check CRC32 sur l'eeprom du G4 pour s'assurer que le copie est OK
-  * if CRC OK -> {
-  ¤ lastFlashStatus = GOOD
-  ¤ transfert to application
-  } else  {
-  ¤ lastFlashStatus = CRC error
-  ¤ rbg led pattern -> critical error
-  ¤ -> manual action : SWD flash ?
-  ¤ wait infinite
-  }
-  } else { //  flash@next_start == false
-  ¤ transfert to application
-  }
-       
-*/
-
 extern uint32_t application_start;
 
 namespace {
+  /**
+   * @brief Disables and resets all STM32G4 peripherals.
+   * @details This function resets all RCC peripherals to their default state
+   * before jumping to the main application. This ensures that the application
+   * starts in a clean environment, preventing potential conflicts from
+   * peripherals configured by the bootloader.
+   */
   void disable_and_reset_all_stm32g4_rcc_peripherals(void);
 
+  /**
+   * @brief Jumps to the given address and restarts the CPU.
+   * @details This function de-initializes caches and interrupts, sets the new
+   * stack pointer and program counter, and then jumps to the application's
+   * entry point.
+   * @param address The starting address of the application.
+   */
   [[noreturn]]
   static void JUMP_TO_AND_RESTART(uint32_t address);
 
+  /**
+   * @brief Manages the firmware flashing process.
+   * @details This is the core function of the bootloader. It orchestrates the
+   * entire firmware update process, from checking the header in the EEPROM
+   * to flashing the new firmware and verifying its integrity.
+   */
   void flashApplication();
 
+  /**
+   * @brief Initializes ChibiOS HAL and Kernel.
+   * @details This function is marked as a constructor and is called before main().
+   */
   void _init_chibios() __attribute__ ((constructor(101)));
   void _init_chibios() {
     halInit();
     chSysInit();
   }
-  
 }
 
-
-
+/**
+ * @brief Bootloader entry point.
+ * @details Initializes the system, performs the firmware update if necessary,
+ * and then jumps to the main application.
+ */
 int main(void)
 {
   /*
@@ -65,7 +88,7 @@ int main(void)
    *   RTOS is active.
    */
   RgbLed::start();
-  RgbLed::setColor(HSV{240./360., 1, 0.5});
+  RgbLed::setColor(HSV{240./360., 1, 0.5}); // Blue color for bootloader active
   RgbLed::setMotif(100, 0b1010100000000000);
 
 #ifdef TRACE
@@ -77,31 +100,41 @@ int main(void)
   JUMP_TO_AND_RESTART((uint32_t) &application_start);
 }
 
-
-
-
-
 namespace {
   std::array<uint8_t, 16384> buffer;
   Firmware::FirmwareHeader_t firmwareHeader = {};
 
-  // Updates the firmware header in EEPROM
+  /**
+   * @brief Updates the firmware header in the EEPROM.
+   * @param m95p Reference to the EEPROM device driver.
+   */
   void updateFirmwareHeader(Eeprom_M95::Device& m95p) {
     m95p.write(firmwareHeader.headerEepromAddr,
                etl::span(reinterpret_cast<const uint8_t*>(&firmwareHeader), sizeof(firmwareHeader)));
   }
 
+  /**
+   * @brief Halts execution and signals a critical error.
+   * @details This function is called when a non-recoverable error occurs.
+   * It sets a specific RGB LED pattern (red for infinite halt, yellow for timed)
+   * and enters a sleep state.
+   * @param wait The duration to sleep. Can be TIME_INFINITE.
+   */
   void haltAndCatchFire(systime_t wait) {
     if (wait == TIME_INFINITE) {
       RgbLed::setColor(HSV{0.0f, 1.0f, 0.5f}); // Red
     } else {
-      RgbLed::setColor(HSV{60/360.0, 1.0f, 0.5f}); // yellow
+      RgbLed::setColor(HSV{60/360.0, 1.0f, 0.5f}); // Yellow
     }
     RgbLed::setMotif(100, 0b1010101010101010);
     chThdSleep(wait);
   }
 
-  // Reads and validates the firmware header from EEPROM
+  /**
+   * @brief Reads and validates the firmware header from the EEPROM.
+   * @param m95p Reference to the EEPROM device driver.
+   * @return `true` if the header is valid, `false` otherwise.
+   */
   bool readAndValidateHeader(Eeprom_M95::Device& m95p) {
     m95p.read(firmwareHeader.headerEepromAddr,
               etl::span(reinterpret_cast<uint8_t*>(&firmwareHeader),
@@ -143,7 +176,11 @@ namespace {
     return true;
   }
 
-  // Verifies the CRC of the firmware stored in EEPROM
+  /**
+   * @brief Verifies the CRC32 of the firmware stored in the EEPROM.
+   * @param m95p Reference to the EEPROM device driver.
+   * @return `true` if the CRC is correct, `false` otherwise.
+   */
   bool verifyEepromFirmware(Eeprom_M95::Device& m95p) {
     crcStart(&CRCD1, &Firmware::crcK4Config);
     size_t remain = firmwareHeader.size;
@@ -168,7 +205,9 @@ namespace {
     return true;
   }
 
-  // Erases the application flash area
+  /**
+   * @brief Erases the application area in the internal flash memory.
+   */
   void eraseApplicationFlash() {
     constexpr uint32_t flash_start = 0x08000000;
     constexpr uint32_t sectorSize = 2048;
@@ -195,7 +234,11 @@ namespace {
 #endif
   }
 
-  // Programs the flash from EEPROM and verifies the CRC
+  /**
+   * @brief Programs the flash from the EEPROM and verifies the CRC.
+   * @param m95p Reference to the EEPROM device driver.
+   * @return `true` if programming and verification are successful, `false` otherwise.
+   */
   bool programFlashAndVerify(Eeprom_M95::Device& m95p) {
     constexpr uint32_t flash_start = 0x08000000;
     uint32_t offset = (uint32_t)&application_start - flash_start;
@@ -235,7 +278,12 @@ namespace {
     return true;
   }
 
-
+  /**
+   * @brief Main flash application logic.
+   * @details This function initializes drivers, checks the firmware header, and
+   * proceeds with the flash update if required. It handles the entire process
+   * from verification to programming and final state update.
+   */
   void flashApplication()
   {
     eflStart(&EFLD1, NULL);
@@ -412,26 +460,32 @@ namespace {
 		       RCC_APB2RSTR_USART1RST);
   }
 
+  /**
+   * @brief Jumps to the application code.
+   * @details This function handles the final steps before transferring control
+   * to the main application. It disables caches and interrupts, sets the
+   * Main Stack Pointer (MSP), and then calls the application's reset handler.
+   * @param address The start address of the application firmware.
+   */
   [[noreturn]]
   static void JUMP_TO_AND_RESTART(uint32_t address) {
 #if defined(__DCACHE_PRESENT) && (__DCACHE_PRESENT == 1U)
-    SCB_CleanDCache();      // Optionnel selon usage
+    SCB_CleanDCache();
     SCB_DisableDCache();
 #endif
 #if defined(__ICACHE_PRESENT) && (__ICACHE_PRESENT == 1U)
-    SCB_InvalidateICache(); // Optionnel selon usage
+    SCB_InvalidateICache();
     SCB_DisableICache();
 #endif
     for(int i=0; i<8; i++)                                    
       NVIC->ICER[i] = 0xFFFFFFFF;
     __set_CONTROL(0); 
     __set_MSP( (uint32_t) (((uint32_t *) address)[0]) ); 
-    __DSB();  // Assure l'exécution complète des instructions précédentes
-    __ISB();  // Assure que les instructions suivantes sont bien relues
+    __DSB();
+    __ISB();
     disable_and_reset_all_stm32g4_rcc_peripherals();
     ( (void (*)(void)) (((uint32_t *) address)[1]) )();
     __builtin_unreachable(); 
   }
 
 }
-

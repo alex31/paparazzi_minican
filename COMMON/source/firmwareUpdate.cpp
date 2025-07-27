@@ -1,3 +1,9 @@
+/**
+ * @file firmwareUpdate.cpp
+ * @author Alex Bustico
+ * @brief Implements the UAVCAN firmware update process.
+ */
+
 #include <algorithm>
 
 #include "firmwareUpdate.hpp"
@@ -12,6 +18,7 @@
  */
 
 namespace FirmwareUpdater {
+  ///< Buffer to hold a sector of the firmware image during download.
   SectorBuffer_t *sectorBuffer = nullptr; // if not null : transfert in progress
 }
 
@@ -28,6 +35,9 @@ namespace  {
 }
 
 
+/**
+ * @brief Starts the firmware update process.
+ */
 bool FirmwareUpdater::start(UAVCAN::Node *node, const uavcan_protocol_file_Path &_path,
 			    uavcan_protocol_file_BeginFirmwareUpdateResponse& resp)
 {
@@ -49,10 +59,6 @@ bool FirmwareUpdater::start(UAVCAN::Node *node, const uavcan_protocol_file_Path 
 	   std::min(sizeof(resp.optional_error_message.data), str.size()));
   };
 
-  /*
-    ° if filename is *NOT* suitable for minican -> answer error "incompatible", return
-    ° if filename is same as stored in header : answer error "same version", return
-  */
   etl::string_view ver_path;
   auto pos = path.find(':');
   if (pos == etl::string_view::npos) {
@@ -75,7 +81,6 @@ bool FirmwareUpdater::start(UAVCAN::Node *node, const uavcan_protocol_file_Path 
     return false;
   }
 
-  // will need to be deallocated after last chunk of firmware is received and written to SPI EEPROM
   if (sectorBuffer != nullptr)  {
     if (chTimeDiffX(timestamp, chVTGetSystemTimeX()) < firmwareUpdateTimout) {
       doResp(UAVCAN_PROTOCOL_FILE_BEGINFIRMWAREUPDATE_RESPONSE_ERROR_IN_PROGRESS,
@@ -102,18 +107,13 @@ bool FirmwareUpdater::start(UAVCAN::Node *node, const uavcan_protocol_file_Path 
   return true;
 }
 
+/**
+ * @brief Processes a received firmware chunk.
+ */
 bool FirmwareUpdater::newChunk(CanardRxTransfer *transfer,
 			       const uavcan_protocol_file_ReadResponse &firmwareChunk,
 			       uavcan_protocol_file_ReadRequest &readReq)
 {
-  /*
-    * write chunk to EEPROM, seek currentFileIndex
-    * ask for next chunk
-    * if chunk length is 0 : transfert is complete
-    ¤ delete sectorBuffer
-    ¤ sectorBuffer = nullptr : ready for next upgrade
-    
-  */
   if (firmwareChunk.error.value != UAVCAN_PROTOCOL_FILE_ERROR_OK) {
     delete sectorBuffer;
     sectorBuffer = nullptr;
@@ -122,7 +122,7 @@ bool FirmwareUpdater::newChunk(CanardRxTransfer *transfer,
   }
   
   timestamp = chVTGetSystemTimeX();
-  if (firmwareChunk.data.len == 0) {
+  if (firmwareChunk.data.len == 0) { // End of file
     storeSectorBufferInEeprom(true);
     delete sectorBuffer;
     sectorBuffer = nullptr;
@@ -133,13 +133,13 @@ bool FirmwareUpdater::newChunk(CanardRxTransfer *transfer,
     sectorBuffer->insert(sectorBuffer->end(), firmwareChunk.data.data,
 			 firmwareChunk.data.data + transferSize);
     currentFileIndex += firmwareChunk.data.len;
-    // ask for next chunk
-    readReq.offset = currentFileIndex;
-    // DebugTrace("DBG> ask for offset %u", currentFileIndex);
+    
     if (sectorBuffer->full()) {
       storeSectorBufferInEeprom();
       sectorBuffer->assign(firmwareChunk.data.data + transferSize, firmwareChunk.data.data + firmwareChunk.data.len);
     }
+    // Request next chunk
+    readReq.offset = currentFileIndex;
     slaveNode->sendRequest(readReq, CANARD_TRANSFER_PRIORITY_MEDIUM, transfer->source_node_id);
   }
   
@@ -148,6 +148,9 @@ bool FirmwareUpdater::newChunk(CanardRxTransfer *transfer,
 
 extern uint32_t application_start;
 namespace {
+  /**
+   * @brief Writes the buffered firmware data to the EEPROM.
+   */
   bool storeSectorBufferInEeprom(bool final) {
     if (not FirmwareUpdater::sectorBuffer->empty()) {
       crcCalc(&CRCD1, FirmwareUpdater::sectorBuffer->data(),
