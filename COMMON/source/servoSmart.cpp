@@ -52,7 +52,7 @@ DeviceStatus ServoSmart::start()
   }
   
     
-  for(uint8_t id = 1U; id < numServos; id++) {
+  for(uint8_t id = 1U; id <= numServos; id++) {
     if (servoBus.ping(id) == SmartServo::OK) {
       DebugTrace("ping ok return id = %u", id);
       setUnitless(id, 0);
