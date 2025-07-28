@@ -225,7 +225,7 @@ DeviceStatus TelemetryTunnel::start(UAVCAN::Node&)
   
   
   // use serial2 tx/rx
-  if (not boardResource.try_acquire(HR::USART_2, HR::PB03, HR::PB04)) {
+  if (not boardResource.tryAcquire(HR::USART_2, HR::PB03, HR::PB04)) {
     return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT);
   }
   

@@ -50,7 +50,7 @@ public:
   }
 
   template<std::same_as<HWResource>... Args>
-  bool try_acquire(Args... resources) {
+  bool tryAcquire(Args... resources) {
     UNSIGNED req_mask = mask(resources...);
     if ((m_bitmap & req_mask) != 0) return false;
     m_bitmap |= req_mask;
@@ -63,15 +63,15 @@ public:
     m_bitmap &= ~rel_mask;
   }
 
-  bool is_allocated(HWResource res) const {
+  bool isAllocated(HWResource res) const {
     return (m_bitmap & shiftbit(res)) != 0;
   }
 
-  void reset_all() {
+  void resetAll() {
     m_bitmap = 0;
   }
 
-  int count_allocated() const {
+  int countAllocated() const {
     return std::popcount(m_bitmap);
   }
 };

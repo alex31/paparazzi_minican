@@ -42,7 +42,7 @@ namespace {
    * starts in a clean environment, preventing potential conflicts from
    * peripherals configured by the bootloader.
    */
-  void disable_and_reset_all_stm32g4_rcc_peripherals(void);
+  void disableAndResetAllStm32g4RccPeripherals(void);
 
   /**
    * @brief Jumps to the given address and restarts the CPU.
@@ -333,7 +333,7 @@ namespace {
     
     
     
-    void disable_and_reset_all_stm32g4_rcc_peripherals(void) {
+    void disableAndResetAllStm32g4RccPeripherals(void) {
       // --- AHB1 ---
       RCC->AHB1ENR &= ~(RCC_AHB1ENR_DMA1EN |
 		      RCC_AHB1ENR_DMA2EN |
@@ -483,7 +483,7 @@ namespace {
     __set_MSP( (uint32_t) (((uint32_t *) address)[0]) ); 
     __DSB();
     __ISB();
-    disable_and_reset_all_stm32g4_rcc_peripherals();
+    disableAndResetAllStm32g4RccPeripherals();
     ( (void (*)(void)) (((uint32_t *) address)[1]) )();
     __builtin_unreachable(); 
   }

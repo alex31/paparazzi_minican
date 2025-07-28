@@ -37,7 +37,7 @@ DeviceStatus ServoSmart::start()
   DynPin::setScenario(DynPin::Scenario::USART);
 #endif
 
-  if (not boardResource.try_acquire(HR::USART_2, HR::PB03)) {
+  if (not boardResource.tryAcquire(HR::USART_2, HR::PB03)) {
     return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT);
   }
   

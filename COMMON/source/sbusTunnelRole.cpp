@@ -31,7 +31,7 @@ DeviceStatus SbusTunnel::start(UAVCAN::Node& _node)
   DeviceStatus status(DeviceStatus::SBUS_TUNNEL);
   
   // use serial2 rx
-  if (not boardResource.try_acquire(HR::USART_2, HR::PB04)) {
+  if (not boardResource.tryAcquire(HR::USART_2, HR::PB04)) {
     return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT);
   }
   enabledChannels = decode_channel_mask(PARAM_CGET("role.tunnel.sbus.active_channels"));
