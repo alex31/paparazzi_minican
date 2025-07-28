@@ -43,13 +43,13 @@ DeviceStatus EscDshot::start(UAVCAN::Node& /*node*/)
 
   
   // use timer
-  if (not boardResource.try_acquire(HR::TIM_1, HR::TIM_7)) {
+  if (not boardResource.tryAcquire(HR::TIM_1, HR::TIM_7)) {
     return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT);
   }
 
   // only the pins that are actually in use depending on role.pwm.num_servos
   for (uint8_t channel=0; channel < numChannels; channel++) {
-    if (not boardResource.try_acquire(static_cast<HR>(std::to_underlying(HR::PA08) + channel))) {
+    if (not boardResource.tryAcquire(static_cast<HR>(std::to_underlying(HR::PA08) + channel))) {
       return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT);
     }
   }

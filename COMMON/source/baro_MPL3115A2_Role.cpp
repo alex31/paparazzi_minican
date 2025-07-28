@@ -67,11 +67,11 @@ DeviceStatus Baro_MPL3115A2_Role::start(UAVCAN::Node& node)
   using HR = HWResource;
   
 #ifdef     BOARD_ENAC_MINICANv4
-  if (not boardResource.try_acquire(HR::PA15, HR::PB07, HR::I2C_1)) {
+  if (not boardResource.tryAcquire(HR::PA15, HR::PB07, HR::I2C_1)) {
     return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT);
   }
 #elifdef BOARD_ENAC_MICROCANv2
-  if (not boardResource.try_acquire(HR::I2C_1)) {
+  if (not boardResource.tryAcquire(HR::I2C_1)) {
     return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT);
   }
   DynPin::setScenario(DynPin::Scenario::I2C);
