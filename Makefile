@@ -9,13 +9,16 @@ MINICAN_LD := minican/cfg/STM32G491xE.ld
 
 
 #all: minican
-all: check-bootloader-size bootloader minican
+all: check-bootloader-size bootloader minican microcan
 
 bootloader:
 	$(MAKE) -C bootloader
 
 minican:
-	$(MAKE) -C minican
+	$(MAKE) -C minican PLATFORM=MINICAN
+
+microcan:
+	$(MAKE) -C minican PLATFORM=MICROCAN
 
 clean:
 	$(MAKE) -C bootloader clean

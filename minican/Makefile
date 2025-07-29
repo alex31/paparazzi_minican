@@ -6,6 +6,20 @@
 # Compiler options here.
 # -Wdouble-promotion -fno-omit-frame-pointer
 
+ifndef PLATFORM
+$(error PLATFORM should be defined : MINICAN or MICROCAN)
+endif
+
+ifeq "$(PLATFORM)" "MINICAN"
+PLATFORM_MINICAN=1
+PLATFORM_MICROCAN=0
+else ifeq "$(PLATFORM)" "MICROCAN"
+PLATFORM_MINICAN=0
+PLATFORM_MICROCAN=1
+else
+$(error PLATFORM should be MINICAN or MICROCAN)
+endif
+
 DEBUG := 1
 OPT_SPEED := 2
 OPT_SIZE := 3
@@ -140,7 +154,7 @@ endif
 #
 
 # Define project name here
-PROJECT = minican
+PROJECT = $(PLATFORM)
 
 # Target settings.
 MCU  = cortex-m4
@@ -155,7 +169,7 @@ endif
 
 CHIBIOS  := $(RELATIVE)/$(notdir $(MY_DIRNAME))
 CONFDIR  := ./cfg
-BUILDDIR := ./build
+BUILDDIR := ./build_$(PLATFORM)
 DEPDIR   := ./.dep
 STMSRC = $(RELATIVE)/COMMON/stm
 VARIOUS = $(RELATIVE)/COMMON/various
@@ -275,7 +289,8 @@ CPPWARN = -Wall -Wextra -Wundef
 
 # List all user C define here, like -D_DEBUG=1
 UDEFS = -DCANARD_ENABLE_CANFD=true -DDRONECAN_CXX_WRAPPERS=true -DR1M8M \
-        -DFROZEN_NO_EXCEPTIONS=1 
+        -DFROZEN_NO_EXCEPTIONS=1 \
+        -DPLATFORM_MINICAN=$(PLATFORM_MINICAN) -DPLATFORM_MICROCAN=$(PLATFORM_MICROCAN)
 ifeq ($(EXECMODE),$(DEBUG))
 UDEFS += -DTRACE
 endif
@@ -303,7 +318,7 @@ ULIBS =
 RULESPATH = $(CHIBIOS)/os/common/startup/ARMCMx/compilers/GCC/mk
 include $(RULESPATH)/arm-none-eabi.mk
 include $(RULESPATH)/rules.mk
-$(OBJS): $(CONFDIR)/board.h
+$(OBJS): $(CONFDIR)/$(PLATFORM).h
 
 LD = $(TRGT)g++
 
@@ -316,7 +331,7 @@ build_dsdlc:
 	$(PY) $(RELATIVE)/../UAVCAN/dronecan_dsdlc/dronecan_dsdlc.py -O $(DSDLC) $(DSDL_ROOTS)
 	@echo Done
 
-$(CONFDIR)/board.h: $(CONFDIR)/board.cfg
+$(CONFDIR)/$(PLATFORM).h: $(CONFDIR)/$(PLATFORM).cfg
 	boardGen.pl --no-pp-line --no-adcp-in 	$<  $@
 
 
