@@ -1,4 +1,4 @@
-.PHONY: all bootloader minican clean
+.PHONY: all bootloader minican microcan clean
 
 # if the bootloader is compiled in debug mode, update BOOTLOADER_SIZE to 64k
 BOOTLOADER_SIZE := 12k
@@ -15,9 +15,11 @@ bootloader:
 	$(MAKE) -C bootloader
 
 minican:
+	@rm -f minican/cfg/board.h
 	$(MAKE) -C minican PLATFORM=MINICAN
 
 microcan:
+	@rm -f minican/cfg/board.h
 	$(MAKE) -C minican PLATFORM=MICROCAN
 
 clean:

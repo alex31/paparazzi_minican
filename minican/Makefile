@@ -318,7 +318,7 @@ ULIBS =
 RULESPATH = $(CHIBIOS)/os/common/startup/ARMCMx/compilers/GCC/mk
 include $(RULESPATH)/arm-none-eabi.mk
 include $(RULESPATH)/rules.mk
-$(OBJS): $(CONFDIR)/$(PLATFORM).h
+$(OBJS): $(CONFDIR)/board.h
 
 LD = $(TRGT)g++
 
@@ -331,7 +331,7 @@ build_dsdlc:
 	$(PY) $(RELATIVE)/../UAVCAN/dronecan_dsdlc/dronecan_dsdlc.py -O $(DSDLC) $(DSDL_ROOTS)
 	@echo Done
 
-$(CONFDIR)/$(PLATFORM).h: $(CONFDIR)/$(PLATFORM).cfg
+$(CONFDIR)/board.h: $(CONFDIR)/$(PLATFORM).cfg
 	boardGen.pl --no-pp-line --no-adcp-in 	$<  $@
 
 
@@ -344,6 +344,9 @@ flash: all
 	@echo write $(BUILDDIR)/$(PROJECT).elf to flash memory
 	bmpflash -dev /dev/bmp_gdb_mini $(BUILDDIR)/$(PROJECT).elf
 	@echo Done
+
+distclean:
+	@rm $(CONFDIR)/board.h
 
 # flash: all
 # 	@echo write $(BUILDDIR)/$(PROJECT).elf to flash memory
