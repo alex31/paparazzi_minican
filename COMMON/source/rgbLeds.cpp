@@ -24,6 +24,7 @@ namespace {
   
   THD_WORKING_AREA(waLedsAnim, 512) __attribute__((section(FAST_SECTION "_clear")));	
   void  ledsAnim(void *arg);
+  void  ledsAnimMinimal(void *arg);
   void  displayId();
   RGB   rgb;
   volatile bool off = false;
@@ -41,6 +42,11 @@ namespace {
 void RgbLed::start()
 {
   chThdCreateStatic(waLedsAnim, sizeof(waLedsAnim), NORMALPRIO, &ledsAnim, NULL);
+}
+
+void RgbLed::startMinimal()
+{
+  chThdCreateStatic(waLedsAnim, sizeof(waLedsAnim), NORMALPRIO, &ledsAnimMinimal, NULL);
 }
 
 void RgbLed::setColor(const RGB &_rgb)
@@ -111,6 +117,23 @@ namespace {
 	}
       } else {
 	leds[0].setRGB(RGB{0,0,0});
+      }
+      leds.emitFrame();
+      chThdSleepMilliseconds(10);
+    }
+  }
+
+  void  ledsAnimMinimal (void *arg)	
+  {
+    (void)arg;					
+    chRegSetThreadName("ledsAnim");		
+    systime_t ts = chVTGetSystemTimeX();
+    while(true) {
+      const systime_t now = chVTGetSystemTimeX();
+      if (chTimeDiffX(ts, now) > periodI) {
+	ts = now;
+	leds[0].setRGB(motif & (1U << motifIndex) ? rgb : RGB{0,0,0});
+	motifIndex = (motifIndex + 1U) % (sizeof motif * 8U);
       }
       leds.emitFrame();
       chThdSleepMilliseconds(10);

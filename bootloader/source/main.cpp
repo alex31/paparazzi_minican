@@ -71,6 +71,10 @@ namespace {
     halInit();
     chSysInit();
   }
+
+  constexpr RGB blue = hsv2rgb(HSV{240./360., 1, 0.5});
+  constexpr RGB red = hsv2rgb(HSV{0.0f, 1.0f, 0.5f});
+  constexpr RGB yellow = hsv2rgb(HSV{60/360.0, 1.0f, 0.5f});
 }
 
 /**
@@ -87,8 +91,8 @@ int main(void)
    * - Kernel initialization, the main() function becomes a thread and the
    *   RTOS is active.
    */
-  RgbLed::start();
-  RgbLed::setColor(HSV{240./360., 1, 0.5}); // Blue color for bootloader active
+  RgbLed::startMinimal();
+  RgbLed::setColor(blue); // Blue color for bootloader active
   RgbLed::setMotif(100, 0b1010100000000000);
 
 #ifdef TRACE
@@ -122,9 +126,9 @@ namespace {
    */
   void haltAndCatchFire(systime_t wait) {
     if (wait == TIME_INFINITE) {
-      RgbLed::setColor(HSV{0.0f, 1.0f, 0.5f}); // Red
+      RgbLed::setColor(red); 
     } else {
-      RgbLed::setColor(HSV{60/360.0, 1.0f, 0.5f}); // Yellow
+      RgbLed::setColor(yellow);
     }
     RgbLed::setMotif(100, 0b1010101010101010);
     chThdSleep(wait);

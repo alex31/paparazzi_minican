@@ -23,6 +23,9 @@
 #                 \___|  \___/  |_| |_|   \_/    \___| |_|     \__|  |_|   \___/  |_| |_| 
 */
 
+#define CONCAT_NX(st1, st2) st1 ## st2
+#define CONCAT(st1, st2) CONCAT_NX(st1, st2)
+
 using namespace std::literals;
 
 static constexpr uint32_t operator""_hz (unsigned long long int freq)
@@ -74,8 +77,25 @@ constexpr size_t MFS_BANK_SIZE_BYTES = (256U * 1024U);
 constexpr size_t BLANK_GAP_SIZE_SECTORS = ((128U * 1024U) / SECTOR_SIZE_BYTES);
 #endif
 
-
 static constexpr SPIDriver& EepromSPID	  = SPID1;
+
+#if (defined PLATFORM_MINICAN) && (defined PLATFORM_MINICAN)
+#if PLATFORM_MINICAN
+static constexpr SPIDriver& ExternalSPID  = SPID1;
+static constexpr I2CDriver& ExternalI2CD  = I2CD1;
+#if HAL_USE_UART
+static constexpr UARTDriver &ExternalUARTD = CONCAT(UARTD, UART_TX_USART);
+#endif
+#elif  PLATFORM_MICROCAN
+static constexpr SPIDriver& ExternalSPID  = SPID2;
+static constexpr I2CDriver& ExternalI2CD  = I2CD2;
+#define SRV1_TIM F1_b_TIM
+#if HAL_USE_UART
+static constexpr UARTDriver& ExternalUARTD =  CONCAT(UARTD, F2_a_USART);
+#endif
+#endif
+#endif
+
 static inline const SPIConfig eepromSpiCfg = {
     .circular       = false,
     .slave          = false,
@@ -85,11 +105,6 @@ static inline const SPIConfig eepromSpiCfg = {
     .cr1            = SPI_CR1_BR_0, // 42Mhz
     .cr2            = SPI_CR2_DS_2 | SPI_CR2_DS_1 | SPI_CR2_DS_0
 };  
-
-// Common uart on the minican and microcan connectors
-#if HAL_USE_UART
-static constexpr UARTDriver& RoleUartDriver = UARTD2;
-#endif
 
 /*
 #                                                    

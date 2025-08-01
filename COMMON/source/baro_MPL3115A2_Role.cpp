@@ -2,6 +2,7 @@
 #include "stdutil.h"
 #include "dynamicPinConfig.hpp"
 #include "ressourceManager.hpp"
+#include "hardwareConf.hpp"
 
 namespace {
   constexpr uint32_t  STM32_CR1_DNF(uint32_t n) {
@@ -25,15 +26,15 @@ namespace {
 }
 
 
-void Baro_MPL3115A2_Role::resetI2C1()
+void Baro_MPL3115A2_Role::resetI2C()
 {
-  const auto config = I2CD1.config;
-  i2cStop(&I2CD1);
-  if (DynPin::i2cUnhangBus(&I2CD1) == false) {
+  const auto config = ExternalI2CD.config;
+  i2cStop(&ExternalI2CD);
+  if (DynPin::i2cUnhangBus(&ExternalI2CD) == false) {
     DebugTrace("unhang bus I2C1 failed");
   }
      
-  i2cStart(&I2CD1, config);
+  i2cStart(&ExternalI2CD, config);
 }
 
 void Baro_MPL3115A2_Role::periodic ()
@@ -66,20 +67,20 @@ DeviceStatus Baro_MPL3115A2_Role::start(UAVCAN::Node& node)
   
   using HR = HWResource;
   
-#ifdef     BOARD_ENAC_MINICANv4
+#ifdef   BOARD_ENAC_MINICANv5
   if (not boardResource.tryAcquire(HR::PA15, HR::PB07, HR::I2C_1)) {
     return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT);
   }
-#elifdef BOARD_ENAC_MICROCANv2
-  if (not boardResource.tryAcquire(HR::I2C_1)) {
+#elifdef BOARD_ENAC_MICROCANv3
+  if (not boardResource.tryAcquire(HR::I2C_2, HR::F1, HR::F2)) {
     return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT);
   }
   DynPin::setScenario(DynPin::Scenario::I2C);
 #else
-#error only BOARD_ENAC_MINICANv4 and BOARD_ENAC_MICROCANv2 are handled
+#error only BOARD_ENAC_MINICANv5 and BOARD_ENAC_MICROCANv3 are handled
 #endif
   DynPin::i2cActivatePullup();
-  i2cStart(&I2CD1, &i2ccfg_400);
+  i2cStart(&ExternalI2CD, &i2ccfg_400);
   while (not getDevId(&devId)) {
     static int tries = 4;
     chThdSleepMilliseconds(100);
@@ -87,10 +88,10 @@ DeviceStatus Baro_MPL3115A2_Role::start(UAVCAN::Node& node)
       return DeviceStatus(DeviceStatus::MPL3115A2, DeviceStatus::I2C_TIMOUT);
   }
     
-  status = i2cMasterTransmitTimeout(&I2CD1, mplAdr, enableEvent, sizeof(enableEvent),	
+  status = i2cMasterTransmitTimeout(&ExternalI2CD, mplAdr, enableEvent, sizeof(enableEvent),	
 				    NULL, 0, 100) ;	
   if (status == MSG_OK) {
-    status = i2cMasterTransmitTimeout(&I2CD1, mplAdr, oneShotMode, sizeof(oneShotMode),
+    status = i2cMasterTransmitTimeout(&ExternalI2CD, mplAdr, oneShotMode, sizeof(oneShotMode),
 				      NULL, 0, 100) ;
   }
   chThdCreateFromHeap(NULL, THD_WORKING_AREA_SIZE(512), "MPL3115A2", NORMALPRIO, 
@@ -118,7 +119,7 @@ DeviceStatus Baro_MPL3115A2_Role::getPressure(float *pressure)
   msg_t status;
   uint32_t  rawB;
     
-  status = i2cMasterTransmitTimeout(&I2CD1, mplAdr, oneShotMode, sizeof(oneShotMode),	
+  status = i2cMasterTransmitTimeout(&ExternalI2CD, mplAdr, oneShotMode, sizeof(oneShotMode),	
 				    NULL, 0, TIME_MS2I(100)) ;
   if (status !=  MSG_OK) {
     DebugTrace("baroGetPressure I²C error");
@@ -126,7 +127,7 @@ DeviceStatus Baro_MPL3115A2_Role::getPressure(float *pressure)
   }
   
   do {
-    status = i2cMasterTransmitTimeout(&I2CD1, mplAdr, statusReg, sizeof(statusReg),	
+    status = i2cMasterTransmitTimeout(&ExternalI2CD, mplAdr, statusReg, sizeof(statusReg),	
 				      rxbuf, 2, TIME_MS2I(100)) ;
     notReady = !(rxbuf[0] & 1<<2);
     if (notReady) {
@@ -135,7 +136,7 @@ DeviceStatus Baro_MPL3115A2_Role::getPressure(float *pressure)
   } while ((notReady) && (status == MSG_OK));
 
   if (status == MSG_OK) {
-    status = i2cMasterTransmitTimeout(&I2CD1, mplAdr, pressureReg, sizeof(pressureReg),	
+    status = i2cMasterTransmitTimeout(&ExternalI2CD, mplAdr, pressureReg, sizeof(pressureReg),	
 				      (uint8_t *)&rawB, 3, TIME_MS2I(100)) ;
   }
 
@@ -152,27 +153,27 @@ DeviceStatus Baro_MPL3115A2_Role::getTemperature(float *temperature)
 {
   int16_t mplTemp;
     
-  msg_t status = i2cMasterTransmitTimeout(&I2CD1, mplAdr, enableEvent, sizeof(enableEvent),	
+  msg_t status = i2cMasterTransmitTimeout(&ExternalI2CD, mplAdr, enableEvent, sizeof(enableEvent),	
 					  NULL, 0, 100);	
   if (status == MSG_OK)
-    status = i2cMasterTransmitTimeout(&I2CD1, mplAdr, tempReg, sizeof(tempReg),	
+    status = i2cMasterTransmitTimeout(&ExternalI2CD, mplAdr, tempReg, sizeof(tempReg),	
 				      (uint8_t *) &mplTemp, sizeof(mplTemp), 100);
   if (status == MSG_OK) {
     *temperature = SWAP_ENDIAN16(mplTemp) / 256.0f;
   } else {
     DebugTrace("i2cMasterTransmitTimeout error");
-    resetI2C1();
+    resetI2C();
   }
   return status == MSG_OK ? DeviceStatus(DeviceStatus::MPL3115A2) : DeviceStatus(DeviceStatus::MPL3115A2, DeviceStatus::I2C_TIMOUT);
 }
 
 DeviceStatus Baro_MPL3115A2_Role::getDevId(uint8_t *devId)
 {
-  msg_t status = i2cMasterTransmitTimeout(&I2CD1, mplAdr, devIdReg, sizeof(devIdReg),	
+  msg_t status = i2cMasterTransmitTimeout(&ExternalI2CD, mplAdr, devIdReg, sizeof(devIdReg),	
 					  devId, sizeof(*devId), 100);
   if (status != MSG_OK) {
     DebugTrace("getDevId : i2cMasterTransmitTimeout error");
-    resetI2C1();
+    resetI2C();
   }
   return status == MSG_OK ? DeviceStatus(DeviceStatus::MPL3115A2) : DeviceStatus(DeviceStatus::MPL3115A2, DeviceStatus::I2C_TIMOUT);
 }

@@ -3,6 +3,7 @@
 #include "ressourceManager.hpp"
 #include "UAVCAN/persistantParam.hpp"
 #include "stdutil++.hpp"
+#include "hardwareConf.hpp"
 
 
 

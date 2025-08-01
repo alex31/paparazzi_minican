@@ -17,5 +17,5 @@ public:
 
 private:
   void periodic();
-  void resetI2C1();
+  void resetI2C();
 };

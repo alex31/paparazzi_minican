@@ -1,6 +1,5 @@
 #include "sbusTunnelRole.hpp"
 #include <algorithm>
-
 #include "hardwareConf.hpp"
 #include "ressourceManager.hpp"
 #include "stdutil++.hpp"
@@ -9,7 +8,7 @@
 
 namespace {
   SBUSConfig sbuscfg = {	//Config du sbus de la RC
-    .uartd = &RoleUartDriver,
+    .uartd = &ExternalUARTD,
     //    .errorCb = [](SBUSError err) {DebugTrace("Err %u", err)},
     .errorCb = nullptr,
     .frameCb = &Trampoline<&SbusTunnel::maj_rc_cb_frame>::fn,

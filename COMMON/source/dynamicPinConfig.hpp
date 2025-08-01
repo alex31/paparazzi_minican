@@ -5,7 +5,7 @@
 
 
 namespace DynPin {
-#ifdef  BOARD_ENAC_MICROCANv1
+#ifdef  BOARD_ENAC_MICROCANv3
   enum class Scenario {
     UART, I2C, SPI, PWM, DSHOT
   };

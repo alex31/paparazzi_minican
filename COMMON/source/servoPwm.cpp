@@ -6,24 +6,24 @@
 
 
 
-#ifdef     BOARD_ENAC_MICROCANv1
+#ifdef     BOARD_ENAC_MICROCANv3
 #include "dynamicPinConfig.hpp"
 #endif
 
 #define CONCAT_NX(st1, st2) st1 ## st2
 #define CONCAT(st1, st2) CONCAT_NX(st1, st2)
 
-#ifdef BOARD_ENAC_MINICANv4
+#ifdef BOARD_ENAC_MINICANv5
 static_assert(SRV1_TIM_CH == 1, "assume SRV1 is on CH1");
 static_assert((SRV2_TIM == SRV1_TIM) && (SRV2_TIM_CH == 2), "assume SRV2 is on CH2 and all Ch on same timer");
 static_assert((SRV3_TIM == SRV1_TIM) && (SRV3_TIM_CH == 3), "assume SRV3 is on CH3 and all Ch on same timer");
 static_assert((SRV4_TIM == SRV1_TIM) && (SRV4_TIM_CH == 4), "assume SRV4 is on CH4 and all Ch on same timer");
 static constexpr PWMDriver &SERVO_PWMD =  CONCAT(PWMD, SRV1_TIM);
-#elifdef     BOARD_ENAC_MICROCANv1
-static_assert(F1_b_TIM_CH == 4, "assume SRV4 is on F1");
-static_assert((F2_b_TIM == F1_b_TIM) && (F2_b_TIM_CH == 3), "assume SRV2 is on F2 and all Ch on same timer");
-static_assert((F3_b_TIM == F1_b_TIM) && (F3_b_TIM_CH == 2), "assume SRV3 is on F3 and all Ch on same timer");
-static_assert((F4_b_TIM == F1_b_TIM) && (F4_b_TIM_CH == 1), "assume SRV4 is on F4 and all Ch on same timer");
+#elifdef     BOARD_ENAC_MICROCANv3
+static_assert(F1_b_TIM_CH == 1, "assume SRV1 is on F1");
+static_assert((F2_a_TIM == F1_b_TIM) && (F2_a_TIM_CH == 2), "assume SRV2 is on F2 and all Ch on same timer");
+static_assert((F3_TIM == F1_b_TIM) && (F3_TIM_CH == 3), "assume SRV3 is on F3 and all Ch on same timer");
+static_assert((F4_TIM == F1_b_TIM) && (F4_TIM_CH == 4), "assume SRV4 is on F4 and all Ch on same timer");
 static constexpr PWMDriver &SERVO_PWMD =  CONCAT(PWMD, F1_b_TIM);
 #endif
 
@@ -60,7 +60,7 @@ DeviceStatus ServoPWM::start()
   numServos =  PARAM_CGET("role.servo.pwm.num_servos");
 
 
-#ifdef     BOARD_ENAC_MICROCANv1
+#ifdef     BOARD_ENAC_MICROCANv3
   DynPin::setScenario(DynPin::Scenario::PWM);
 #endif
   pwmServoCfg.period = servoTickFreq / servoPwmFreq;

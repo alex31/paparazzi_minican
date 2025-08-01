@@ -3,6 +3,7 @@
 
 namespace RgbLed {
   void start();
+  void startMinimal(); // no use of float for bootloader use
   void setColor(const RGB &rgb);
   void setColor(const HSV &hsv);
   void lightOn();

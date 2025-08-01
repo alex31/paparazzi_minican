@@ -69,7 +69,7 @@ void TelemetryTunnel::processPaparazziTelemetryCommand_u2s(CanardRxTransfer *,
   };
   
   auto sendMsg = [](auto& ppmsg, size_t size) {
-    uartSendTimeout(&RoleUartDriver, &size, ppmsg.data(), TIME_INFINITE);
+    uartSendTimeout(&ExternalUARTD, &size, ppmsg.data(), TIME_INFINITE);
   };
 
   if (msg.payload.len > XbeeMsg_t::MAX_SIZE) {
@@ -213,7 +213,7 @@ DeviceStatus TelemetryTunnel::subscribe(UAVCAN::Node& node)
   }
 
   telemetrycfg.speed =  PARAM_CGET("role.tunnel.telemetry.baudrate");
-  uartStart(&RoleUartDriver, &telemetrycfg);
+  uartStart(&ExternalUARTD, &telemetrycfg);
   return DeviceStatus(DeviceStatus::TELEMETRY_TUNNEL);
 }
 
@@ -241,7 +241,7 @@ void TelemetryTunnel::periodic(void *)
   size_t size;
   while (true) {
     size = sizeof(frame);
-    uartReceiveTimeout(&RoleUartDriver, &size, frame, TIME_INFINITE);
+    uartReceiveTimeout(&ExternalUARTD, &size, frame, TIME_INFINITE);
     if (size) {
       if (xbeeFrame) {
 	xbS2UBuffer->feed(etl::span(frame, size));

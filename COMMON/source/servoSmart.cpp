@@ -3,25 +3,16 @@
 #include "UAVCAN/persistantParam.hpp"
 #include "smart_servos/STS3032.h"
 #include "stdutil++.hpp"
+#include "hardwareConf.hpp"
 
 
 
-#ifdef     BOARD_ENAC_MICROCANv1
+#ifdef     BOARD_ENAC_MICROCANv3
 #include "dynamicPinConfig.hpp"
 #endif
 
-#define CONCAT_NX(st1, st2) st1 ## st2
-#define CONCAT(st1, st2) CONCAT_NX(st1, st2)
-
-#ifdef BOARD_ENAC_MINICANv4
-static constexpr UARTDriver &SERVO_UARTD =  CONCAT(UARTD, UART_TX_USART);
-#elifdef     BOARD_ENAC_MICROCANv1
-#endif
-
-
-
 namespace  {
-  STS3032 servoBus(&SERVO_UARTD);
+  STS3032 servoBus(&ExternalUARTD);
   uint32_t	     startIndex = std::numeric_limits<uint32_t>::max();
   uint32_t	     numServos = 0;
 }
@@ -33,8 +24,8 @@ DeviceStatus ServoSmart::start()
   startIndex = PARAM_CGET("role.servo.smart.map_index1");
   numServos =  PARAM_CGET("role.servo.smart.num_servos");
 
-#ifdef     BOARD_ENAC_MICROCANv1
-  DynPin::setScenario(DynPin::Scenario::USART);
+#ifdef     BOARD_ENAC_MICROCANv3
+  DynPin::setScenario(DynPin::Scenario::UART);
 #endif
 
   if (not boardResource.tryAcquire(HR::USART_2, HR::PB03)) {
