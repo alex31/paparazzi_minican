@@ -1,7 +1,7 @@
 .PHONY: all bootloader minican microcan clean
 
 # if the bootloader is compiled in debug mode, update BOOTLOADER_SIZE to 64k else 11k should be enough
-BOOTLOADER_SIZE := 11k
+BOOTLOADER_SIZE := 16k
 BOOTLOADER_LD := bootloader/cfg/STM32G491xE.ld
 MINICAN_LD := minican/cfg/STM32G491xE.ld
 
@@ -33,4 +33,4 @@ check-bootloader-size:
 
 flash:
 	$(MAKE) -C bootloader flash
-	$(MAKE) -C minican flash
+	$(MAKE) -C minican PLATFORM=MINICAN flash
