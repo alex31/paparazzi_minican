@@ -279,7 +279,7 @@ namespace CANSlave {
 	  .unique_id = {},
 	  .certificate_of_authenticity = {}
 	},
-	.name = {10, "minican_V4"}
+	.name = {10, "minican_V5"}
       },
 
       .flagCb = [] -> uint8_t {return nodeId;},

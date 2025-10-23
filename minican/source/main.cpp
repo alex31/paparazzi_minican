@@ -101,8 +101,9 @@ int main(void)
    * - Kernel initialization, the main() function becomes a thread and the
    *   RTOS is active.
    */
-  chThdCreateStatic(waWatchdogReset, sizeof(waWatchdogReset), LOWPRIO, &watchdogReset, NULL);
+  //  chThdCreateStatic(waWatchdogReset, sizeof(waWatchdogReset), LOWPRIO, &watchdogReset, NULL);
   RgbLed::start();
+  trngStart(&TRNGD1, NULL);
   
 #ifdef TRACE
   consoleInit();

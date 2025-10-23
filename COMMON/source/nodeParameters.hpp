@@ -3,7 +3,7 @@
       {"can.terminal_resistor", {.v = true}},
       {"can.bit_rate", {.min = 100'000, .max = 8'000'000, .v = 1'000'000}},
 	
-      {"uavcan.node_id", {.min = 8, .max = 127, .v = 127}},
+      {"uavcan.node_id", {.min = 0, .max = 127, .v = 127}},
       {"uavcan.last_msg", {.v = "just flashed"}},
 	
       {"bus.i2c.pullup_resistor", {.v = true}},
