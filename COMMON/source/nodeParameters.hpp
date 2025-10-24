@@ -7,8 +7,7 @@
       {"uavcan.last_msg", {.v = "just flashed"}},
 	
       {"bus.i2c.pullup_resistor", {.v = true}},
-
-      {"hardware.type", {.min = Type_minicanV5, .max =  Type_unknown, .v = Type_unknown}},
+      {"hardware.name", {.v = BOARD_NAME}},
       // fancy led pattern if role.identification is true
       {"role.identification", {.v = true}},
 	

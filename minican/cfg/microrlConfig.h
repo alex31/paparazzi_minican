@@ -6,7 +6,7 @@ Autor: Eugene Samoylov aka Helius (ghelius@gmail.com)
 #define _MICRORL_CONFIG_H_
 
 #define MICRORL_LIB_VER "1.5"
-
+#include "ch.h"
 /*********** CONFIG SECTION **************/
 /*
 Command line length, define cmdline buffer size. Set max number of chars + 1,
@@ -26,12 +26,19 @@ Token is word separate by white space, for example 3 token line:
 /*
 Define you prompt string here. You can use colors escape code, for highlight you prompt,
 for example this prompt will green color (if you terminal supports color)*/
-#define _PROMPT_DEFAUTL "\033[32mMiniCan >\033[0m "	// green color
-
 /*
 Define prompt text (without ESC sequence, only text) prompt length, it needs because if you use
 ESC sequence, it's not possible detect only text length*/
-#define _PROMPT_LEN       10
+#ifdef BOARD_ENAC_MINICANv5
+#define _PROMPT_DEFAUTL "\033[32mMiniCanV5 >\033[0m "	// green color
+#define _PROMPT_LEN       12
+#elifdef BOARD_ENAC_MICROCANv3
+#define _PROMPT_DEFAUTL "\033[32mMicroCanV3 >\033[0m "	// green color
+#define _PROMPT_LEN       13
+#else
+#error neither BOARD_ENAC_MINICANv5 or BOARD_ENAC_MICROCANv3 defined
+#endif
+
 
 /*Define it, if you wanna use completion functional, also set completion callback in you code,
 now if user press TAB calls 'copmlitetion' callback. If you no need it, you can just set 
