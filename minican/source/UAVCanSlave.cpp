@@ -256,9 +256,14 @@ namespace {
 
  
 namespace CANSlave {
-  DeviceStatus start(uint8_t _nodeId)
+  uint8_t	getNodeId()
   {
-    static uint8_t nodeId = _nodeId;
+    return slaveNode->getNodeId();
+  }
+  
+  DeviceStatus start(int8_t _nodeId)
+  {
+    static int8_t nodeId = _nodeId;
     static  UAVCAN::Config uavCanCfg = {
       .cand = CAND2,
       .cancfg = cancfg,
@@ -332,6 +337,7 @@ namespace CANSlave {
     
     
     HealthSurvey::start(node);
+    DebugTrace("Dynamic node_id is %d", node.getNodeId());
     return DeviceStatus(DeviceStatus::ALL, DeviceStatus::OK);
   }
 }

@@ -51,7 +51,7 @@ endif
 UNUSED_DIAGS = -Wcast-align -Wsign-conversion -Wconversion
 
 ifeq ($(EXECMODE),$(DEBUG)) 
-  USE_OPT =  -Os -ggdb3  -Wall -Wextra \
+  USE_OPT =  -Og -ggdb3  -Wall -Wextra \
 	    -falign-functions=16 -fomit-frame-pointer \
 	    $(GCC_DIAG) 
   USE_LTO = no

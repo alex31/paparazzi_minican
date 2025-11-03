@@ -2,5 +2,6 @@
 #include "roleStatus.hpp"
 
 namespace CANSlave {
-  DeviceStatus  start(uint8_t nodeId);
+  DeviceStatus  start(int8_t nodeId);
+  uint8_t	getNodeId();
 }

@@ -125,7 +125,7 @@ int main(void)
     (void) coreTemp;
 #endif
   });
-  
+
   if (mfs_error_t status = MFS::start(); status != MFS_NO_ERROR) {
     DebugTrace("MFS::start has failed with code %d", status);
     RgbLed::setMotif(200, 0b10101010);
@@ -150,8 +150,8 @@ int main(void)
   }
 
   {
-    const uint8_t nodeId = PARAM_CGET("uavcan.node_id");
-    DebugTrace("nodeid = %u", nodeId);
+    const int8_t nodeId = PARAM_CGET("uavcan.node_id");
+    DebugTrace("paramètre nodeid = %d", nodeId);
     if (const DeviceStatus status = CANSlave::start(nodeId); not status) {
       DebugTrace("CANSlave error is %s", status.describe().c_str());
       if (status.err == DeviceStatus::CONFLICT) {
@@ -162,9 +162,9 @@ int main(void)
 	RgbLed::setColor(HSV{0.1, 1, 0.5});
       }
       goto end;
-    }
+    } 
     
-    RgbLed::setNodeId(nodeId);
+    RgbLed::setNodeId(CANSlave::getNodeId());
   }
  end:
   chThdSleep(TIME_INFINITE);
