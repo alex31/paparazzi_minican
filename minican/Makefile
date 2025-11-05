@@ -6,6 +6,21 @@
 # Compiler options here.
 # -Wdouble-promotion -fno-omit-frame-pointer
 
+GIT := git
+
+# Dernier tag (annoté ou léger). Fallback propre si aucun tag.
+SW_VERSION_MAJOR :=  $(shell $(GIT) describe --tags --abbrev=0 2>/dev/null || echo)
+SW_VERSION_MINOR := $(shell \
+  if [ -n "$(SW_VERSION_MAJOR)" ]; then \
+    $(GIT) rev-list --count $(SW_VERSION_MAJOR)..HEAD; \
+  else echo 0; fi)
+
+# 8 premiers hex digits du commit
+GIT_SHA := $(shell git rev-parse --short=8 HEAD 2>/dev/null || echo 0)
+
+# Convertir en entier non signé 32 bits
+VCS_COMMIT := $(shell printf "%u\n" 0x$(GIT_SHA))
+
 ifndef PLATFORM
 $(error PLATFORM should be defined : MINICAN or MICROCAN)
 endif
@@ -13,12 +28,16 @@ endif
 ifeq "$(PLATFORM)" "MINICAN"
 PLATFORM_MINICAN=1
 PLATFORM_MICROCAN=0
+HW_VERSION=5
 else ifeq "$(PLATFORM)" "MICROCAN"
 PLATFORM_MINICAN=0
 PLATFORM_MICROCAN=1
+HW_VERSION=3
 else
 $(error PLATFORM should be MINICAN or MICROCAN)
 endif
+
+
 
 DEBUG := 1
 OPT_SPEED := 2
@@ -51,7 +70,7 @@ endif
 UNUSED_DIAGS = -Wcast-align -Wsign-conversion -Wconversion
 
 ifeq ($(EXECMODE),$(DEBUG)) 
-  USE_OPT =  -O0 -ggdb3  -Wall -Wextra \
+  USE_OPT =  -Og -ggdb3  -Wall -Wextra \
 	    -falign-functions=16 -fomit-frame-pointer \
 	    $(GCC_DIAG) 
   USE_LTO = no
@@ -288,9 +307,13 @@ CPPWARN = -Wall -Wextra -Wundef
 #
 
 # List all user C define here, like -D_DEBUG=1
-UDEFS = -DCANARD_ENABLE_CANFD=true -DDRONECAN_CXX_WRAPPERS=true -DCAN_BITRATE=1000 \
+UDEFS = -DCANARD_ENABLE_CANFD=true -DDRONECAN_CXX_WRAPPERS=true \
         -DFROZEN_NO_EXCEPTIONS=1 \
-        -DPLATFORM_MINICAN=$(PLATFORM_MINICAN) -DPLATFORM_MICROCAN=$(PLATFORM_MICROCAN)
+        -DPLATFORM_MINICAN=$(PLATFORM_MINICAN) -DPLATFORM_MICROCAN=$(PLATFORM_MICROCAN) \
+	-DPLATFORM=$(PLATFORM) -DCAN_BITRATE=1000 \
+	-DVCS_COMMIT=$(VCS_COMMIT) -DHW_VERSION=$(HW_VERSION) \
+        -DSW_VERSION_MAJOR=$(SW_VERSION_MAJOR) -DSW_VERSION_MINOR=$(SW_VERSION_MINOR)
+
 ifeq ($(EXECMODE),$(DEBUG))
 UDEFS += -DTRACE
 endif

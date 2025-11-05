@@ -13,6 +13,10 @@
 #include "firmwareUpdate.hpp"
 
 
+#define STR_(x) #x
+#define STR(x)  STR_(x)
+#define NAME_STRING(prefix, sep, version) prefix sep version
+#define DEVICE_NAME NAME_STRING(STR(PLATFORM), "_V", STR(HW_VERSION))
 
 
 // filter G4 EID 0x0200 0000  MASK 0xFFFF FFFC
@@ -260,19 +264,19 @@ namespace CANSlave {
       .nodeInfo = {
 	.status = {},
 	.software_version = {
-	  .major = 0,
-	  .minor = 1,
+	  .major = SW_VERSION_MAJOR,
+	  .minor = SW_VERSION_MINOR,
 	  .optional_field_flags = 0,
-	  .vcs_commit = 0,
+	  .vcs_commit = VCS_COMMIT,
 	  .image_crc = 0
 	},
 	.hardware_version = {
-	  .major = 2,
+	  .major = HW_VERSION,
 	  .minor = 0,
 	  .unique_id = {},
 	  .certificate_of_authenticity = {}
 	},
-	.name = {10, "minican_V5"}
+	.name = {10, DEVICE_NAME}
       },
 
       .flagCb = [] -> uint8_t {return nodeId;},
