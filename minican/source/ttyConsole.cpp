@@ -508,12 +508,13 @@ enum uavcan_protocol_param_Value_type_t {
   
   void cmd_uavcan_storage_display(etl::string_view key)
   {
-    uint16_t index = 0;
+    int index = -1;
     if (auto opt = parse_value_int(key)) {
       index = opt.value();
     } 
     uavcan_protocol_param_GetSetRequest req = {
-      .index = index,
+      .index = static_cast<std::uint16_t>(std::clamp(index, 0,
+					  static_cast<int>(std::numeric_limits<std::uint16_t>::max()))),
       .value = {
 	.union_tag =  UAVCAN_PROTOCOL_PARAM_VALUE_EMPTY,
 	.integer_value = 0
@@ -523,9 +524,9 @@ enum uavcan_protocol_param_Value_type_t {
 	.data = 0
       }
     };
-    if (index == 0)
+    if (index < 0)
       memcpy(req.name.data, key.data(), strlen(key.data()));
-
+    
     uavcan_protocol_param_GetSetResponse resp;
     getSetResponse(req, resp);
     

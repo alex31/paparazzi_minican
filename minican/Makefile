@@ -51,7 +51,7 @@ endif
 UNUSED_DIAGS = -Wcast-align -Wsign-conversion -Wconversion
 
 ifeq ($(EXECMODE),$(DEBUG)) 
-  USE_OPT =  -Og -ggdb3  -Wall -Wextra \
+  USE_OPT =  -O0 -ggdb3  -Wall -Wextra \
 	    -falign-functions=16 -fomit-frame-pointer \
 	    $(GCC_DIAG) 
   USE_LTO = no
@@ -288,7 +288,7 @@ CPPWARN = -Wall -Wextra -Wundef
 #
 
 # List all user C define here, like -D_DEBUG=1
-UDEFS = -DCANARD_ENABLE_CANFD=true -DDRONECAN_CXX_WRAPPERS=true -DR1M8M \
+UDEFS = -DCANARD_ENABLE_CANFD=true -DDRONECAN_CXX_WRAPPERS=true -DCAN_BITRATE=1000 \
         -DFROZEN_NO_EXCEPTIONS=1 \
         -DPLATFORM_MINICAN=$(PLATFORM_MINICAN) -DPLATFORM_MICROCAN=$(PLATFORM_MICROCAN)
 ifeq ($(EXECMODE),$(DEBUG))

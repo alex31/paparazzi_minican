@@ -33,30 +33,19 @@
 //   }
 // };
 
-#ifdef R1M8M
-constexpr  UAVCAN::RegTimings timings =  UAVCAN::getTimings(STM32_SYSCLK / 2U,
-					  1000, 0.5,
-					  8000, 0.75,
-					  true);
-#elifdef R500K5M
-constexpr  UAVCAN::RegTimings timings =  UAVCAN::getTimings(STM32_SYSCLK / 2U,
-					  500, 0.5,
-					  5000, 0.75,
-					  true);
-#elifdef R125K250K
+#ifndef CAN_BITRATE
+    #error CAN_BITRATE should be provided in MAKEFILE
+#endif
+
+
+
+constexpr  UAVCAN::RegTimings timings = UAVCAN::getTimings(STM32_SYSCLK / 2U, CAN_BITRATE);
+/*
 constexpr  UAVCAN::RegTimings timings =  UAVCAN::getTimings(STM32_SYSCLK / 2U,
 					  125, 0.5,
 					  250, 0.66,
 					  false);
-#elifdef R500K1M
-constexpr  UAVCAN::RegTimings timings =  UAVCAN::getTimings(STM32_SYSCLK / 2U,
-					  500, 0.5,
-					  1000, 0.66,
-					  false);
-#else
-    #error FDRATE should be provided in MAKEFILE
-#endif
-
+*/
 
 namespace {
   /*
@@ -64,11 +53,11 @@ namespace {
    */
 
   static const CANConfig cancfg = {
-    .op_mode = OPMODE_FDCAN,
+    .op_mode = timings.op_mode,
     .NBTP = timings.nbtp,
     .DBTP = timings.dbtp,
     .TDCR = timings.tdcr,
-    .CCCR = FDCAN_CONFIG_CCCR_BRSE, // Bit-Rate Switch Enable
+    .CCCR = timings.cccr, // Bit-Rate Switch Enable
     .TEST = 0,
     .RXGFC = FDCAN_CONFIG_RXGFC_RRFS // disable hardware filtering : filter table too small
   };
@@ -267,7 +256,6 @@ namespace CANSlave {
     static  UAVCAN::Config uavCanCfg = {
       .cand = CAND2,
       .cancfg = cancfg,
-      .busNodeType = UAVCAN::BUS_FD_ONLY,
       .nodeId = nodeId,
       .nodeInfo = {
 	.status = {},
@@ -288,7 +276,7 @@ namespace CANSlave {
       },
 
       .flagCb = [] -> uint8_t {return nodeId;},
-      .errorCb = [](const etl::string_view sv) {
+      .infoCb = [](const etl::string_view sv) {
 #ifdef TRACE
 	static uint32_t count = 4U;
 	if (count) {
