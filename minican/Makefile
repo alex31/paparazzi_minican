@@ -368,6 +368,11 @@ flash: all
 	bmpflash -dev /dev/bmp_gdb_mini $(BUILDDIR)/$(PROJECT).elf
 	@echo Done
 
+firmware: all
+	@echo generate $(BUILDDIR)/fw_$(PROJECT).elf for UAVCan update
+	../prepend_header.pl $(BUILDDIR)/$(PROJECT).bin $(BUILDDIR)/$(PLATFORM)_V$(HW_VERSION)-$(SW_VERSION_MAJOR).$(SW_VERSION_MINOR).FW.bin $(PLATFORM)_V$(HW_VERSION) $(HW_VERSION)
+	@echo Done
+
 distclean:
 	@rm $(CONFDIR)/board.h
 

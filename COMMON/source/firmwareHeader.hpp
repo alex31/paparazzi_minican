@@ -30,13 +30,18 @@ namespace Firmware {
     PROTOCOL_VERSION_MISMATCH ///< The firmware protocol version is incompatible.
   };
 
+ /**
+   * @brief Common magic number for FirmwareHeader_t and ToolchainHeader_t
+   */
+   static constexpr uint32_t magicNumberCheck = 0xF0CACC1A; ///< Expected magic number.
+
   /**
    * @brief Structure defining the firmware header.
    * @details This structure is stored in a specific location in the external EEPROM
    * and contains all the necessary metadata to manage the firmware update process.
    */
   struct FirmwareHeader_t {
-    etl::string<32> version = {}; ///< Firmware version string.
+    etl::string<32> platform = {}; ///< name of the platform
     uint32_t magicNumber;         ///< Magic number to identify a valid header.
     uint16_t versionProtocol = 0; ///< Protocol version for compatibility checks.
     uint16_t headerLen = 0;       ///< Length of this header structure.
@@ -47,7 +52,6 @@ namespace Firmware {
     uint8_t  bankInUse = 0;       ///< Currently active firmware bank (not yet used).
     uint32_t eepromCycleCount = 0;///< Counter for the number of flash cycles.
     
-    static constexpr uint32_t magicNumberCheck = 0xF0CACC1A; ///< Expected magic number.
     static constexpr uint32_t versionProtocolCheck = 2;     ///< Expected protocol version.
     static constexpr uint32_t headerEepromAddr = 1024*1024; ///< Address of the header in EEPROM.
     static constexpr uint32_t bank1EepromAddr = headerEepromAddr + 512; ///< Start address of the firmware image in EEPROM.
@@ -65,4 +69,21 @@ namespace Firmware {
     .reflect_data = true,
     .reflect_remainder = true
   };
+
+
+  struct ToolchainHeader_t {
+    ToolchainHeader_t() {};
+    const ToolchainHeader_t& operator=(const uavcan_protocol_file_ReadResponse &firmwareChunk) {
+      memcpy(this, firmwareChunk.data.data, sizeof(ToolchainHeader_t));
+      return *this;
+    }
+    uint32_t magicNumber;   ///< Magic number to identify a valid header.
+    char platform[32];      ///< platform name to accept only allowed firmware
+    uint32_t hwVerMajor;    ///< major platform version to accept only allowed firmware
+    uint32_t fwSize;        ///< Size of the firmware image in bytes.
+    uint32_t fwCrc32;       ///< CRC32 checksum of the firmware image.
+  };
+
+  static_assert(sizeof(ToolchainHeader_t) == 48);
+  
 }

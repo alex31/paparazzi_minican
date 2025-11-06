@@ -14,7 +14,28 @@
 #include "etl/string_view.h"
 #include "etl/span.h"
 /*
-  TODO :
+    TODO :
+
+    * gerer un entète pour verifier la compatibilité
+    * il va y avoir deux entêtes : 1 pour la flash que l'on laisse inchangée,
+      1 pour la generation de firmware qui est nouveau et imposé par la façon
+      dont dronegui envoie le firmware : sans conserver le nom de l'image (donc
+      pas de possibilité de faire de check sur le nom de l'image)
+
+      ° sur un message beginFirmwareUpdate :
+        + supprimer le check sur le nom
+	+ dans la callback newChunck : gerer un etat, et coller les premiers octets
+	  qui arrivent dans une variable toolChainHeader
+	+ verifier que le magic est bon (le même que pour la flash) (return error unless)
+	+ verifier que le nom de la board est bon (return error unless)
+	+ stoquer en flash les octets qui ne sont pas le header
+	+ lire le reste du firmware et le stoquer en flash
+	+ verifier que la taille lue est conforme
+	+ une fois certain que les crc32 utilisés sont les mêmes entre le script perl et
+	  le firmware : comparer les CRC
+	+ comme avant : mettre à jour le header flash pour que le bootloader flashe l'appli
+	  au prochain demarrage
+      
  */
 
 namespace FirmwareUpdater {
@@ -31,6 +52,7 @@ namespace  {
   static constexpr sysinterval_t firmwareUpdateTimout = TIME_S2I(10);
   bool storeSectorBufferInEeprom(bool final = false);
   Firmware::FirmwareHeader_t  IN_DMA_SECTION(firmwareHeader);
+  Firmware::ToolchainHeader_t toolChainHeader;
   static_assert(sizeof(firmwareHeader) <= 512);
 }
 
@@ -43,7 +65,6 @@ bool FirmwareUpdater::start(UAVCAN::Node *node, const uavcan_protocol_file_Path 
 {
   etl::string_view path(reinterpret_cast<const char*>(_path.path.data), _path.path.len);
   slaveNode = node;
-  bool wrongFileName = false;
   m95p = MFS::getDevice();
   crcInit();
   crcStart(&CRCD1, &Firmware::crcK4Config);
@@ -59,27 +80,6 @@ bool FirmwareUpdater::start(UAVCAN::Node *node, const uavcan_protocol_file_Path 
 	   std::min(sizeof(resp.optional_error_message.data), str.size()));
   };
 
-  etl::string_view ver_path;
-  auto pos = path.find(':');
-  if (pos == etl::string_view::npos) {
-    wrongFileName = true;
-  } else if (path.substr(0, pos) != "minican") {
-    wrongFileName = true;
-  } else if (ver_path = path.substr(pos + 1); ver_path.empty()) {
-    wrongFileName = true;
-  }
-
-  if (wrongFileName) {
-    doResp(UAVCAN_PROTOCOL_FILE_BEGINFIRMWAREUPDATE_RESPONSE_ERROR_UNKNOWN,
-	   "invalid firmware name : need minican:version");
-    return false;
-  }
-  
-  if (ver_path == firmwareHeader.version) {
-    doResp(UAVCAN_PROTOCOL_FILE_BEGINFIRMWAREUPDATE_RESPONSE_ERROR_UNKNOWN,
-	   "firmware version is already flashed or will be flashed at next restart");
-    return false;
-  }
 
   if (sectorBuffer != nullptr)  {
     if (chTimeDiffX(timestamp, chVTGetSystemTimeX()) < firmwareUpdateTimout) {
@@ -114,6 +114,8 @@ bool FirmwareUpdater::newChunk(CanardRxTransfer *transfer,
 			       const uavcan_protocol_file_ReadResponse &firmwareChunk,
 			       uavcan_protocol_file_ReadRequest &readReq)
 {
+  static constexpr size_t hdrLen =  sizeof(toolChainHeader);
+  
   if (firmwareChunk.error.value != UAVCAN_PROTOCOL_FILE_ERROR_OK) {
     delete sectorBuffer;
     sectorBuffer = nullptr;
@@ -127,6 +129,23 @@ bool FirmwareUpdater::newChunk(CanardRxTransfer *transfer,
     delete sectorBuffer;
     sectorBuffer = nullptr;
     currentFileIndex = 0;
+  } else if (currentFileIndex == 0) {
+    // first chunk : it begin with the toochainHeader
+    // we don't manage case where chunck is smaller than toochainHeader, in practice
+    // it should never occurs
+    if (firmwareChunk.data.len < hdrLen) {
+      slaveNode->infoCb("invalid first uavcan_protocol_file_ReadResponse frame size < 48");
+      return false;
+    }
+    // first 48 bytes chunk is tooChainHeader
+    toolChainHeader = firmwareChunk;
+    // the remaining bytes are the actual firmware
+    sectorBuffer->insert(sectorBuffer->begin(), firmwareChunk.data.data + hdrLen,
+			 firmwareChunk.data.data + firmwareChunk.data.len);
+    currentFileIndex += firmwareChunk.data.len;
+    // Request next chunk
+    readReq.offset = currentFileIndex;
+    slaveNode->sendRequest(readReq, CANARD_TRANSFER_PRIORITY_MEDIUM, transfer->source_node_id);
   } else {
     const size_t transferSize = std::min(sectorBuffer->available(),
 					 static_cast<size_t>(firmwareChunk.data.len));
@@ -160,8 +179,8 @@ namespace {
       firmwareHeader.size += FirmwareUpdater::sectorBuffer->size();
     }
     if (final) {
-      if (firmwareHeader.magicNumber != firmwareHeader.magicNumberCheck) {
-	firmwareHeader.magicNumber = firmwareHeader.magicNumberCheck;
+      if (firmwareHeader.magicNumber != Firmware::magicNumberCheck) {
+	firmwareHeader.magicNumber = Firmware::magicNumberCheck;
 	firmwareHeader.eepromCycleCount = 1;
       } 
       firmwareHeader.versionProtocol = firmwareHeader.versionProtocolCheck;
