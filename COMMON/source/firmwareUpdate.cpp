@@ -225,7 +225,7 @@ namespace {
   {
     if (const size_t binarySize = currentFileIndex - sizeof toolChainHeader;
 	hdr.fwSize != binarySize) {
-      slaveNode->infoCb("hdr.fwSize (%lu) != binarySize (%lu)", hdr.fwSize, binarySize);
+      slaveNode->infoCb("hdr.fwSize (%lu) != binarySize (%u)", hdr.fwSize, binarySize);
       return Firmware::Flash::LEN_ERROR;
     }
 
