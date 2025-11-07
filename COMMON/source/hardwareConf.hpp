@@ -26,6 +26,11 @@
 #define CONCAT_NX(st1, st2) st1 ## st2
 #define CONCAT(st1, st2) CONCAT_NX(st1, st2)
 
+#define STR_(x) #x
+#define STR(x)  STR_(x)
+#define NAME_STRING(prefix, sep, version) prefix sep version
+#define DEVICE_NAME NAME_STRING(STR(PLATFORM), "_V", STR(HW_VERSION))
+
 using namespace std::literals;
 
 static constexpr uint32_t operator""_hz (unsigned long long int freq)

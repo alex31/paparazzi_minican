@@ -144,7 +144,7 @@ namespace {
               etl::span(reinterpret_cast<uint8_t*>(&firmwareHeader),
                         sizeof(firmwareHeader)));
 
-    if (firmwareHeader.magicNumber != firmwareHeader.magicNumberCheck) {
+    if (firmwareHeader.magicNumber != Firmware::magicNumberCheck) {
       DebugTrace("magic number not found in header");
       firmwareHeader.state = Firmware::Flash::MAGIC_ERROR;
       return false;
@@ -300,7 +300,8 @@ namespace {
       goto exit;
     }
 
-    if (firmwareHeader.state == Firmware::Flash::DONE) {
+    if ((firmwareHeader.state == Firmware::Flash::DONE) or
+	(firmwareHeader.state == Firmware::Flash::CRC_ERROR)) {
       return;
     }
 

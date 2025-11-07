@@ -13,6 +13,7 @@
 #include "MFS.hpp"
 #include "etl/string_view.h"
 #include "etl/span.h"
+#include "hardwareConf.hpp"
 /*
     TODO :
 
@@ -54,6 +55,9 @@ namespace  {
   Firmware::FirmwareHeader_t  IN_DMA_SECTION(firmwareHeader);
   Firmware::ToolchainHeader_t toolChainHeader;
   static_assert(sizeof(firmwareHeader) <= 512);
+
+  bool fwIsCompatible(const Firmware::ToolchainHeader_t& toolChainHeader);
+  Firmware::Flash fwValidity(const Firmware::ToolchainHeader_t& hdr);
 }
 
 
@@ -129,34 +133,39 @@ bool FirmwareUpdater::newChunk(CanardRxTransfer *transfer,
     delete sectorBuffer;
     sectorBuffer = nullptr;
     currentFileIndex = 0;
-  } else if (currentFileIndex == 0) {
-    // first chunk : it begin with the toochainHeader
-    // we don't manage case where chunck is smaller than toochainHeader, in practice
-    // it should never occurs
-    if (firmwareChunk.data.len < hdrLen) {
-      slaveNode->infoCb("invalid first uavcan_protocol_file_ReadResponse frame size < 48");
-      return false;
-    }
-    // first 48 bytes chunk is tooChainHeader
-    toolChainHeader = firmwareChunk;
-    // the remaining bytes are the actual firmware
-    sectorBuffer->insert(sectorBuffer->begin(), firmwareChunk.data.data + hdrLen,
-			 firmwareChunk.data.data + firmwareChunk.data.len);
-    currentFileIndex += firmwareChunk.data.len;
-    // Request next chunk
-    readReq.offset = currentFileIndex;
-    slaveNode->sendRequest(readReq, CANARD_TRANSFER_PRIORITY_MEDIUM, transfer->source_node_id);
   } else {
-    const size_t transferSize = std::min(sectorBuffer->available(),
-					 static_cast<size_t>(firmwareChunk.data.len));
-    sectorBuffer->insert(sectorBuffer->end(), firmwareChunk.data.data,
-			 firmwareChunk.data.data + transferSize);
-    currentFileIndex += firmwareChunk.data.len;
-    
-    if (sectorBuffer->full()) {
-      storeSectorBufferInEeprom();
-      sectorBuffer->assign(firmwareChunk.data.data + transferSize, firmwareChunk.data.data + firmwareChunk.data.len);
+    if (currentFileIndex == 0) {
+      // first chunk : it begin with the toochainHeader
+      // we don't manage case where chunck is smaller than toochainHeader, in practice
+      // it should never occurs
+      if (firmwareChunk.data.len < hdrLen) {
+	slaveNode->infoCb("invalid first uavcan_protocol_file_ReadResponse frame size < 48");
+	return false;
+      }
+      // first 48 bytes chunk is tooChainHeader
+      toolChainHeader = firmwareChunk;
+      if (not fwIsCompatible(toolChainHeader)) {
+	slaveNode->infoCb("proposed firmware is not for this platform");
+	return false;
+      } else {
+	slaveNode->infoCb("COMPATIBLE Firmware");
+      }
+      // the remaining bytes are the actual firmware
+      sectorBuffer->insert(sectorBuffer->begin(), firmwareChunk.data.data + hdrLen,
+			   firmwareChunk.data.data + firmwareChunk.data.len);
+    } else {
+      const size_t transferSize = std::min(sectorBuffer->available(),
+					   static_cast<size_t>(firmwareChunk.data.len));
+      sectorBuffer->insert(sectorBuffer->end(), firmwareChunk.data.data,
+			   firmwareChunk.data.data + transferSize);
+      
+      if (sectorBuffer->full()) {
+	storeSectorBufferInEeprom();
+	sectorBuffer->assign(firmwareChunk.data.data + transferSize,
+			     firmwareChunk.data.data + firmwareChunk.data.len);
+      }
     }
+    currentFileIndex += firmwareChunk.data.len;
     // Request next chunk
     readReq.offset = currentFileIndex;
     slaveNode->sendRequest(readReq, CANARD_TRANSFER_PRIORITY_MEDIUM, transfer->source_node_id);
@@ -186,7 +195,7 @@ namespace {
       firmwareHeader.versionProtocol = firmwareHeader.versionProtocolCheck;
       firmwareHeader.flashAddress = (uint32_t) &application_start; // get from .ld file
       firmwareHeader.crc32k4 = crcGetFinalValue(&CRCD1);
-      firmwareHeader.state = Firmware::Flash::REQUIRED;
+      firmwareHeader.state = fwValidity(toolChainHeader);
       firmwareHeader.headerLen = sizeof firmwareHeader;
       m95p->write(firmwareHeader.headerEepromAddr,
 		  etl::span(reinterpret_cast<const uint8_t*>(&firmwareHeader), sizeof(firmwareHeader)));
@@ -195,4 +204,40 @@ namespace {
     }
     return true;
   }
+
+
+  bool fwIsCompatible(const Firmware::ToolchainHeader_t& hdr)
+  {
+    if (hdr.magicNumber != Firmware::magicNumberCheck)
+      return false;
+
+    if (hdr.hwVerMajor != HW_VERSION)
+      return false;
+
+    if (strcmp(hdr.platform, DEVICE_NAME) != 0)
+      return false;
+    
+    return true;
+  }
+
+
+  Firmware::Flash fwValidity(const Firmware::ToolchainHeader_t& hdr)
+  {
+    if (const size_t binarySize = currentFileIndex - sizeof toolChainHeader;
+	hdr.fwSize != binarySize) {
+      slaveNode->infoCb("hdr.fwSize (%lu) != binarySize (%lu)", hdr.fwSize, binarySize);
+      return Firmware::Flash::LEN_ERROR;
+    }
+
+    if (hdr.fwCrc32 != firmwareHeader.crc32k4) {
+      slaveNode->infoCb("fwValidity crc fail");
+      //      DebugTrace("DBG> hdr.fwCrc32(0x%lx) != firmwareHeader.crc32k4(0x%lx)",
+      //	 hdr.fwCrc32,  firmwareHeader.crc32k4);
+      return Firmware::Flash::CRC_ERROR;
+    }
+    
+    return Firmware::Flash::REQUIRED;
+  }
+
+
 }

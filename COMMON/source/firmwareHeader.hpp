@@ -70,7 +70,7 @@ namespace Firmware {
     .reflect_remainder = true
   };
 
-
+#ifdef CAN_BITRATE
   struct ToolchainHeader_t {
     ToolchainHeader_t() {};
     const ToolchainHeader_t& operator=(const uavcan_protocol_file_ReadResponse &firmwareChunk) {
@@ -85,5 +85,6 @@ namespace Firmware {
   };
 
   static_assert(sizeof(ToolchainHeader_t) == 48);
+#endif
   
 }

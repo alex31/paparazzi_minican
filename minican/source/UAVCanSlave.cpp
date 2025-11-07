@@ -11,12 +11,7 @@
 #include "sbusTunnelRole.hpp"
 #include "telemetryTunnelRole.hpp"
 #include "firmwareUpdate.hpp"
-
-
-#define STR_(x) #x
-#define STR(x)  STR_(x)
-#define NAME_STRING(prefix, sep, version) prefix sep version
-#define DEVICE_NAME NAME_STRING(STR(PLATFORM), "_V", STR(HW_VERSION))
+#include "hardwareConf.hpp"
 
 
 // filter G4 EID 0x0200 0000  MASK 0xFFFF FFFC
@@ -282,11 +277,7 @@ namespace CANSlave {
       .flagCb = [] -> uint8_t {return nodeId;},
       .infoCb = [](const etl::string_view sv) {
 #ifdef TRACE
-	static uint32_t count = 4U;
-	if (count) {
 	  DebugTrace("UAVDbg : %s", sv.data());
-	  --count;
-	}
 #else
 	(void) sv;
 #endif
