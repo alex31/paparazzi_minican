@@ -44,7 +44,7 @@ using Value = std::variant<struct uavcan_protocol_param_Empty, int64_t, float, b
 // declaration des prototypes de fonction
 // ces declarations sont necessaires pour remplir le tableau commands[] ci-dessous
 using cmd_func_t =  void  (BaseSequentialStream *lchp, int argc,const char * const argv[]);
-static cmd_func_t cmd_mem, cmd_uid, cmd_restart, cmd_param, cmd_uavparam, cmd_storage;
+static cmd_func_t cmd_mem, cmd_uid, cmd_restart, cmd_param, cmd_uavparam, cmd_storage, cmd_can;
 #if CH_DBG_STATISTICS
 static cmd_func_t cmd_threads;
 #endif
@@ -85,6 +85,7 @@ static const ShellCommand commands[] = {
 
   {"st", cmd_storage},		// manage eeprom storage
   {"uavp", cmd_uavparam},	// manage parameters via UAVCan types
+  {"can", cmd_can},		// print can speed, hardware/software version
   {"restart", cmd_restart},	// reboot MCU
  {NULL, NULL}			// marqueur de fin de tableau
 };
@@ -115,6 +116,91 @@ static void cmd_param(BaseSequentialStream *lchp, int argc,const char* const arg
     }
   }
 }
+
+#include <array>
+#include <string_view>
+
+#ifndef CAN_BITRATE
+#define CAN_BITRATE -500   // exemple
+#endif
+
+// Nombre de chiffres décimaux d'un entier positif
+consteval std::size_t digit_count(unsigned int v) {
+    std::size_t n = 1;
+    while (v >= 10) {
+        v /= 10;
+        ++n;
+    }
+    return n;
+}
+
+template<int BR>
+consteval auto make_bitrate_array() {
+    constexpr int abs_br = BR < 0 ? -BR : BR;
+    static_assert(abs_br > 0, "CAN_BITRATE must be non-zero");
+
+    constexpr bool mbits = (abs_br >= 1000) && (abs_br % 1000 == 0);
+    constexpr unsigned value = mbits ? abs_br / 1000U : abs_br;
+
+    constexpr std::string_view prefix{"can bitrate = "};
+    constexpr std::string_view suffix{mbits ? " mbits/s" : " kbits/s"};
+
+    constexpr std::size_t digits = digit_count(value);
+
+    // +1 pour le '\0'
+    constexpr std::size_t total = prefix.size() + digits + suffix.size() + 1;
+
+    std::array<char, total> out{};
+    char* p = out.data();
+
+    // prefix
+    for (char c : prefix) *p++ = c;
+
+    // nombre
+    {
+        char tmp[10];
+        unsigned v = value;
+        std::size_t i = 0;
+        do {
+            tmp[i++] = char('0' + (v % 10));
+            v /= 10;
+        } while (v);
+
+        while (i--) *p++ = tmp[i];
+    }
+
+    // suffix
+    for (char c : suffix) *p++ = c;
+
+    // zéro terminal
+    *p = '\0';
+
+    return out;
+}
+
+// lambda constexpr évaluée immédiatement -> produit le buffer
+inline constexpr auto CAN_BITRATE_STR_ARR = [] {
+    return make_bitrate_array<CAN_BITRATE>();
+}();
+
+// vue pratique sur la chaîne
+inline constexpr std::string_view CAN_BITRATE_STR{
+    CAN_BITRATE_STR_ARR.data(),
+    CAN_BITRATE_STR_ARR.size()
+};
+
+#define STR_(x) #x
+#define STR(x)  STR_(x)
+static void cmd_can(BaseSequentialStream *lchp, int ,const char* const [])
+{
+  constexpr bool fdframe = (CAN_BITRATE > 1000) or (CAN_BITRATE < 0);
+  chprintf(lchp, "platform = %s version %d; %s; frame = %s; software version = %u.%u\r\n",
+	   STR(PLATFORM), HW_VERSION,
+	   CAN_BITRATE_STR.data(),
+	   fdframe ? "CAN-FD" : "CAN-2.0",
+	   SW_VERSION_MAJOR, SW_VERSION_MINOR);
+}
+
 
 
 using pGetFunc_t = uint32_t (*) (void);

@@ -29,16 +29,18 @@ for example this prompt will green color (if you terminal supports color)*/
 /*
 Define prompt text (without ESC sequence, only text) prompt length, it needs because if you use
 ESC sequence, it's not possible detect only text length*/
-#ifdef BOARD_ENAC_MINICANv5
-#define _PROMPT_DEFAUTL "\033[32mMiniCanV5 >\033[0m "	// green color
-#define _PROMPT_LEN       12
-#elifdef BOARD_ENAC_MICROCANv3
-#define _PROMPT_DEFAUTL "\033[32mMicroCanV3 >\033[0m "	// green color
-#define _PROMPT_LEN       13
-#else
-#error neither BOARD_ENAC_MINICANv5 or BOARD_ENAC_MICROCANv3 defined
-#endif
+/*
+         -DPLATFORM_MINICAN=$(PLATFORM_MINICAN) -DPLATFORM_MICROCAN=$(PLATFORM_MICROCAN) \
+	-DPLATFORM=$(PLATFORM)
+	-DHW_VERSION=$(HW_VERSION) \
+        -DSW_VERSION_MAJOR=$(SW_VERSION_MAJOR) -DSW_VERSION_MINOR=$(SW_VERSION_MINOR)
 
+ */
+#define STR_(x) #x
+#define STR(x)  STR_(x)
+
+#define _PROMPT_DEFAUTL "\033[32m"  STR(PLATFORM) "v" STR(HW_VERSION) ">\033[0m "   // green color
+#define _PROMPT_LEN (sizeof(_PROMPT_DEFAUTL) - 10)
 
 /*Define it, if you wanna use completion functional, also set completion callback in you code,
 now if user press TAB calls 'copmlitetion' callback. If you no need it, you can just set 

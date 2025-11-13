@@ -30,15 +30,13 @@ private:
     return static_cast<UNSIGNED>(1U) << std::to_underlying(res);
   }
 
-  template<std::same_as<HWResource>... Args>
-  static constexpr UNSIGNED mask(HWResource first, Args... rest) {
-    return shiftbit(first) | mask(rest...);
+  static constexpr UNSIGNED mask(std::same_as<HWResource> auto... args)
+    requires (sizeof...(args) > 0)
+  {
+    return (... | shiftbit(args));
   }
-
-  static constexpr UNSIGNED mask(HWResource res) {
-    return shiftbit(res);
-  }
-
+  
+  
 public:
   HWResourceManager() {
     chDbgAssert(!instance_created, "Only one instance of HWResourceManager is allowed");

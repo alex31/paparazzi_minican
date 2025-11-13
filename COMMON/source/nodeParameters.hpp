@@ -1,13 +1,15 @@
 #pragma once
 
       {"can.terminal_resistor", {.v = true}},
-      {"can.bit_rate", {.min = 100'000, .max = 8'000'000, .v = 1'000'000}},
 	
-      {"uavcan.node_id", {.min = -124, .max = 124, .v = 0}},
+      {"uavcan.node_id", {.min = -124, .max = 124, .v = 0}}, // 0 is dynamic, negative is prefered dynamic
       {"uavcan.last_msg", {.v = "just flashed"}},
 	
       {"bus.i2c.pullup_resistor", {.v = true}},
-      {"hardware.name", {.v = BOARD_NAME}},
+      // I²C : 0 -> bus not activated, else valid values : 100, 400, 1000
+      {"bus.i2c.bitrate_kbit", {.min = 0, .max = 1000, .v = 0}},
+      {"hardware.name", {.v = false}},
+      {"hardware.nickname", {.v = "nickname"}},
       // fancy led pattern if role.identification is true
       {"role.identification", {.v = true}},
 	
@@ -39,8 +41,7 @@
       {"role.tunnel.telemetry.baudrate", {.min = 1'200, .max = 460'400, .v = 57'600}},
 
       {"role.i2c.barometer.mpl3115a2", {.v = false}},
-	
-      {"dbg.ratio", {.min = -1.0f, .max = 1.0f, .v = 0.5f}},
+
 
 
 
