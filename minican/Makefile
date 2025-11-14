@@ -42,9 +42,9 @@ CAN_BITRATE = 1000
 endif
 
 
-DEBUG := 1
-OPT_SPEED := 2
-OPT_SIZE := 3
+DEBUG := g
+OPT_SPEED := fast
+OPT_SIZE := s
 
 EXECMODE := $(DEBUG)
 #EXECMODE := $(OPT_SPEED)
@@ -73,14 +73,15 @@ endif
 UNUSED_DIAGS = -Wcast-align -Wsign-conversion -Wconversion
 
 ifeq ($(EXECMODE),$(DEBUG)) 
-  USE_OPT =  -Og -ggdb3  -Wall -Wextra \
+  USE_OPT =  -O$(EXECMODE) -ggdb3  -Wall -Wextra \
 	    -falign-functions=16 -fomit-frame-pointer \
 	    $(GCC_DIAG) 
   USE_LTO = no
 endif
 
+
 ifeq ($(EXECMODE),$(OPT_SPEED)) 
-  USE_OPT =  -Ofast -ggdb3 -flto -Wall -Wextra \
+  USE_OPT =  -O$(EXECMODE) -ggdb3 -flto -Wall -Wextra \
          -falign-functions=16 -fomit-frame-pointer \
          -DCH_DBG_SYSTEM_STATE_CHECK=0 -DCH_DBG_ENABLE_CHECKS=0 \
          -DCH_DBG_ENABLE_ASSERTS=0 -DCH_DBG_ENABLE_STACK_CHECK=0 \
@@ -90,7 +91,7 @@ ifeq ($(EXECMODE),$(OPT_SPEED))
 endif
 
 ifeq ($(EXECMODE),$(OPT_SIZE)) 
-  USE_OPT =  -Os -flto  -Wall -Wextra \
+  USE_OPT =  -O$(EXECMODE) -flto  -Wall -Wextra \
 	    -falign-functions=16 -fomit-frame-pointer \
             -fipa-pta --specs=nano.specs \
             -DCH_DBG_SYSTEM_STATE_CHECK=0 -DCH_DBG_ENABLE_CHECKS=0 \
@@ -373,8 +374,8 @@ flash: all
 
 firmware: all
 	@echo generate $(BUILDDIR)/fw_$(PROJECT).elf for UAVCan update
-	../prepend_header.pl $(BUILDDIR)/$(PROJECT).bin $(BUILDDIR)/$(PLATFORM)❬HW$(HW_VERSION)❭❬SW$(SW_VERSION_MAJOR).$(SW_VERSION_MINOR)❭❬$(CAN_BITRATE)k❭.bin $(PLATFORM)_V$(HW_VERSION) $(HW_VERSION)
-	(cd $(BUILDDIR) && rm -f LAST_$(PLATFORM)_FW.bin && ln -s $(PLATFORM)❬HW$(HW_VERSION)❭❬SW$(SW_VERSION_MAJOR).$(SW_VERSION_MINOR)❭❬$(CAN_BITRATE)k❭.bin LAST_$(PLATFORM)_FW.bin)
+	../prepend_header.pl $(BUILDDIR)/$(PROJECT).bin $(BUILDDIR)/$(PLATFORM)❬HW$(HW_VERSION)❭❬SW$(SW_VERSION_MAJOR).$(SW_VERSION_MINOR)❭❬$(CAN_BITRATE)k❭❬-O$(EXECMODE)❭.bin $(PLATFORM)_V$(HW_VERSION) $(HW_VERSION)
+	(cd $(BUILDDIR) && rm -f LAST_$(PLATFORM)_FW.bin && ln -s $(PLATFORM)❬HW$(HW_VERSION)❭❬SW$(SW_VERSION_MAJOR).$(SW_VERSION_MINOR)❭❬$(CAN_BITRATE)k❭❬-O$(EXECMODE)❭.bin LAST_$(PLATFORM)_FW.bin)
 	@echo Done
 
 distclean:
