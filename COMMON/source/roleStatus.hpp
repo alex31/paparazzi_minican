@@ -17,15 +17,15 @@ constexpr frozen::map<K, V, N> make_frozen_map(std::array<std::pair<K, V>, N> ar
 struct DeviceStatus {
   enum Source : uint8_t {
     ALL, MFS, RESOURCE, SERVO_ROLE, SERVO_PWM, SERVO_SMART,
-    MPL3115A2, ESC_DSHOT, SBUS_TUNNEL, TELEMETRY_TUNNEL, FIRMWARE_UPDATE, NUM_SOURCES
+    MPL3115A2, ESC_DSHOT, SBUS_TUNNEL, TELEMETRY_TUNNEL, FIRMWARE_UPDATE, I2C, SPI, NUM_SOURCES
   };
   enum Error : uint8_t {
     OK, NOT_FOUND, INVALID_PARAM, HETEROGENEOUS_BAUDS,
-    NOT_RESPONDING, CONFLICT, I2C_TIMOUT, NUM_ERRORS
+    NOT_RESPONDING, CONFLICT, I2C_TIMOUT, I2C_FREQ_INVALID, NUM_ERRORS
   };
-  DeviceStatus(Source s, Error e = OK,
+  constexpr DeviceStatus(Source s, Error e = OK,
 	       uint16_t spe = 0) : source(s), err(e), specific(spe) {}
-  DeviceStatus(const DeviceStatus&) = default;
+  constexpr DeviceStatus(const DeviceStatus&) = default;
   void set(Error e, uint16_t spe=0) {
     err = e; specific = spe;
   }
@@ -49,7 +49,9 @@ struct DeviceStatus {
 	MKP(ESC_DSHOT),
 	MKP(SBUS_TUNNEL),
 	MKP(TELEMETRY_TUNNEL),
-	MKP(FIRMWARE_UPDATE)
+	MKP(FIRMWARE_UPDATE),
+	MKP(I2C),
+	MKP(SPI)
       }));
 
   static constexpr auto errName = make_frozen_map(std::to_array({
@@ -59,6 +61,7 @@ struct DeviceStatus {
 	MKP(HETEROGENEOUS_BAUDS),
 	MKP(NOT_RESPONDING),
 	MKP(I2C_TIMOUT),
+	MKP(I2C_FREQ_INVALID),
 	MKP(CONFLICT)
       }));
 

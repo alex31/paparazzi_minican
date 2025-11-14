@@ -1,13 +1,9 @@
 #include "baro_MPL3115A2_Role.hpp"
 #include "stdutil.h"
-#include "dynamicPinConfig.hpp"
-#include "ressourceManager.hpp"
 #include "hardwareConf.hpp"
+#include "I2C_periph.hpp"
 
 namespace {
-  constexpr uint32_t  STM32_CR1_DNF(uint32_t n) {
-    return (n << I2C_CR1_DNF_Pos) & I2C_CR1_DNF_Msk;
-  }
   static constexpr uint32_t  OVERSAMPLING = 0x0; // no oversampling conv in 6 ms
   static constexpr uint8_t mplAdr =  0x60;
   static constexpr uint8_t statusReg[] = {0x00};
@@ -17,24 +13,12 @@ namespace {
   static constexpr uint8_t oneShotMode[] = {0x26, 0x2 | OVERSAMPLING};
   static constexpr uint8_t enableEvent[] = {0x13, 0x07};
   static constexpr uint8_t devIdReg[] = {0x0c};
-
-  static constexpr I2CConfig i2ccfg_400  = {
-    .timingr = 0xC0310612, // 400 Mhz, FAST DNF(8)
-    .cr1 = STM32_CR1_DNF(8), // Digital noise filter activated (timingr should be aware of that)
-    .cr2 = 0, // Only the ADD10 bit can eventually be specified here (10-bit addressing mode)
-  };
 }
 
 
 void Baro_MPL3115A2_Role::resetI2C()
 {
-  const auto config = ExternalI2CD.config;
-  i2cStop(&ExternalI2CD);
-  if (DynPin::i2cUnhangBus(&ExternalI2CD) == false) {
-    DebugTrace("unhang bus I2C1 failed");
-  }
-     
-  i2cStart(&ExternalI2CD, config);
+  I2CPeriph::reset();
 }
 
 void Baro_MPL3115A2_Role::periodic ()
@@ -65,22 +49,10 @@ DeviceStatus Baro_MPL3115A2_Role::start(UAVCAN::Node& node)
 
   m_node = &node;
   
-  using HR = HWResource;
+  if (const auto devstatus = I2CPeriph::start(); not devstatus) {
+    return devstatus;
+  }
   
-#ifdef   BOARD_ENAC_MINICANv5
-  if (not boardResource.tryAcquire(HR::PA15, HR::PB07, HR::I2C_1)) {
-    return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT);
-  }
-#elifdef BOARD_ENAC_MICROCANv3
-  if (not boardResource.tryAcquire(HR::I2C_2, HR::F1, HR::F2)) {
-    return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT);
-  }
-  DynPin::setScenario(DynPin::Scenario::I2C);
-#else
-#error only BOARD_ENAC_MINICANv5 and BOARD_ENAC_MICROCANv3 are handled
-#endif
-  DynPin::i2cActivatePullup();
-  i2cStart(&ExternalI2CD, &i2ccfg_400);
   while (not getDevId(&devId)) {
     static int tries = 4;
     chThdSleepMilliseconds(100);

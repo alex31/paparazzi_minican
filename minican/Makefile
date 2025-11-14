@@ -281,6 +281,7 @@ CPPSRC = $(ALLCPPSRC) \
 	$(COMMON)/deviceRessource.cpp \
 	$(COMMON)/MFS.cpp \
 	$(COMMON)/firmwareUpdate.cpp \
+	$(COMMON)/I2C_periph.cpp \
 	$(COMMON)/rgbLeds.cpp
 
 # List ASM source files here.
