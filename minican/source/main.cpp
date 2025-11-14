@@ -68,12 +68,13 @@ namespace {
     ° RT stalled
     ° thread wild loop that use 100% CPU
    */
+#ifdef __OPTIMIZE__
   const WDGConfig wdgcfg = {
     .pr  = STM32_IWDG_PR_32,
     .rlr = STM32_IWDG_RL(300),  // timeout ≈ 300 ms
     .winr = STM32_IWDG_WIN_DISABLED,
   };
-
+  
   THD_WORKING_AREA(waWatchdogReset, 256) __attribute__((section(FAST_SECTION "_clear")));
   void  watchdogReset (void *) {
     wdgStart(&WDGD1, &wdgcfg);
@@ -82,6 +83,7 @@ namespace {
       chThdSleepMilliseconds(100);
     }
   }
+#endif
 }
 
 void _init_chibios() __attribute__ ((constructor(101)));
@@ -101,7 +103,9 @@ int main(void)
    * - Kernel initialization, the main() function becomes a thread and the
    *   RTOS is active.
    */
+#ifdef __OPTIMIZE__
   chThdCreateStatic(waWatchdogReset, sizeof(waWatchdogReset), LOWPRIO, &watchdogReset, NULL);
+#endif
   RgbLed::start();
   trngStart(&TRNGD1, NULL);
   
