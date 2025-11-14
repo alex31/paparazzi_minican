@@ -104,7 +104,7 @@ int main(void)
    *   RTOS is active.
    */
 #ifdef __OPTIMIZE__
-  chThdCreateStatic(waWatchdogReset, sizeof(waWatchdogReset), LOWPRIO, &watchdogReset, NULL);
+  chThdCreateStatic(waWatchdogReset, sizeof(waWatchdogReset), NORMALPRIO + 1, &watchdogReset, NULL);
 #endif
   RgbLed::start();
   trngStart(&TRNGD1, NULL);
