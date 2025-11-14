@@ -178,25 +178,21 @@ consteval auto make_bitrate_array() {
     return out;
 }
 
-// lambda constexpr évaluée immédiatement -> produit le buffer
-inline constexpr auto CAN_BITRATE_STR_ARR = [] {
-    return make_bitrate_array<CAN_BITRATE>();
-}();
-
-// vue pratique sur la chaîne
-inline constexpr std::string_view CAN_BITRATE_STR{
-    CAN_BITRATE_STR_ARR.data(),
-    CAN_BITRATE_STR_ARR.size()
-};
 
 #define STR_(x) #x
 #define STR(x)  STR_(x)
 static void cmd_can(BaseSequentialStream *lchp, int ,const char* const [])
 {
+  // lambda constexpr évaluée immédiatement -> produit le buffer
+  static constexpr auto CAN_BITRATE_STR_ARR = [] {
+    return make_bitrate_array<CAN_BITRATE>();
+  }();
+  
   constexpr bool fdframe = (CAN_BITRATE > 1000) or (CAN_BITRATE < 0);
-  chprintf(lchp, "platform = %s version %d; %s; frame = %s; software version = %u.%u\r\n",
+
+  chprintf(lchp, "platform = %s version %d; %s; frame = %s; software version = %02u.%03u\r\n",
 	   STR(PLATFORM), HW_VERSION,
-	   CAN_BITRATE_STR.data(),
+	   CAN_BITRATE_STR_ARR.data(),
 	   fdframe ? "CAN-FD" : "CAN-2.0",
 	   SW_VERSION_MAJOR, SW_VERSION_MINOR);
 }
@@ -494,14 +490,24 @@ namespace {
     ssize_t index;
     if (auto opt = parse_value_int(key)) {
       index = opt.value();
+      if (index <= 0) {
+	DebugTrace("ERROR : parameter %d not valid", index);
+	return;
+      } 
       const auto& frozen_key =  std::next(frozenParameters.begin(), index)->first;
       key = frozen_key.data();
     } else {
       index = Persistant::Parameter::findIndex(key);
     }
-    if (index < 0) {
-      DebugTrace("ERROR : parameter %s not found", key);
+    if (index <= 0) {
+      DebugTrace("ERROR : parameter %s not valid", key);
     } else {
+      if (const auto& p = Persistant::Parameter::find(index);
+	  std::holds_alternative<Persistant::NoValue>(p.first)) {
+	chprintf(chp, "index %u is out of bound\r\n", index);
+	return;
+      }
+
       std::visit([&](const auto& param_ptr) {
 	OverloadDyn{}(index, frozen::string(key), param_ptr);
       }, Persistant::Parameter::find(index).first);
@@ -528,10 +534,14 @@ namespace {
     } else {
       index = Persistant::Parameter::findIndex(key);
     }
-    if (index < 0) {
-      DebugTrace("ERROR : parameter %s not found", key);
+    if (index <= 0) {
+      DebugTrace("ERROR : parameter %s not valid", key);
     } else {
       const auto& p = Persistant::Parameter::find(index);
+      if (std::holds_alternative<Persistant::NoValue>(p.first)) {
+	chprintf(chp, "index %u is out of bound\r\n", index);
+	return;
+      }
       Persistant::Parameter::set(p, value);
       Ressource::storage.store(index);
       cmd_storage_display(index);
