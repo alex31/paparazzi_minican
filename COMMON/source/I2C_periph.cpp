@@ -60,22 +60,16 @@ namespace I2CPeriph
     DynPin::i2cActivatePullup();
     
     const uint32_t freqKhz = PARAM_CGET("bus.i2c.frequency_khz");
-
-    switch(freqKhz) {
-    case 100:
-      i2cStart(&ExternalI2CD, &i2ccfg_100);
-      break;
-    case 400:
-      i2cStart(&ExternalI2CD, &i2ccfg_400);
-      break;
-    case 1000:
-      i2cStart(&ExternalI2CD, &i2ccfg_1000);
-      break;
-
-    default:
-      return DeviceStatus(DeviceStatus::I2C, DeviceStatus::I2C_FREQ_INVALID);
-    }
     
+    if (freqKhz < 400)
+      i2cStart(&ExternalI2CD, &i2ccfg_100);
+    else if (freqKhz < 1000)
+      i2cStart(&ExternalI2CD, &i2ccfg_400);
+    else if (freqKhz == 1000)
+      i2cStart(&ExternalI2CD, &i2ccfg_1000);
+    else
+      return DeviceStatus(DeviceStatus::I2C, DeviceStatus::I2C_FREQ_INVALID);
+
     started = true;
     return DeviceStatus(DeviceStatus::I2C);
   }

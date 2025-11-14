@@ -6,8 +6,8 @@
       {"uavcan.last_msg", {.v = "just flashed"}},
 	
       {"bus.i2c.pullup_resistor", {.v = true}},
-      // I²C : 0 -> bus not activated, else valid values : 100, 400, 1000
-      {"bus.i2c.frequency_khz", {.min = 0, .max = 1000, .v = 0}},
+      // I²C frequency : valid values : 100, 400, 1000
+      {"bus.i2c.frequency_khz", {.min = 100, .max = 1000, .v = 400}},
       {"hardware.name", {.v = false}},
       {"hardware.nickname", {.v = "nickname"}},
       // fancy led pattern if role.identification is true
