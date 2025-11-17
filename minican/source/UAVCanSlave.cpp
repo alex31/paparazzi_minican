@@ -114,9 +114,8 @@ namespace {
 	.offset = 0,
 	.path = msg.image_file_remote_path,
       };
-      uavcan_protocol_NodeStatus nodeStatus = {};
-      nodeStatus.mode = UAVCAN_PROTOCOL_NODESTATUS_MODE_SOFTWARE_UPDATE;
-      slaveNode->setStatus(nodeStatus);
+
+      slaveNode->setStatusMode(UAVCAN_PROTOCOL_NODESTATUS_MODE_SOFTWARE_UPDATE);
       slaveNode->sendRequest(readReq, CANARD_TRANSFER_PRIORITY_MEDIUM, transfer->source_node_id);
     }
   }
@@ -324,6 +323,7 @@ namespace CANSlave {
     }
     
     DebugTrace("Dynamic node_id is %d", node.getNodeId());
+    node.setStatusMode(UAVCAN_PROTOCOL_NODESTATUS_MODE_OPERATIONAL);
     return DeviceStatus(DeviceStatus::ALL, DeviceStatus::OK);
   }
 }
