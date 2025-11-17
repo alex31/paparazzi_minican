@@ -121,6 +121,8 @@ bool FirmwareUpdater::newChunk(CanardRxTransfer *transfer,
   static constexpr size_t hdrLen =  sizeof(toolChainHeader);
   
   if (firmwareChunk.error.value != UAVCAN_PROTOCOL_FILE_ERROR_OK) {
+    DebugTrace("DBG> firmwareChunk.error.value != UAVCAN_PROTOCOL_FILE_ERROR_OK : %u",
+	       firmwareChunk.error.value);
     delete sectorBuffer;
     sectorBuffer = nullptr;
     currentFileIndex = 0;
@@ -129,6 +131,7 @@ bool FirmwareUpdater::newChunk(CanardRxTransfer *transfer,
   
   timestamp = chVTGetSystemTimeX();
   if (firmwareChunk.data.len == 0) { // End of file
+    DebugTrace("DBG> end of file");
     storeSectorBufferInEeprom(true);
     delete sectorBuffer;
     sectorBuffer = nullptr;
@@ -142,18 +145,19 @@ bool FirmwareUpdater::newChunk(CanardRxTransfer *transfer,
 	slaveNode->infoCb("invalid first uavcan_protocol_file_ReadResponse frame size < 48");
 	return false;
       }
-      // first 48 bytes chunk is tooChainHeader
+      // first 48 bytes chunk is toolChainHeader
       toolChainHeader = firmwareChunk;
       if (not fwIsCompatible(toolChainHeader)) {
-	slaveNode->infoCb("proposed firmware is not for this platform");
+	slaveNode->infoCb("ERROR: firmware is not for this platform");
 	return false;
       } else {
-	slaveNode->infoCb("COMPATIBLE Firmware");
+	slaveNode->infoCb("COMPATIBLE firmware");
       }
       // the remaining bytes are the actual firmware
       sectorBuffer->insert(sectorBuffer->begin(), firmwareChunk.data.data + hdrLen,
 			   firmwareChunk.data.data + firmwareChunk.data.len);
     } else {
+      // following chunks
       const size_t transferSize = std::min(sectorBuffer->available(),
 					   static_cast<size_t>(firmwareChunk.data.len));
       sectorBuffer->insert(sectorBuffer->end(), firmwareChunk.data.data,
@@ -168,6 +172,9 @@ bool FirmwareUpdater::newChunk(CanardRxTransfer *transfer,
     currentFileIndex += firmwareChunk.data.len;
     // Request next chunk
     readReq.offset = currentFileIndex;
+    DebugTrace("DBG> ask next chunk %u/%lu",
+	       currentFileIndex - sizeof(Firmware::ToolchainHeader_t),
+	       toolChainHeader.fwSize);
     slaveNode->sendRequest(readReq, CANARD_TRANSFER_PRIORITY_MEDIUM, transfer->source_node_id);
   }
   

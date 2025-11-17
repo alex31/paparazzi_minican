@@ -13,6 +13,7 @@
       // fancy led pattern if role.identification is true
       {"role.identification", {.v = true}},
 	
+      {"role.health.survey", {.v = true}},
       {"role.servo.pwm", {.v = false}},
       {"role.servo.pwm.frequency", {.min=50, .max=560, .v = 50}},
       {"role.servo.pwm.pulse_half_width", {.v = false}},

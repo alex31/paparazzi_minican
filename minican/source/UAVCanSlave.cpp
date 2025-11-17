@@ -318,8 +318,11 @@ namespace CANSlave {
       if (const DeviceStatus roleStatus = rp->start(node); not roleStatus)
 	return roleStatus;
     
+
+    if (PARAM_CGET("role.health.survey")) {
+      HealthSurvey::start(node);
+    }
     
-    HealthSurvey::start(node);
     DebugTrace("Dynamic node_id is %d", node.getNodeId());
     return DeviceStatus(DeviceStatus::ALL, DeviceStatus::OK);
   }
