@@ -39,6 +39,9 @@
       
  */
 
+
+
+
 namespace FirmwareUpdater {
   ///< Buffer to hold a sector of the firmware image during download.
   SectorBuffer_t *sectorBuffer = nullptr; // if not null : transfert in progress
@@ -58,6 +61,15 @@ namespace  {
 
   bool fwIsCompatible(const Firmware::ToolchainHeader_t& toolChainHeader);
   Firmware::Flash fwValidity(const Firmware::ToolchainHeader_t& hdr);
+  virtual_timer_t vtRequest;
+  struct {
+    uavcan_protocol_file_ReadRequest readReq;
+    uint8_t source_node_id;
+    thread_t *trampoline;
+    thread_reference_t req_ref = nullptr;
+  } currentFileRequest = {};
+
+  void  trampoline (void *);
 }
 
 
@@ -69,6 +81,7 @@ bool FirmwareUpdater::start(UAVCAN::Node *node, const uavcan_protocol_file_Path 
 {
   etl::string_view path(reinterpret_cast<const char*>(_path.path.data), _path.path.len);
   slaveNode = node;
+  chVTObjectInit(&vtRequest);
   m95p = MFS::getDevice();
   crcInit();
   crcStart(&CRCD1, &Firmware::crcK4Config);
@@ -119,6 +132,7 @@ bool FirmwareUpdater::newChunk(CanardRxTransfer *transfer,
 			       uavcan_protocol_file_ReadRequest &readReq)
 {
   static constexpr size_t hdrLen =  sizeof(toolChainHeader);
+  chVTReset(&vtRequest);
   
   if (firmwareChunk.error.value != UAVCAN_PROTOCOL_FILE_ERROR_OK) {
     DebugTrace("DBG> firmwareChunk.error.value != UAVCAN_PROTOCOL_FILE_ERROR_OK : %u",
@@ -131,13 +145,21 @@ bool FirmwareUpdater::newChunk(CanardRxTransfer *transfer,
   
   timestamp = chVTGetSystemTimeX();
   if (firmwareChunk.data.len == 0) { // End of file
-    DebugTrace("DBG> end of file");
     storeSectorBufferInEeprom(true);
     delete sectorBuffer;
     sectorBuffer = nullptr;
     currentFileIndex = 0;
+    // Restart : the bootloader will flash from spi eeprom to mcu flash
+    systemReset();
   } else {
     if (currentFileIndex == 0) {
+      if (currentFileRequest.trampoline == nullptr) {
+	currentFileRequest.trampoline =
+	  chThdCreateFromHeap(NULL, THD_WORKING_AREA_SIZE(512), "file_chunck_requester", HIGHPRIO, 
+			      &trampoline, nullptr);
+	chThdYield();
+	
+      }
       // first chunk : it begin with the toochainHeader
       // we don't manage case where chunck is smaller than toochainHeader, in practice
       // it should never occurs
@@ -172,11 +194,12 @@ bool FirmwareUpdater::newChunk(CanardRxTransfer *transfer,
     currentFileIndex += firmwareChunk.data.len;
     // Request next chunk
     readReq.offset = currentFileIndex;
-    DebugTrace("DBG> ask next chunk %u/%lu",
-	       currentFileIndex - sizeof(Firmware::ToolchainHeader_t),
-	       toolChainHeader.fwSize);
-    slaveNode->sendRequest(readReq, CANARD_TRANSFER_PRIORITY_MEDIUM, transfer->source_node_id);
-  }
+    currentFileRequest.readReq = readReq;
+    currentFileRequest.source_node_id = transfer->source_node_id;
+    // delegate the request sending to a helper thread that also send retries
+    // after timeout
+    chThdResume(&currentFileRequest.req_ref, MSG_OK);
+   }
   
   return true;
 }
@@ -246,5 +269,30 @@ namespace {
     return Firmware::Flash::REQUIRED;
   }
 
-
+  void  trampoline (void *) {
+    while(true) {
+      chSysLock();
+      chThdSuspendS(&currentFileRequest.req_ref);   // dort jusqu’à ce qu’on le réveille
+      chSysUnlock();
+      static unsigned int lastOffset = 0;
+      
+      slaveNode->sendRequest(currentFileRequest.readReq, CANARD_TRANSFER_PRIORITY_MEDIUM,
+			     currentFileRequest.source_node_id);
+      DebugTrace("DBG> ask %s chunk %llu/%lu",
+		 lastOffset == currentFileRequest.readReq.offset ? "** AGAIN **" : "",
+		 currentFileRequest.readReq.offset - sizeof(Firmware::ToolchainHeader_t),
+		 toolChainHeader.fwSize);
+      lastOffset = currentFileRequest.readReq.offset;
+      
+      chVTSet(
+	      &vtRequest,
+	      TIME_MS2I(300),
+	      [](ch_virtual_timer*, void*) {
+		chSysLockFromISR();
+		chThdResumeI(&currentFileRequest.req_ref, MSG_OK);
+		chSysUnlockFromISR();
+	      },
+	      nullptr);
+    }
+  }
 }
