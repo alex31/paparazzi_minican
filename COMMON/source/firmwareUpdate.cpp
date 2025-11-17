@@ -65,11 +65,11 @@ namespace  {
   struct {
     uavcan_protocol_file_ReadRequest readReq;
     uint8_t source_node_id;
-    thread_t *trampoline;
-    thread_reference_t req_ref = nullptr;
+    thread_t *requestWorker;
+    binary_semaphore_t reqSem;
   } currentFileRequest = {};
 
-  void  trampoline (void *);
+  void requestWorker(void *);
 }
 
 
@@ -153,12 +153,11 @@ bool FirmwareUpdater::newChunk(CanardRxTransfer *transfer,
     systemReset();
   } else {
     if (currentFileIndex == 0) {
-      if (currentFileRequest.trampoline == nullptr) {
-	currentFileRequest.trampoline =
-	  chThdCreateFromHeap(NULL, THD_WORKING_AREA_SIZE(512), "file_chunck_requester", HIGHPRIO, 
-			      &trampoline, nullptr);
-	chThdYield();
-	
+      if (currentFileRequest.requestWorker == nullptr) {
+	chBSemObjectInit(&currentFileRequest.reqSem, true); // start taken so helper blocks
+	currentFileRequest.requestWorker =
+	  chThdCreateFromHeap(NULL, THD_WORKING_AREA_SIZE(512), "file_chunck_requester", HIGHPRIO,
+			      &requestWorker, nullptr);
       }
       // first chunk : it begin with the toochainHeader
       // we don't manage case where chunck is smaller than toochainHeader, in practice
@@ -198,8 +197,8 @@ bool FirmwareUpdater::newChunk(CanardRxTransfer *transfer,
     currentFileRequest.source_node_id = transfer->source_node_id;
     // delegate the request sending to a helper thread that also send retries
     // after timeout
-    chThdResume(&currentFileRequest.req_ref, MSG_OK);
-   }
+    chBSemSignal(&currentFileRequest.reqSem);
+  }
   
   return true;
 }
@@ -269,11 +268,9 @@ namespace {
     return Firmware::Flash::REQUIRED;
   }
 
-  void  trampoline (void *) {
+  void requestWorker(void *) {
     while(true) {
-      chSysLock();
-      chThdSuspendS(&currentFileRequest.req_ref);   // dort jusqu’à ce qu’on le réveille
-      chSysUnlock();
+      chBSemWait(&currentFileRequest.reqSem);
       static unsigned int lastOffset = 0;
       
       slaveNode->sendRequest(currentFileRequest.readReq, CANARD_TRANSFER_PRIORITY_MEDIUM,
@@ -284,12 +281,11 @@ namespace {
 		 toolChainHeader.fwSize);
       lastOffset = currentFileRequest.readReq.offset;
       
-      chVTSet(
-	      &vtRequest,
+      chVTSet(&vtRequest,
 	      TIME_MS2I(300),
 	      [](ch_virtual_timer*, void*) {
 		chSysLockFromISR();
-		chThdResumeI(&currentFileRequest.req_ref, MSG_OK);
+		chBSemSignalI(&currentFileRequest.reqSem);
 		chSysUnlockFromISR();
 	      },
 	      nullptr);
