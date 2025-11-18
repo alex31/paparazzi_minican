@@ -33,7 +33,10 @@ namespace FirmwareUpdater {
   bool start(UAVCAN::Node *node, const uavcan_protocol_file_Path &path,
 	     uavcan_protocol_file_BeginFirmwareUpdateResponse& resp);
 
-  /**
+
+  void firstRequest(const uavcan_protocol_file_ReadRequest &firtReq, uint8_t source_node_id);
+  
+/**
    * @brief Processes a chunk of the firmware data.
    * @details This function is called for each uavcan::protocol::file::Read response
    * received from the file server. It writes the received data chunk into a sector

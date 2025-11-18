@@ -121,8 +121,26 @@ bool FirmwareUpdater::start(UAVCAN::Node *node, const uavcan_protocol_file_Path 
   doResp(UAVCAN_PROTOCOL_FILE_BEGINFIRMWAREUPDATE_RESPONSE_ERROR_OK,
 	 aborted ? "previous attempt aborted, restart update" :
 	 "start update");
+
+  if (currentFileRequest.requestWorker == nullptr) {
+    chBSemObjectInit(&currentFileRequest.reqSem, true); // start taken so helper blocks
+    currentFileRequest.requestWorker =
+      chThdCreateFromHeap(NULL, THD_WORKING_AREA_SIZE(512), "file_chunck_requester",
+			  chThdGetPriorityX() + 1,
+			  &requestWorker, nullptr);
+  }
+    
   return true;
 }
+
+void FirmwareUpdater::firstRequest(const uavcan_protocol_file_ReadRequest &firtReq,
+				   uint8_t source_node_id)
+{
+  currentFileRequest.readReq = firtReq;
+  currentFileRequest.source_node_id = source_node_id;
+  chBSemSignal(&currentFileRequest.reqSem);
+}
+
 
 /**
  * @brief Processes a received firmware chunk.
@@ -153,12 +171,6 @@ bool FirmwareUpdater::newChunk(CanardRxTransfer *transfer,
     systemReset();
   } else {
     if (currentFileIndex == 0) {
-      if (currentFileRequest.requestWorker == nullptr) {
-	chBSemObjectInit(&currentFileRequest.reqSem, true); // start taken so helper blocks
-	currentFileRequest.requestWorker =
-	  chThdCreateFromHeap(NULL, THD_WORKING_AREA_SIZE(512), "file_chunck_requester", HIGHPRIO,
-			      &requestWorker, nullptr);
-      }
       // first chunk : it begin with the toochainHeader
       // we don't manage case where chunck is smaller than toochainHeader, in practice
       // it should never occurs
@@ -268,10 +280,12 @@ namespace {
     return Firmware::Flash::REQUIRED;
   }
 
+
+
   void requestWorker(void *) {
     while(true) {
       chBSemWait(&currentFileRequest.reqSem);
-      static unsigned int lastOffset = 0;
+      static uint32_t lastOffset = 0xffffffff;
       
       slaveNode->sendRequest(currentFileRequest.readReq, CANARD_TRANSFER_PRIORITY_MEDIUM,
 			     currentFileRequest.source_node_id);

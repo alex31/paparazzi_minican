@@ -16,12 +16,6 @@
 /*
   TODO :
 
-  ° tester l'utilisation de  paramètres can bit_rate en considerant 3 options :
-    + CAN   à 1Mb si 1'000'000
-    + FDCAN à 5Mb si 5'000'000
-    + FDCAN à 8Mb si 8'000'000
-    + erreur sinon
-   
   ° role dshot
     + paramètres : mapping, nb_canaux, cmd_rate [100 .. 1000], rpm_freq_divider (0 .. 1000 : 0 is disabled)
     + message UAVCan : equipment/esc/1030.RawCommand
@@ -36,29 +30,7 @@
         ¤ abonné à tunnel.telemetry
 	¤ on check qu'on reçoit les bonnes trames, et autant qu'on en a envoyé
 
-  ° bootloader + firmware
-
-     BOOTLOADER :
-   ° check  header @1M
-     si flash@next_start -> {
-     + calcul CRC32 du firmware stocké dans M95P
-     + si CRC correct :
-       * copie M95P -> eeprom @address recuperée depuis un marqueur exporté par le linker script
-       * flash@next_start = false
-       * check CRC32 sur l'eeprom du G4 pour s'assurer que le copie est OK
-       * if CRC OK -> {
-            ¤ lastFlashStatus = GOOD
-	    ¤ transfert to application
-	    } else  {
-            ¤ lastFlashStatus = CRC error
-	    ¤ rbg led pattern -> critical error
-	    ¤ -> manual action : SWD flash ?
-	    ¤ wait infinite
-	    }
-     } else { //  flash@next_start == false
-      ¤ transfert to application
-     }
-       
+ 
  */
 
 namespace {
