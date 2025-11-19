@@ -12,6 +12,7 @@
 #include "telemetryTunnelRole.hpp"
 #include "firmwareUpdate.hpp"
 #include "hardwareConf.hpp"
+#include "UAVCanHelper.hpp"
 
 
 // filter G4 EID 0x0200 0000  MASK 0xFFFF FFFC
@@ -38,7 +39,7 @@
 
 
 
-constexpr  UAVCAN::RegTimings timings = UAVCAN::getTimings(STM32_SYSCLK / 2U, CAN_BITRATE);
+constexpr  UAVCAN::RegTimings timings = UAVCAN::getTimings(STM32_SYSCLK, CAN_BITRATE);
 /*
 constexpr  UAVCAN::RegTimings timings =  UAVCAN::getTimings(STM32_SYSCLK / 2U,
 					  125, 0.5,
@@ -218,7 +219,7 @@ namespace {
   // add an object of type RoleClass if any of the Params is found
   // in the frozen parameter list
   template <typename RoleClass, FixedString... roleNames>
-  void addRole()
+  bool addRole()
   {
     // Vérifie que tous les roleNames existent à la compilation
     static_assert(((Persistant::Parameter::findIndex(roleNames.value) >= 0) && ...),
@@ -234,8 +235,11 @@ namespace {
 	roles.push_back(new RoleClass);
       }
     } else {
-      chSysHalt("roles is full");
+      UAVCAN::Helper::log(*slaveNode, UAVCAN_PROTOCOL_DEBUG_LOGLEVEL_ERROR,
+			  "UAVCanSlave.cpp::addRole()", "roles vector table too small");
+      return false;
     }
+    return true;
   }
   
 
@@ -300,16 +304,22 @@ namespace CANSlave {
 				  processRestartNodeRequest, processExecuteOpcodeRequest,
 				  processFirmwareUpdateRequest>();
 
-    addRole<ServoRole, FixedString("role.servo.pwm"),  FixedString("role.servo.smart")>();
-    addRole<Baro_MPL3115A2_Role, FixedString("role.i2c.barometer.mpl3115a2")>();
-    addRole<EscDshot, FixedString("role.esc.dshot")>();
-    addRole<SbusTunnel, FixedString("role.tunnel.sbus")>();
-    addRole<TelemetryTunnel, FixedString("role.tunnel.telemetry")>();
+    if (not (addRole<ServoRole, FixedString("role.servo.pwm"),  FixedString("role.servo.smart")>()
+	     && addRole<Baro_MPL3115A2_Role, FixedString("role.i2c.barometer.mpl3115a2")>()
+	     && addRole<EscDshot, FixedString("role.esc.dshot")>()
+	     && addRole<SbusTunnel, FixedString("role.tunnel.sbus")>()
+	     && addRole<TelemetryTunnel, FixedString("role.tunnel.telemetry")>())) {
+      node.setStatusMode(UAVCAN_PROTOCOL_NODESTATUS_MODE_OFFLINE);
+      return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::NB_ROLE_TOO_LARGE);
+    }
 
     for (auto rp : roles)
-      if (const DeviceStatus roleStatus = rp->subscribe(node); not roleStatus)
+      if (const DeviceStatus roleStatus = rp->subscribe(node); not roleStatus) {
+	UAVCAN::Helper::log(*slaveNode, UAVCAN_PROTOCOL_DEBUG_LOGLEVEL_ERROR,
+			    "UAVCanSlave.cpp::start()", roleStatus.describe());
+ 
 	return roleStatus;
-    
+      }
     
     node.start();
     

@@ -70,7 +70,7 @@
 #define STM32_SW                            STM32_SW_PLLRCLK
 #define STM32_PLLSRC                        STM32_PLLSRC_HSE
 #define STM32_PLLM_VALUE                    2
-#define STM32_PLLN_VALUE                    85
+#define STM32_PLLN_VALUE                    80
 #define STM32_PLLPDIV_VALUE                 0
 #define STM32_PLLP_VALUE                    7
 #define STM32_PLLQ_VALUE                    4
@@ -98,7 +98,7 @@
 #define STM32_LPTIM1SEL                     STM32_LPTIM1SEL_PCLK1
 #define STM32_SAI1SEL                       STM32_SAI1SEL_SYSCLK
 #define STM32_I2S23SEL                      STM32_I2S23SEL_SYSCLK
-#define STM32_FDCANSEL                      STM32_FDCANSEL_PLLQCLK
+#define STM32_FDCANSEL                      STM32_FDCANSEL_PCLK1
 #define STM32_CLK48SEL                      STM32_CLK48SEL_HSI48
 #define STM32_ADC12SEL                      STM32_ADC12SEL_SYSCLK
 #define STM32_ADC345SEL                     STM32_ADC345SEL_PLLPCLK
