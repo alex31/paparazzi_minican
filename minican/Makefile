@@ -22,7 +22,8 @@ GIT_SHA := $(shell git rev-parse --short=8 HEAD 2>/dev/null || echo 0)
 VCS_COMMIT := $(shell printf "%u\n" 0x$(GIT_SHA))
 
 ifndef PLATFORM
-$(error PLATFORM should be defined : MINICAN or MICROCAN)
+$(warning PLATFORM should be MINICAN or MICROCAN setting MINICAN as default)
+PLATFORM = MINICAN
 endif
 
 ifeq "$(PLATFORM)" "MINICAN"
@@ -33,8 +34,6 @@ else ifeq "$(PLATFORM)" "MICROCAN"
 PLATFORM_MINICAN=0
 PLATFORM_MICROCAN=1
 HW_VERSION=3
-else
-$(error PLATFORM should be MINICAN or MICROCAN)
 endif
 
 ifndef CAN_BITRATE
@@ -386,6 +385,7 @@ firmware: all
 
 distclean:
 	@rm $(CONFDIR)/board.h
+	@rm -R build_MI*
 
 # flash: all
 # 	@echo write $(BUILDDIR)/$(PROJECT).elf to flash memory
