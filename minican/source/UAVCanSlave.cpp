@@ -116,7 +116,6 @@ namespace {
 	.path = msg.image_file_remote_path,
       };
 
-      slaveNode->setStatusMode(UAVCAN_PROTOCOL_NODESTATUS_MODE_SOFTWARE_UPDATE);
       FirmwareUpdater::firstRequest(readReq, transfer->source_node_id);
     }
   }
@@ -252,13 +251,14 @@ namespace CANSlave {
     return slaveNode->getNodeId();
   }
   
-  DeviceStatus start(int8_t _nodeId)
+  DeviceStatus start(int8_t _nodeId, bool dynamicId_fd)
   {
     static int8_t nodeId = _nodeId;
     static  UAVCAN::Config uavCanCfg = {
       .cand = CAND2,
       .cancfg = cancfg,
       .nodeId = nodeId,
+      .dynamicId_fd = dynamicId_fd,
       .nodeInfo = {
 	.status = {},
 	.software_version = {

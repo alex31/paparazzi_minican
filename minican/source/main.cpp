@@ -128,7 +128,8 @@ int main(void)
   {
     const int8_t nodeId = PARAM_CGET("uavcan.node_id");
     DebugTrace("paramètre nodeid = %d", nodeId);
-    if (const DeviceStatus status = CANSlave::start(nodeId); not status) {
+    if (const DeviceStatus status =
+	CANSlave::start(nodeId, PARAM_CGET("uavcan.dynid.fd")); not status) {
       DebugTrace("CANSlave error is %s", status.describe().c_str());
       if (status.err == DeviceStatus::CONFLICT) {
 	RgbLed::setMotif(100, 0b110011000);

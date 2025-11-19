@@ -4,6 +4,7 @@
 	
       {"uavcan.node_id", {.min = -124, .max = 124, .v = 0}}, // 0 is dynamic, negative is prefered dynamic
       {"uavcan.last_msg", {.v = "just flashed"}},
+      {"uavcan.dynid.fd", {.v = false}},
 	
       {"bus.i2c.pullup_resistor", {.v = true}},
       // I²C frequency : valid values : 100, 400, 1000

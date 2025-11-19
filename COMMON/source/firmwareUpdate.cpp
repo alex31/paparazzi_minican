@@ -14,6 +14,7 @@
 #include "etl/string_view.h"
 #include "etl/span.h"
 #include "hardwareConf.hpp"
+#include "UAVCanHelper.hpp"
 /*
     TODO :
 
@@ -136,6 +137,7 @@ bool FirmwareUpdater::start(UAVCAN::Node *node, const uavcan_protocol_file_Path 
 void FirmwareUpdater::firstRequest(const uavcan_protocol_file_ReadRequest &firtReq,
 				   uint8_t source_node_id)
 {
+  slaveNode->setStatusMode(UAVCAN_PROTOCOL_NODESTATUS_MODE_SOFTWARE_UPDATE);
   currentFileRequest.readReq = firtReq;
   currentFileRequest.source_node_id = source_node_id;
   chBSemSignal(&currentFileRequest.reqSem);
@@ -182,6 +184,10 @@ bool FirmwareUpdater::newChunk(CanardRxTransfer *transfer,
       toolChainHeader = firmwareChunk;
       if (not fwIsCompatible(toolChainHeader)) {
 	slaveNode->infoCb("ERROR: firmware is not for this platform");
+	slaveNode->setStatusMode(UAVCAN_PROTOCOL_NODESTATUS_MODE_OPERATIONAL);
+	UAVCAN::Helper::log(*slaveNode, UAVCAN_PROTOCOL_DEBUG_LOGLEVEL_WARNING,
+			    "firmware updater",
+			    "invalid firmware image");
 	return false;
       } else {
 	slaveNode->infoCb("COMPATIBLE firmware");
