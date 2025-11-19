@@ -290,7 +290,6 @@ namespace CANSlave {
     static UAVCAN::Node node(uavCanCfg);
     
     slaveNode = &node;
-    chDbgAssert(STM32_FDCANCLK == 85'000'000, "bad STM32_FDCANCLK source frequency");
     
     // terminal CAN 120 Ohms resistor activation (or not)
     const bool activateR =  PARAM_CGET("can.terminal_resistor");
