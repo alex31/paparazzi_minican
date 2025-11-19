@@ -70,7 +70,11 @@
 #define STM32_SW                            STM32_SW_PLLRCLK
 #define STM32_PLLSRC                        STM32_PLLSRC_HSE
 #define STM32_PLLM_VALUE                    2
+#if PRECISE_FDCAN_TIMINGS
+#define STM32_PLLN_VALUE                    80
+#else
 #define STM32_PLLN_VALUE                    85
+#endif
 #define STM32_PLLPDIV_VALUE                 0
 #define STM32_PLLP_VALUE                    7
 #define STM32_PLLQ_VALUE                    4
