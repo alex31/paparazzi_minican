@@ -30,13 +30,38 @@ static constexpr PWMDriver &SERVO_PWMD =  CONCAT(PWMD, F1_b_TIM);
 
 
 namespace  {
+  struct ChannelMap {
+    std::array<std::uint8_t, 8> idx{};
+    std::uint8_t count{};
+    std::uint8_t mask{};
+    constexpr ChannelMap() = default;
+    constexpr ChannelMap(std::uint8_t _mask) { *this = _mask; }
+    
+    constexpr ChannelMap& operator=(std::uint8_t _mask) {
+      mask = _mask;
+      count = 0;
+      for (std::uint8_t bit = 0; bit < 8; ++bit) {
+	if (mask & (1u << bit)) {
+	  idx[count++] = bit;
+	}
+      }
+      return *this;
+    }
+    
+    constexpr std::uint8_t operator[](std::size_t i) const {
+      chDbgAssert(i < count, "buffer overflow");
+      return idx[i];
+    }
+  };
+  
+  
   constexpr uint32_t servoTickFreq = 2'000'000U;
   constinit uint32_t servoPwmFreq  =  50U;
   constexpr uint32_t servoTicksPerPeriod = 40000; // servoTickFreq / servoPwmFreq
   float              halfWidthFactor = 1.0f;
   uint32_t	     startIndex = std::numeric_limits<uint32_t>::max();
-  uint32_t	     numServos = 0;
-
+  ChannelMap	     channelMap;
+  
   PWMConfig pwmServoCfg = {     
     .frequency = servoTickFreq,        
     .period    = servoTicksPerPeriod, 
@@ -47,6 +72,7 @@ namespace  {
     .dier = 0  
   };
 
+  
 }
 
 
@@ -57,11 +83,15 @@ DeviceStatus ServoPWM::start()
   chDbgAssert(servoPwmFreq >= 50, "invalid servoPwmFreq parameter");
   halfWidthFactor = PARAM_CGET("role.servo.pwm.pulse_half_width") ? 1.0f : 2.0f;
   startIndex = PARAM_CGET("role.servo.pwm.map_index1");
-  numServos =  PARAM_CGET("role.servo.pwm.num_servos");
+  channelMap = PARAM_CGET("role.servo.pwm.channel_mask");
+  
+  if (channelMap.count > 4) {
+    return DeviceStatus(DeviceStatus::SERVO_PWM, DeviceStatus::INVALID_PWM_MASK);
+  }
 
 
 #ifdef     BOARD_ENAC_MICROCANv3
-  DynPin::setScenario(DynPin::Scenario::PWM);
+  DynPin::setScenario(DynPin::Scenario::PWM, channelMap.mask);
 #endif
   pwmServoCfg.period = servoTickFreq / servoPwmFreq;
 
@@ -71,17 +101,23 @@ DeviceStatus ServoPWM::start()
   }
 
   // only the pins that are actually in use depending on role.pwm.num_servos
-  for (uint8_t channel=0; channel < numServos; channel++) {
+  for (uint8_t channelIdx=0; channelIdx < channelMap.count; channelIdx++) {
+    uint8_t channel = channelMap[channelIdx];
     pwmServoCfg.channels[channel] = {.mode = PWM_OUTPUT_ACTIVE_HIGH, .callback = NULL};
     if (not boardResource.tryAcquire(static_cast<HR>(std::to_underlying(HR::PA08) + channel))) {
       return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT);
     }
+#ifdef     BOARD_ENAC_MICROCANv3
+    if (not boardResource.tryAcquire(static_cast<HR>(std::to_underlying(HR::F1) + channel))) {
+      return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT);
+    }
+#endif      
   }
   
   //  PWMChannelConfig
   pwmStart(&SERVO_PWMD, &pwmServoCfg);
-  for (uint8_t srv = startIndex; srv < (startIndex + numServos); srv++) {
-    setPwm(srv, 500U);
+  for (uint8_t srv = startIndex; srv < (startIndex + channelMap.count); srv++) {
+    setPwm(srv, 1500.0f);
   }
   return DeviceStatus(DeviceStatus::SERVO_PWM);
 }
@@ -94,12 +130,12 @@ DeviceStatus ServoPWM::start()
   index=0    -> channel = 2000 (ou 1000 si half_width)
   index=1000 -> channel = 4000 (ou 2000 si half_width)
  */
-void ServoPWM::setPwm(uint8_t index, float value)
+void ServoPWM::setPwm(uint8_t index, float pulseWidth /*value*/)
 {
-  if ((startIndex <= index) and (index < (startIndex + numServos))) {
-    float pulseWidth = remap<0.0f, 1000.0f, 1000.0f, 2000.0f>(value);
+  if ((startIndex <= index) and (index < (startIndex + channelMap.count))) {
+    // float pulseWidth = remap<0.0f, 1000.0f, 1000.0f, 2000.0f>(value);
     pwmEnableChannel(&SERVO_PWMD,
-		     index - startIndex,
+		     channelMap[index - startIndex],
 		     pulseWidth * halfWidthFactor
 		     );
   } 
@@ -114,10 +150,10 @@ void ServoPWM::setPwm(uint8_t index, float value)
  */
 void ServoPWM::setUnitless(uint8_t index, float value)
 {
-  if ((startIndex <= index) and (index < (startIndex + numServos))) {
+  if ((startIndex <= index) and (index < (startIndex + channelMap.count))) {
     float pulseWidth = remap<-1.0f, 1.0f, 1000.0f, 2000.0f>(value);
     pwmEnableChannel(&SERVO_PWMD,
-		     index - startIndex,
+		     channelMap[index - startIndex],
 		     pulseWidth * halfWidthFactor
 		     );
   } 

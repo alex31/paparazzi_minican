@@ -461,7 +461,11 @@ namespace {
       DebugTrace("store %d '%s' has no value !!", i, name.data());
     }
     void operator()(const ssize_t i, const frozen::string& name, Persistant::Integer j) const {
-      DebugTrace("store %d '%s'  is Integer = %lld", i, name.data(), j);
+      if (j > 0) {
+	DebugTrace("store %d '%s'  is Integer = %lld 0x%llx 0b%s", i, name.data(), j, j, binary_fmt(j, 0));
+      } else {
+	DebugTrace("store %d '%s'  is Integer = %lld", i, name.data(), j);
+      }
     }
     void operator()(const ssize_t i, const frozen::string& name, bool b) const {
       DebugTrace("store %d '%s'  is Bool = %d", i, name.data(), b);

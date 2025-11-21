@@ -33,7 +33,7 @@ DeviceStatus SbusTunnel::start(UAVCAN::Node& _node)
   if (not boardResource.tryAcquire(HR::USART_2, HR::PB04)) {
     return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT);
   }
-  enabledChannels = decode_channel_mask(PARAM_CGET("role.tunnel.sbus.active_channels"));
+  enabledChannels = decode_channel_mask(PARAM_CGET("role.tunnel.sbus.channel_mask"));
   tunnelFrame.channels.len = count_active_channels(enabledChannels);
   chDbgAssert(tunnelFrame.channels.len <= SBUS_NUM_CHANNEL, "internal error");
   // if the serial telemetry is used in the future,

@@ -11,7 +11,7 @@ namespace DynPin {
   };
 
   void inactiveAllSharedPins();
-  void setScenario(Scenario s);
+  void setScenario(Scenario s, uint8_t mask=0);
 #endif
   bool isFirmwareMatchHardware();
   bool i2cUnhangBus(I2CDriver *i2cd);

@@ -21,7 +21,8 @@ struct DeviceStatus {
   };
   enum Error : uint8_t {
     OK, NOT_FOUND, INVALID_PARAM, HETEROGENEOUS_BAUDS,
-    NOT_RESPONDING, CONFLICT, I2C_TIMOUT, I2C_FREQ_INVALID, NB_ROLE_TOO_LARGE, NUM_ERRORS
+    NOT_RESPONDING, CONFLICT, I2C_TIMOUT, I2C_FREQ_INVALID, NB_ROLE_TOO_LARGE,
+    INVALID_PWM_MASK, NUM_ERRORS
   };
   constexpr DeviceStatus(Source s, Error e = OK,
 	       uint16_t spe = 0) : source(s), err(e), specific(spe) {}
@@ -63,6 +64,7 @@ struct DeviceStatus {
 	MKP(I2C_TIMOUT),
 	MKP(I2C_FREQ_INVALID),
 	MKP(NB_ROLE_TOO_LARGE),
+	MKP(INVALID_PWM_MASK),
 	MKP(CONFLICT)
       }));
 

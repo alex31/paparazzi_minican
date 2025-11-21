@@ -106,8 +106,8 @@ namespace {
   void scenario_UART();
   void scenario_I2C();
   void scenario_SPI();
-  void scenario_PWM();
-  void scenario_DSHOT();
+  void scenario_PWM(uint8_t mask);
+  void scenario_DSHOT(uint8_t mask);
 }
 
 
@@ -121,7 +121,7 @@ namespace DynPin {
     }
   }
 
-  void setScenario(Scenario s)
+  void setScenario(Scenario s, uint8_t mask)
   {
     // verify that we set the scenion only once
     static bool scenarioSet = false;
@@ -133,8 +133,8 @@ namespace DynPin {
     case Scenario::UART : scenario_UART(); break;
     case Scenario::I2C : scenario_I2C(); break;
     case Scenario::SPI : scenario_SPI(); break;
-    case Scenario::PWM : scenario_PWM(); break;
-    case Scenario::DSHOT : scenario_DSHOT(); break;
+    case Scenario::PWM : scenario_PWM(mask); break;
+    case Scenario::DSHOT : scenario_DSHOT(mask); break;
     }
     chThdSleepMilliseconds(1);
   }
@@ -203,18 +203,22 @@ namespace {
 
   }
   
-  void scenario_PWM()
+  void scenario_PWM(uint8_t mask)
   {
-    palSetLineMode(LINE_F1_b, PAL_MODE_ALTERNATE(F1_b_TIM_AF) | PAL_STM32_OSPEED_MID1);
-    palSetLineMode(LINE_F2_a, PAL_MODE_ALTERNATE(F2_a_TIM_AF) | PAL_STM32_OSPEED_MID1);
-    palSetLineMode(LINE_F3, PAL_MODE_ALTERNATE(F3_TIM_AF) | PAL_STM32_OSPEED_MID1);
-    palSetLineMode(LINE_F4, PAL_MODE_ALTERNATE(F4_TIM_AF) | PAL_STM32_OSPEED_MID1);
+    if (mask & 0b1)
+      palSetLineMode(LINE_F1_b, PAL_MODE_ALTERNATE(F1_b_TIM_AF) | PAL_STM32_OSPEED_MID1);
+    if (mask & 0b10)
+      palSetLineMode(LINE_F2_a, PAL_MODE_ALTERNATE(F2_a_TIM_AF) | PAL_STM32_OSPEED_MID1);
+    if (mask & 0b100)
+      palSetLineMode(LINE_F3, PAL_MODE_ALTERNATE(F3_TIM_AF) | PAL_STM32_OSPEED_MID1);
+    if (mask & 0b1000)
+      palSetLineMode(LINE_F4, PAL_MODE_ALTERNATE(F4_TIM_AF) | PAL_STM32_OSPEED_MID1);
   }
   
-  void scenario_DSHOT()
+  void scenario_DSHOT(uint8_t mask)
   {
     palSetLineMode(LINE_F3, PAL_MODE_ALTERNATE(F3_USART_AF));
-    scenario_PWM();
+    scenario_PWM(mask);
   }
 
 

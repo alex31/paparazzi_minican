@@ -19,7 +19,9 @@
       {"role.servo.pwm.frequency", {.min=50, .max=560, .v = 50}},
       {"role.servo.pwm.pulse_half_width", {.v = false}},
       {"role.servo.pwm.map_index1", {.min=0, .max=124, .v = 0}},
-      {"role.servo.pwm.num_servos", {.min=1, .max=4, .v = 4}},
+      // when pins are shared between timer and other peripherals, select
+      // the channels that are in use, other will be free
+      {"role.servo.pwm.channel_mask", {.min=0, .max=0b1111, .v = 0b1111}},
 	
       {"role.servo.smart", {.v = false}},
       {"role.servo.smart.map_index1", {.min=0, .max=124, .v = 0}},
@@ -33,9 +35,9 @@
 
 
       {"role.tunnel.sbus", {.v = false}},
-      // envoyer toutes les trames sbus sur le can occuperait 8% de la BP, il faut optimiser
-      // on n'envoie que les cannaux actifs (1 actif, 0 inactif)
-      {"role.tunnel.sbus.active_channels", {.v = 0x1111111111111111}},
+      // Sending all SBUS frames over CAN would consume 8% of the bandwidth; this must be optimized.
+      // Only the active channels are sent (1 = active, 0 = inactive).
+      {"role.tunnel.sbus.channel_mask", {.min=0, .max=0b1111'1111'1111'1111, .v = 0b1111'1111'1111'1111}},
 
       {"role.tunnel.telemetry", {.v = false}},
       // if xbee_frame == false, pprz_frame will be used
