@@ -22,7 +22,7 @@ private:
   ChannelBitset enabledChannels = {};
   SBUSDriver sbusd;
   UAVCAN::Node *node;
-  paparazzi_tunnel_SbusFrame tunnelFrame = {};
+  pprz_tunnel_SbusFrame tunnelFrame = {};
 
   static bool is_channel_active(ChannelMask mask, std::size_t channel_idx);
   static ChannelBitset decode_channel_mask(ChannelMask mask);

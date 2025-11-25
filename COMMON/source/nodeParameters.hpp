@@ -3,7 +3,6 @@
       {"can.terminal_resistor", {.v = true}},
 	
       {"uavcan.node_id", {.min = -124, .max = 124, .v = 0}}, // 0 is dynamic, negative is prefered dynamic
-      {"uavcan.last_msg", {.v = "just flashed"}},
       {"uavcan.dynid.fd", {.v = false}},
 	
       {"bus.i2c.pullup_resistor", {.v = true}},
@@ -29,9 +28,12 @@
 
       {"role.esc.dshot", {.v = false}},
       {"role.esc.dshot.map_index1", {.min=0, .max=19, .v = 0}},
-      {"role.esc.dshot.num_channels",  {.min=1, .max=4, .v = 1}},
+      {"role.esc.dshot.num_channels",  {.min=1, .max=4, .v = 1}}, // FIXME : use mask as servoPwm instead of num_channels
       {"role.esc.dshot.cmd_rate",  {.min=100, .max=1000, .v = 100}},
       {"role.esc.dshot.rpm_freq_div",  {.min=0, .max=1000, .v = 0}}, // 0 disable bidir telemetry
+
+      {"role.gnss.ubx", {.v = false}},
+      {"role.gnss.ubx.baudrate", {.min = 57'600, .max = 460'800, .v = 115'200}},
 
 
       {"role.tunnel.sbus", {.v = false}},
@@ -42,9 +44,15 @@
       {"role.tunnel.telemetry", {.v = false}},
       // if xbee_frame == false, pprz_frame will be used
       {"role.tunnel.telemetry.xbee_frame", {.v = false}},
-      {"role.tunnel.telemetry.baudrate", {.min = 1'200, .max = 460'400, .v = 57'600}},
+      {"role.tunnel.telemetry.baudrate", {.min = 1'200, .max = 460'800, .v = 57'600}},
 
       {"role.i2c.barometer.mpl3115a2", {.v = false}},
+
+      // driver fixes ODR=50Hz and oversampling=256, continuous.
+      // range is the only configurable parameter
+      {"role.i2c.magnetometer.q5883", {.v = false}},
+      {"role.i2c.magnetometer.q5883.range", {.min = 2, .max = 8, .v = 2}},
+
 
 
 

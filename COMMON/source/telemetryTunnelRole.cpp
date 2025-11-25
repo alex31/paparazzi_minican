@@ -9,7 +9,7 @@
 
 
 /*
-  dans le subscribe : s'abonner au message paparazzi_tunnel_Telemetry
+  dans le subscribe : s'abonner au message pprz_tunnel_Telemetry
   dans la CB : creer un buffer message à partir du message UAVCAN et l'envoyer
   via uartSend -> on est synchrone, pas besoin de thread
 
@@ -19,7 +19,7 @@
    ° écoute sur la liaison série avec un buffer de 260 et un timout sur 1 ou 2 caractères
    ° nourrit un objet pprzLink
    ° dans la CB de pprzLink : si le message est complet/correct :
-     construire un message  paparazzi_tunnel_Telemetry et l'envoyer via UAVCAN
+     construire un message  pprz_tunnel_Telemetry et l'envoyer via UAVCAN
  */
 
 namespace {
@@ -53,14 +53,14 @@ void TelemetryTunnel::trapError_s2u([[maybe_unused]] uint32_t v, [[maybe_unused]
 
 
 void TelemetryTunnel::processPaparazziTelemetryCommand_u2s(CanardRxTransfer *,
-							   const paparazzi_tunnel_Telemetry &msg)
+							   const pprz_tunnel_Telemetry &msg)
 {
   // if (transfert->source_node_id  == m_node->getNodeId()) {
-  //   DebugTrace("get my own message");
+  //   m_node->infoCb("get my own message");
   //   return;
   // }
   
-  auto copyPprzHeader = [](PprzHeader& pph, const paparazzi_tunnel_PprzHeader& src) {
+  auto copyPprzHeader = [](PprzHeader& pph, const pprz_tunnel_PprzHeader& src) {
     pph.source = src.source;
     pph.destination = src.destination;
     pph.classId = src.classId;
@@ -73,7 +73,7 @@ void TelemetryTunnel::processPaparazziTelemetryCommand_u2s(CanardRxTransfer *,
   };
 
   if (msg.payload.len > XbeeMsg_t::MAX_SIZE) {
-    DebugTrace("processPaparazziTelemetryCommand_u2s: (len = %u) > (MAX_SIZE = %u)",
+    m_node->infoCb("processPaparazziTelemetryCommand_u2s: (len = %u) > (MAX_SIZE = %u)",
 	       msg.payload.len,  XbeeMsg_t::MAX_SIZE);
     return;
   }
@@ -81,9 +81,9 @@ void TelemetryTunnel::processPaparazziTelemetryCommand_u2s(CanardRxTransfer *,
   etl::span<const uint8_t> payload(msg.payload.data, msg.payload.len);
 
   switch (msg.xbeeHeader.union_tag) {
-  case PAPARAZZI_TUNNEL_XBEEHEADER_TX: {
+  case PPRZ_TUNNEL_XBEEHEADER_TX: {
     if (not xbeeFrame) {
-      DebugTrace("PPRZ decoder cannoty decode XBEE frame");
+      m_node->infoCb("PPRZ decoder cannot decode XBEE frame");
       break;
     }
     XbeeHeader xbh;
@@ -101,9 +101,9 @@ void TelemetryTunnel::processPaparazziTelemetryCommand_u2s(CanardRxTransfer *,
     sendMsg(ppmsg, ppmsg.size());
     break;
   }
-  case PAPARAZZI_TUNNEL_XBEEHEADER_RX: {
+  case PPRZ_TUNNEL_XBEEHEADER_RX: {
     if (not xbeeFrame) {
-      DebugTrace("PPRZ decoder cannoty decode XBEE frame");
+      m_node->infoCb("PPRZ decoder cannot decode XBEE frame");
       break;
     }
     XbeeHeader xbh;
@@ -121,9 +121,9 @@ void TelemetryTunnel::processPaparazziTelemetryCommand_u2s(CanardRxTransfer *,
     sendMsg(ppmsg, ppmsg.size());
     break;
   }
-  case PAPARAZZI_TUNNEL_XBEEHEADER_NONE: {
+  case PPRZ_TUNNEL_XBEEHEADER_NONE: {
     if (xbeeFrame) {
-      DebugTrace("XBEE decoder cannoty decode PPRZ frame");
+      m_node->infoCb("XBEE decoder cannot decode PPRZ frame");
       break;
     }
     PprzHeader pph;
@@ -142,44 +142,44 @@ void TelemetryTunnel::processPaparazziTelemetryCommand_u2s(CanardRxTransfer *,
 void TelemetryTunnel::processPaparazziTelemetryCommand_s2u(PprzPolicy pol,
 							   etl::span<const uint8_t> in)
 {
-  paparazzi_tunnel_Telemetry out;
+  pprz_tunnel_Telemetry out;
 
   if (pol == PprzPolicy::XBEE_API) {
     if (in.size() > XbeeMsg_t::MAX_SIZE) {
-      DebugTrace("processPaparazziTelemetryCommand_s2u: (len = %u) > (MAX_SIZE = %u)",
+      m_node->infoCb("processPaparazziTelemetryCommand_s2u: (len = %u) > (MAX_SIZE = %u)",
 		 in.size(),  XbeeMsg_t::MAX_SIZE);
       return;
     }
     XbeeHeader xbh(in); // will 'advance' in of sizeof XbeeHeader
     switch(xbh.role) {
     case XbeeRole::Tx: {
-      out.xbeeHeader.union_tag = PAPARAZZI_TUNNEL_XBEEHEADER_TX;
+      out.xbeeHeader.union_tag = PPRZ_TUNNEL_XBEEHEADER_TX;
       out.xbeeHeader.tx.frame_id = xbh.frameId;
       out.xbeeHeader.tx.dest_id =  __builtin_bswap16(xbh.destId_bigEndian);
       out.xbeeHeader.tx.options =  xbh.options;
       break;
     }
     case XbeeRole::Rx: {
-      out.xbeeHeader.union_tag = PAPARAZZI_TUNNEL_XBEEHEADER_RX;
+      out.xbeeHeader.union_tag = PPRZ_TUNNEL_XBEEHEADER_RX;
       out.xbeeHeader.rx.src_id = __builtin_bswap16(xbh.srcId_bigEndian);
       out.xbeeHeader.rx.rssi =  xbh.rssi;
       out.xbeeHeader.rx.options = xbh.options;
       break;
     }
     default: {
-      out.xbeeHeader.union_tag = PAPARAZZI_TUNNEL_XBEEHEADER_NONE;
-      DebugTrace("role 0x%x is neither Tx(0x1) or Rx(0x81)",
+      out.xbeeHeader.union_tag = PPRZ_TUNNEL_XBEEHEADER_NONE;
+      m_node->infoCb("role 0x%x is neither Tx(0x1) or Rx(0x81)",
 		 std::to_underlying(xbh.role));
     }
     }
   } else {
     if (in.size() >  PprzMsg_t::MAX_SIZE) {
-      DebugTrace("processPaparazziTelemetryCommand_s2u: (len = %u) > (MAX_SIZE = %u)",
+      m_node->infoCb("processPaparazziTelemetryCommand_s2u: (len = %u) > (MAX_SIZE = %u)",
 		 in.size(),  PprzMsg_t::MAX_SIZE);
       return;
     }
 
-    out.xbeeHeader.union_tag = PAPARAZZI_TUNNEL_XBEEHEADER_NONE;
+    out.xbeeHeader.union_tag = PPRZ_TUNNEL_XBEEHEADER_NONE;
   }
   PprzHeader pph(in); // will 'advance' in of sizeof PprzHeader
   out.pprzHeader.source = pph.source;

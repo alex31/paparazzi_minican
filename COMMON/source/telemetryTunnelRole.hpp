@@ -16,7 +16,7 @@ public:
 
 private:
   void processPaparazziTelemetryCommand_u2s(CanardRxTransfer *,
-					    const  paparazzi_tunnel_Telemetry &msg);
+					    const  pprz_tunnel_Telemetry &msg);
   void processPaparazziTelemetryCommand_s2u(PprzPolicy pol,
 					    etl::span<const uint8_t> msg);
   static void trapError_s2u(uint32_t v, uint32_t i);
