@@ -276,6 +276,7 @@ CPPSRC = $(ALLCPPSRC) \
 	$(COMMON)/dynamicPinConfig.cpp \
 	$(COMMON)/servoRole.cpp \
 	$(COMMON)/gpsUbxRole.cpp \
+	$(COMMON)/gpsUbxDecoder.cpp \
 	$(COMMON)/servoPwm.cpp \
 	$(COMMON)/servoSmart.cpp \
 	$(COMMON)/escDshotRole.cpp \

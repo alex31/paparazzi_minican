@@ -274,7 +274,7 @@ namespace CANSlave {
 	  .unique_id = {},
 	  .certificate_of_authenticity = {}
 	},
-	.name = {10, DEVICE_NAME}
+	.name = {sizeof(DEVICE_NAME) - 1U, DEVICE_NAME}
       },
 
       .flagCb = [] -> uint8_t {return nodeId;},
@@ -286,7 +286,6 @@ namespace CANSlave {
 #endif
       }
     };
-  
     static UAVCAN::Node node(uavCanCfg);
     
     slaveNode = &node;
