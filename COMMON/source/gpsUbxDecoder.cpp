@@ -34,7 +34,9 @@ void Decoder::dispatch()
       payload.size() == sizeof(NavPvt) &&
       cfg.navPvtCb) {
     const auto* msg = reinterpret_cast<const NavPvt*>(payload.data());
-    cfg.navPvtCb(*msg);
+    if (not cfg.navPvtCb(*msg)) {
+      DebugTrace("Error, navPvtCb return false");
+    }
     return;
   }
 
