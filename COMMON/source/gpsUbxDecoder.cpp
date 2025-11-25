@@ -24,52 +24,49 @@ inline void Decoder::updateChecksum(uint8_t byte)
   ckB = ckB + ckA;
 }
 
-void Decoder::dispatch()
+bool Decoder::dispatch()
 {
   if (cls != static_cast<uint8_t>(MessageClass::NAV)) {
-    return;
+    return false;
   }
 
   if (id == static_cast<uint8_t>(NavId::PVT) &&
       payload.size() == sizeof(NavPvt) &&
       cfg.navPvtCb) {
     const auto* msg = reinterpret_cast<const NavPvt*>(payload.data());
-    if (not cfg.navPvtCb(*msg)) {
-      DebugTrace("Error, navPvtCb return false");
-    }
-    return;
+    return  cfg.navPvtCb(*msg);
   }
-
+  
   if (id == static_cast<uint8_t>(NavId::DOP) &&
       payload.size() == sizeof(NavDop) &&
       cfg.navDopCb) {
     const auto* msg = reinterpret_cast<const NavDop*>(payload.data());
-    cfg.navDopCb(*msg);
-    return;
+     return cfg.navDopCb(*msg);
   }
-
+  
   if (id == static_cast<uint8_t>(NavId::SAT) &&
       payload.size() >= sizeof(NavSat) &&
       cfg.navSatCb) {
     const auto* sat = reinterpret_cast<const NavSat*>(payload.data());
     const std::size_t headerSize = sizeof(NavSat);
     if (payload.size() < headerSize) {
-      return;
+      return false;
     }
     const std::size_t svArea = payload.size() - headerSize;
     if (svArea % sizeof(NavSatSv) != 0) {
-      return;
+      return false;
     }
     const std::size_t svCount = svArea / sizeof(NavSatSv);
     if (sat->numSvs != svCount) {
-      return;
+      return false;
     }
-    cfg.navSatCb(*sat, svCount);
-    return;
+    return cfg.navSatCb(*sat, svCount);
   }
 
   DebugTrace("Error : Don't knwow how to DISPATCH type %u with size %u",
 	     id, payload.size());
+
+  return false;
 }
 
 void UBX::Decoder::feed(etl::span<const uint8_t> data)
@@ -178,7 +175,11 @@ void UBX::Decoder::feed(etl::span<const uint8_t> data)
       DebugTrace("UBX FSM: WAIT_FOR_CHECKSUM_2 ckB=0x%02X (calc:0x%02X/0x%02X)", byte, ckA, ckB);
       recvCkB = byte;
       if (recvCkA == ckA && recvCkB == ckB) {
-        dispatch();
+        if (not dispatch()) {
+	  DebugTrace("ERROR : Decoder::dispatch failed");
+	} else {
+	  DebugTrace("INFO : Decoder::dispatch succeed");
+	}
       } else {
         DebugTrace("Checksum error");
       }
