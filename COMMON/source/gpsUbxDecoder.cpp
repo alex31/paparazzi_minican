@@ -1,5 +1,6 @@
 #include "gpsUbxDecoder.hpp"
 #include "stdutil.h"
+#include <cstring>
 
 using namespace UBX;
 
@@ -71,16 +72,23 @@ void Decoder::dispatch()
 
 void UBX::Decoder::feed(etl::span<const uint8_t> data)
 {
-  for (uint8_t byte : data) {
+  std::size_t idx = 0;
+  const std::size_t total = data.size();
+
+  while (idx < total) {
+    const uint8_t byte = data[idx];
     switch (state) {
     case WAIT_FOR_SYNC1:
+      DebugTrace("UBX FSM: WAIT_FOR_SYNC1 byte=0x%02X", byte);
       if (byte == Sync1) {
         reset();
         state = WAIT_FOR_SYNC2;
       }
+      ++idx;
       break;
 
     case WAIT_FOR_SYNC2:
+      DebugTrace("UBX FSM: WAIT_FOR_SYNC2 byte=0x%02X", byte);
       if (byte == Sync2) {
         state = WAIT_FOR_CLASS;
       } else if (byte == Sync1) {
@@ -89,28 +97,36 @@ void UBX::Decoder::feed(etl::span<const uint8_t> data)
       } else {
         state = WAIT_FOR_SYNC1;
       }
+      ++idx;
       break;
 
     case WAIT_FOR_CLASS:
+      DebugTrace("UBX FSM: WAIT_FOR_CLASS cls=0x%02X", byte);
       cls = byte;
       ckA = ckB = 0;
       updateChecksum(byte);
       state = WAIT_FOR_ID;
+      ++idx;
       break;
 
     case WAIT_FOR_ID:
+      DebugTrace("UBX FSM: WAIT_FOR_ID id=0x%02X", byte);
       id = byte;
       updateChecksum(byte);
       state = WAIT_FOR_LEN1;
+      ++idx;
       break;
 
     case WAIT_FOR_LEN1:
+      DebugTrace("UBX FSM: WAIT_FOR_LEN1 len_lsb=%u", static_cast<unsigned>(byte));
       expectedLength = byte;
       updateChecksum(byte);
       state = WAIT_FOR_LEN2;
+      ++idx;
       break;
 
     case WAIT_FOR_LEN2:
+      DebugTrace("UBX FSM: WAIT_FOR_LEN2 len_msb=%u (len=%u)", static_cast<unsigned>(byte), static_cast<unsigned>(expectedLength | (static_cast<uint16_t>(byte) << 8)));
       expectedLength |= static_cast<uint16_t>(byte) << 8;
       updateChecksum(byte);
       payload.clear();
@@ -122,29 +138,50 @@ void UBX::Decoder::feed(etl::span<const uint8_t> data)
       } else {
         state = (expectedLength == 0) ? WAIT_FOR_CHECKSUM_1 : PROCESSING_PAYLOAD;
       }
+      ++idx;
       break;
 
     case PROCESSING_PAYLOAD:
-      payload.push_back(byte);
-      updateChecksum(byte);
+    {
+      const std::size_t already = payload.size();
+      const std::size_t remaining = expectedLength - already;
+      const std::size_t available = total - idx;
+      const std::size_t chunk = (available < remaining) ? available : remaining;
+
+      if (chunk > 0) {
+        DebugTrace("UBX FSM: PROCESS payload chunk=%u remaining_before=%u", static_cast<unsigned>(chunk), static_cast<unsigned>(remaining));
+        const std::size_t oldSize = payload.size();
+        payload.resize(oldSize + chunk);
+        std::memcpy(payload.data() + oldSize, data.data() + idx, chunk);
+        for (std::size_t i = 0; i < chunk; ++i) {
+          updateChecksum(data[idx + i]);
+        }
+        idx += chunk;
+      }
+
       if (payload.size() >= expectedLength) {
         state = WAIT_FOR_CHECKSUM_1;
       }
       break;
+    }
 
     case WAIT_FOR_CHECKSUM_1:
+      DebugTrace("UBX FSM: WAIT_FOR_CHECKSUM_1 ckA=0x%02X", byte);
       recvCkA = byte;
       state = WAIT_FOR_CHECKSUM_2;
+      ++idx;
       break;
 
     case WAIT_FOR_CHECKSUM_2:
+      DebugTrace("UBX FSM: WAIT_FOR_CHECKSUM_2 ckB=0x%02X (calc:0x%02X/0x%02X)", byte, ckA, ckB);
       recvCkB = byte;
       if (recvCkA == ckA && recvCkB == ckB) {
         dispatch();
       } else {
-	DebugTrace("Checksum error");
+        DebugTrace("Checksum error");
       }
       reset();
+      ++idx;
       break;
     }
   }
