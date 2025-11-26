@@ -17,7 +17,7 @@ public:
   GpsUBX();
   
 private:
-  static constexpr size_t maxUbxFrameSize = 640U;
+  static constexpr size_t maxUbxFrameSize = 1024U;
   static bool navPvtCb(const UBX::NavPvt& msg);
   static bool navDopCb(const UBX::NavDop& msg);
   static bool navSatCb(const UBX::NavSat& msg);
@@ -35,6 +35,6 @@ private:
   } dopCache;
   uint8_t satsVisible = 0;
   uint8_t satsUsed = 0;
-  uint8_t *frame;
+  static uint8_t frame[maxUbxFrameSize];
   void periodic(void *);
 };

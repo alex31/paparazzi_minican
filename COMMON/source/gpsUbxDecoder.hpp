@@ -66,7 +66,7 @@ namespace UBX {
     inline void updateChecksum(uint8_t byte);
     bool dispatch();
 
-    etl::vector<uint8_t, 768> payload;
+    etl::vector<uint8_t, 1024> payload;
     const DecoderConf& cfg;
 
     uint16_t expectedLength = 0;

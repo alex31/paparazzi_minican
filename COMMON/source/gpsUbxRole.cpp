@@ -153,17 +153,6 @@ GpsUBX::GpsUBX()
 
 
 
-/*
-  dans le subscribe : rien à faire : on ne reçoit pas de messages UAVCan
-
-  dans le start :
-  + demarrer la liaison série avec les bon paramètres
-  + creer un thread qui :
-   ° écoute sur la liaison série avec un buffer de 600 et un timout sur 1 ou 2 caractères
-   ° nourrit un objet gpsUbx
-   ° dans la CB de gpsUbx : si le message est complet/correct :
-     construire un message  et l'envoyer via UAVCAN
- */
 
 namespace {
   constexpr bool isLeapYear(uint16_t year)
@@ -246,6 +235,7 @@ namespace {
 // It is assumed that thread live forever (until poweroff) dynamic memory allocation is
 // done there to not use ram if the role is not enabled. It's normal that the memory is never
 // released
+// Dans le subscribe : rien à faire : on ne reçoit pas de messages UAVCan
 
 DeviceStatus GpsUBX::subscribe(UAVCAN::Node&)
 {
@@ -257,7 +247,6 @@ DeviceStatus GpsUBX::start(UAVCAN::Node& node)
 {
   using HR = HWResource;
   DeviceStatus status(DeviceStatus::GPS_ROLE);
-  frame = (uint8_t *) malloc_m(maxUbxFrameSize);
   m_node = &node;
   
   gpscfg.speed =  PARAM_CGET("role.gnss.ubx.baudrate");
@@ -295,3 +284,5 @@ void GpsUBX::periodic(void *)
     }
   }
 }
+
+IN_DMA_SECTION(uint8_t GpsUBX::frame[maxUbxFrameSize]);
