@@ -24,6 +24,7 @@
       {"role.servo.smart", {.v = false}},
       {"role.servo.smart.map_index1", {.min=0, .max=124, .v = 0}},
       {"role.servo.smart.num_servos",  {.min=1, .max=8, .v = 1}},
+      {"role.servo.smart.status_frequency",  {.min=0, .max=100, .v = 0}}, // in Hz, 0 is no reporting
 
       {"role.esc.dshot", {.v = false}},
       {"role.esc.dshot.map_index1", {.min=0, .max=19, .v = 0}},

@@ -50,7 +50,7 @@ DeviceStatus ServoRole::subscribe(UAVCAN::Node& node)
   return DeviceStatus::SERVO_ROLE;
 }
 
-DeviceStatus ServoRole::start(UAVCAN::Node&)
+DeviceStatus ServoRole::start(UAVCAN::Node& node)
 {
   DeviceStatus status(DeviceStatus::SERVO_ROLE);
   
@@ -61,7 +61,7 @@ DeviceStatus ServoRole::start(UAVCAN::Node&)
     status = ServoPWM::start();
 
   if (m_role_servo_smart && status)
-    status = ServoSmart::start();
+    status = ServoSmart::start(node);
  
 
   return status;

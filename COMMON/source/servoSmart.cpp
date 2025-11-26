@@ -5,7 +5,24 @@
 #include "stdutil++.hpp"
 #include "hardwareConf.hpp"
 
+/*
+  • Review – servoSmart.cpp status publishing
 
+  - COMMON/source/servoSmart.cpp:113 – status loop always iterates id = 1..numServos and ignores startIndex, so if your servo map doesn’t start at 1 you’ll publish
+    IDs that don’t match the command mapping (and you’ll query non-existent IDs on the bus).
+  - COMMON/source/servoSmart.cpp:128-131 – position, speed, power_rating_pct are published without unit conversion/clamping. STS3032::StateVector uses normalized
+    [-1..1] for position and steps/s for speed; 1011.Status expects radians and rad/s. power_rating_pct is a uint7 and should be clamped 0..100 (or 127) with UNKNOWN
+    when unavailable.
+  - COMMON/source/servoSmart.cpp:129 – Unavailable fields should be NaN/UNKNOWN per the DSDL comment; setting force = -1 misleads consumers into thinking the actuator
+    is applying -1 N·m/-1 N.
+  - COMMON/source/servoSmart.cpp:113-118 – No error handling when readStates() fails/timeouts; you’ll broadcast stale defaults (e.g., zeroed struct with
+    status=STATUS_TIMEOUT) as valid statuses and may block the loop if a servo is offline.
+
+  Suggested next steps: honor startIndex when iterating/publishing; convert normalized position/load/speed into physical units (or publish NaN/UNKNOWN when not
+  available); clamp power_rating_pct; use NaN for unknown force; add handling for read failures (e.g., skip publish or mark UNKNOWN).
+ 
+
+ */
 
 #ifdef     BOARD_ENAC_MICROCANv3
 #include "dynamicPinConfig.hpp"
@@ -15,15 +32,22 @@ namespace  {
   STS3032 servoBus(&ExternalUARTD);
   uint32_t	     startIndex = std::numeric_limits<uint32_t>::max();
   uint32_t	     numServos = 0;
+  uint32_t	     reportPeriod = 0;
+  void periodic(void *);
+  UAVCAN::Node*	     nodep = nullptr;
+  void copy(const STS3032::StateVector& sv, uavcan_equipment_actuator_Status &msg,
+	    uint8_t id);
 }
 
 
-DeviceStatus ServoSmart::start()
+DeviceStatus ServoSmart::start(UAVCAN::Node& node)
 {
   using HR = HWResource;
   startIndex = PARAM_CGET("role.servo.smart.map_index1");
   numServos =  PARAM_CGET("role.servo.smart.num_servos");
-
+  reportPeriod = CH_CFG_ST_FREQUENCY / PARAM_CGET("role.servo.smart.status_frequency");
+  nodep = &node;
+    
 #if PLATFORM_MINICAN
   if (not boardResource.tryAcquire(HR::USART_2, HR::PB03, HR::PB04)) {
     return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT);
@@ -40,7 +64,6 @@ DeviceStatus ServoSmart::start()
 #endif
 
   
-  //  PWMChannelConfig
   servoBus.init();
   if (auto status = servoBus.detectBaudrate({1'000'000U, 500'000U, 250'000U}); status == SmartServo::OK) {
     DebugTrace("detectBaudrate OK -> Kbaud = %lu",
@@ -61,6 +84,8 @@ DeviceStatus ServoSmart::start()
     }
   }
 
+  chThdCreateFromHeap(NULL, THD_WORKING_AREA_SIZE(1536), "smart servos periodic", NORMALPRIO, 
+		      periodic, nullptr);
   return DeviceStatus(DeviceStatus::SERVO_SMART);
 }
 
@@ -96,3 +121,34 @@ void ServoSmart::setSpeed(uint8_t index, float value)
   } 
 }
 
+namespace {
+  
+  void periodic(void *)
+  {
+     while (true) {
+       systime_t ts = chVTGetSystemTimeX();
+       for(uint8_t id = startIndex; id < startIndex + numServos; id++) {
+	 STS3032::StateVector sv = servoBus.readStates(id);
+	 if (sv.status != SmartServo::STATUS_TIMEOUT) {
+	   uavcan_equipment_actuator_Status msg;
+	   copy(sv, msg, id);
+	   nodep->sendBroadcast(msg);
+	 }
+       }
+       chThdSleepUntilWindowed(ts, ts + reportPeriod);
+      }
+  }
+
+
+  void copy(const STS3032::StateVector& sv, uavcan_equipment_actuator_Status &msg,
+	    uint8_t id)
+  {
+    msg.actuator_id = id;
+    msg.position = sv.position;
+    msg.force = std::numeric_limits<float>::quiet_NaN(); // not available
+    msg.speed = sv.speed;
+    msg.power_rating_pct = std::clamp(static_cast<int>(sv.load * 100), 0, 100);
+  }
+
+  
+}
