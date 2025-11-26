@@ -60,7 +60,7 @@ bool Decoder::dispatch()
     if (sat->numSvs != svCount) {
       return false;
     }
-    return cfg.navSatCb(*sat, svCount);
+    return cfg.navSatCb(*sat);
   }
 
   DebugTrace("Error : Don't knwow how to DISPATCH type %u with size %u",
@@ -91,6 +91,7 @@ void UBX::Decoder::feed(etl::span<const uint8_t> data)
       if (byte == Sync2) {
         state = WAIT_FOR_CLASS;
       } else if (byte == Sync1) {
+	// sliding window check :
         // stay in WAIT_FOR_SYNC2 to allow immediate resync
         state = WAIT_FOR_SYNC2;
       } else {

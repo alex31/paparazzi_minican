@@ -1,0 +1,38 @@
+Roles UAVCAN – messages reçus / envoyés
+======================================
+
+- ServoRole (`role.servo.pwm`, `role.servo.smart`)
+  - Reçoit : `uavcan.equipment.actuator.ArrayCommand` (broadcast), pour piloter PWM ou SmartServo selon le type de commande.
+  - Envoie : rien.
+
+- Baro_MPL3115A2_Role (`role.i2c.barometer.mpl3115a2`)
+  - Reçoit : rien.
+  - Envoie : `uavcan.equipment.air_data.StaticPressure`, `uavcan.equipment.air_data.StaticTemperature` (mesures périodiques).
+
+- EscDshot (`role.esc.dshot`)
+  - Reçoit : `uavcan.equipment.esc.RawCommand` (broadcast) pour les consignes moteurs.
+  - Envoie : `uavcan.equipment.esc.Status` uniquement si la télémétrie bidirectionnelle DSHOT_BIDIR est activée et avec la cadence configurée.
+
+- SbusTunnel (`role.tunnel.sbus`)
+  - Reçoit : rien en UAVCAN (écoute SBUS série).
+  - Envoie : `pprz.tunnel.SbusFrame` (trame SBUS relayée sur le bus).
+
+- TelemetryTunnel (`role.tunnel.telemetry`)
+  - Reçoit : `pprz.tunnel.Telemetry` (broadcast) côté UAVCAN, et les flux série PPRZ/XBee selon la config.
+  - Envoie : `pprz.tunnel.Telemetry` (republication vers UAVCAN des flux PPRZ/XBee lus sur l’UART).
+
+- GpsUBX (`role.gnss.ubx`)
+  - Reçoit : rien en UAVCAN (consomme les messages UBX sur l’UART).
+  - Envoie : `uavcan.equipment.gnss.Fix` (NAV-PVT), `uavcan.equipment.gnss.Auxiliary` (NAV-DOP/NAV-SAT).
+
+Services/protocoles gérés par le nœud (pubSub/UAVCanSlave)
+-----------------------------------------------------------
+- Diffusion périodique : `uavcan.protocol.NodeStatus`.
+- Gestion ID dynamique : `uavcan.protocol.dynamic_node_id.Allocation` (req/broadcast).
+- Services de base : réponse à `uavcan.protocol.GetNodeInfo` (et client pour récupérer des infos si besoin).
+- Paramètres : `uavcan.protocol.param.GetSet` (req/res), `uavcan.protocol.param.ExecuteOpcode` (save/erase).
+- Redémarrage : `uavcan.protocol.RestartNode` (req/res).
+- Mise à jour firmware : `uavcan.protocol.file.BeginFirmwareUpdate` (req/res) + `uavcan.protocol.file.Read` (client) pour récupérer l’image.
+- Réception passive : souscription aux `uavcan.protocol.NodeStatus` reçus (monitoring).
+
+Remarque : les rôles sont instanciés au démarrage selon les paramètres persistants et utilisent `sendBroadcast` du nœud UAVCAN. Les services ci-dessus sont fournis par la couche pubSub/UAVCanSlave indépendamment des rôles applicatifs.

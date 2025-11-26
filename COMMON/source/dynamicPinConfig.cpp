@@ -103,7 +103,7 @@ namespace DynPin {
 #ifdef  BOARD_ENAC_MICROCANv3
 
 namespace {
-  void scenario_UART();
+  void scenario_UART(uint8_t mask); // MSB F4 F3 F2a F0b F0a LSB
   void scenario_I2C();
   void scenario_SPI();
   void scenario_PWM(uint8_t mask);
@@ -130,7 +130,7 @@ namespace DynPin {
     
     inactiveAllSharedPins();
     switch (s) {
-    case Scenario::UART : scenario_UART(); break;
+    case Scenario::UART : scenario_UART(mask); break;
     case Scenario::I2C : scenario_I2C(); break;
     case Scenario::SPI : scenario_SPI(); break;
     case Scenario::PWM : scenario_PWM(mask); break;
@@ -171,12 +171,18 @@ namespace DynPin {
 
 
 namespace {
-  void scenario_UART()
+  void scenario_UART(uint8_t mask) //  MSB F4 F3 F2a F0b F0a LSB
   {
-    palSetLineMode(LINE_F0_a, PAL_MODE_ALTERNATE(F0_a_USART_AF));
-    palSetLineMode(LINE_F2_a, PAL_MODE_ALTERNATE(F2_a_USART_AF));
-    palSetLineMode(LINE_F3, PAL_MODE_ALTERNATE(F3_USART_AF));
-    palSetLineMode(LINE_F4, PAL_MODE_ALTERNATE(F4_USART_AF));
+    if (mask & (1<<0))
+      palSetLineMode(LINE_F0_a, PAL_MODE_ALTERNATE(F0_a_USART_AF));
+    if (mask & (1<<1))
+      palSetLineMode(LINE_F0_b, PAL_MODE_ALTERNATE(F0_b_USART_AF));
+     if (mask & (1<<2))
+       palSetLineMode(LINE_F2_a, PAL_MODE_ALTERNATE(F2_a_USART_AF));
+     if (mask & (1<<3))
+       palSetLineMode(LINE_F3, PAL_MODE_ALTERNATE(F3_USART_AF));
+     if (mask & (1<<4))
+       palSetLineMode(LINE_F4, PAL_MODE_ALTERNATE(F4_USART_AF));
   }
   
   void scenario_I2C()

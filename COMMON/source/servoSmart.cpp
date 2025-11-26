@@ -24,13 +24,21 @@ DeviceStatus ServoSmart::start()
   startIndex = PARAM_CGET("role.servo.smart.map_index1");
   numServos =  PARAM_CGET("role.servo.smart.num_servos");
 
-#ifdef     BOARD_ENAC_MICROCANv3
-  DynPin::setScenario(DynPin::Scenario::UART);
-#endif
-
-  if (not boardResource.tryAcquire(HR::USART_2, HR::PB03)) {
+#if PLATFORM_MINICAN
+  if (not boardResource.tryAcquire(HR::USART_2, HR::PB03, HR::PB04)) {
     return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT);
   }
+#endif
+  
+#if PLATFORM_MICROCAN
+  if (not boardResource.tryAcquire(HR::USART_1, HR::PA09, HR::PA10,
+				   HR::F2, HR::F3)) {
+    return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT);
+  }
+  // MSB F4 F3 F2a F0b F0a LSB
+  DynPin::setScenario(DynPin::Scenario::UART, 0b01100););
+#endif
+
   
   //  PWMChannelConfig
   servoBus.init();

@@ -46,7 +46,7 @@ namespace UBX {
   struct DecoderConf {
     bool (*navPvtCb)(const NavPvt& msg);
     bool (*navDopCb)(const NavDop& msg);
-    bool (*navSatCb)(const NavSat& msg, std::size_t svCount);
+    bool (*navSatCb)(const NavSat& msg);
   };
   
   
@@ -58,7 +58,7 @@ namespace UBX {
     static constexpr uint8_t Sync1 = 0xB5;
     static constexpr uint8_t Sync2 = 0x62;
 
-    Decoder(const DecoderConf _cfg) : cfg(_cfg) {}
+    Decoder(const DecoderConf& _cfg) : cfg(_cfg) {}
      void feed(etl::span<const uint8_t> data);
     
   private:
@@ -66,7 +66,7 @@ namespace UBX {
     inline void updateChecksum(uint8_t byte);
     bool dispatch();
 
-    etl::vector<uint8_t, 1024> payload;
+    etl::vector<uint8_t, 768> payload;
     const DecoderConf& cfg;
 
     uint16_t expectedLength = 0;

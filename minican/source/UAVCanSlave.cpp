@@ -10,6 +10,7 @@
 #include "escDshotRole.hpp"
 #include "sbusTunnelRole.hpp"
 #include "telemetryTunnelRole.hpp"
+#include "gpsUbxRole.hpp"
 #include "firmwareUpdate.hpp"
 #include "hardwareConf.hpp"
 #include "UAVCanHelper.hpp"
@@ -306,6 +307,7 @@ namespace CANSlave {
 	     && addRole<Baro_MPL3115A2_Role, FixedString("role.i2c.barometer.mpl3115a2")>()
 	     && addRole<EscDshot, FixedString("role.esc.dshot")>()
 	     && addRole<SbusTunnel, FixedString("role.tunnel.sbus")>()
+	     && addRole<GpsUBX, FixedString("role.gnss.ubx")>()
 	     && addRole<TelemetryTunnel, FixedString("role.tunnel.telemetry")>())) {
       node.setStatusMode(UAVCAN_PROTOCOL_NODESTATUS_MODE_OFFLINE);
       return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::NB_ROLE_TOO_LARGE);
@@ -330,7 +332,7 @@ namespace CANSlave {
       HealthSurvey::start(node);
     }
     
-    DebugTrace("Dynamic node_id is %d", node.getNodeId());
+    node.infoCb("Dynamic node_id is %d", node.getNodeId());
     node.setStatusMode(UAVCAN_PROTOCOL_NODESTATUS_MODE_OPERATIONAL);
     return DeviceStatus(DeviceStatus::ALL, DeviceStatus::OK);
   }

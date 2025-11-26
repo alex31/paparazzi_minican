@@ -27,6 +27,22 @@ using Value = std::variant<struct uavcan_protocol_param_Empty, int64_t, float, b
   st clef -> retourne la valeur en ram
   st clef valeur -> set la valeur en ram puis en eeprom
 
+  std::string_view + ses helpers C++20+ :
+
+  - starts_with(...) pour ^motif
+  - ends_with(...) pour motif$
+  - contains(...) (C++23) pour “n’importe où”
+
+  Ça ne tire aucune lib regex ni allocation si tu manipules des string_view. Exemple compact :
+
+  bool match(std::string_view s, std::string_view pat) {
+    if (pat.starts_with('^'))   return s.starts_with(pat.substr(1));
+    if (pat.ends_with('$'))     return s.ends_with(pat.substr(0, pat.size()-1));
+
+    return s.contains(pat);
+    To continue this session, run codex resume 019abb4b-1562-7e60-99f9-779736784d48
+  }
+
 
  */
 #ifdef TRACE
