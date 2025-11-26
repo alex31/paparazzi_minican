@@ -256,10 +256,9 @@ namespace UBX {
   struct NavSatFlags {
     std::uint32_t qualityInd : 3;  // bits0..2 : 0=no signal, 1=searching, 2=acquired, 3=unusable, 4=code lock, 5=code+carrier
     std::uint32_t svUsed     : 1;  // bit3      : satellite utilisé dans la solution nav
-    std::uint32_t health     : 1;  // bit4      : 1 = healthy
-    std::uint32_t diffCorr   : 1;  // bit5      : corrections différentielles appliquées
-    std::uint32_t smoothed   : 1;  // bit6      : pseudo-distance lissée
-    std::uint32_t reserved0  : 1;  // bit7
+    std::uint32_t health     : 2;  // bit4..5   : O unknown, 1 = healthy, 2 unhealthy
+    std::uint32_t diffCorr   : 1;  // bit6      : corrections différentielles appliquées
+    std::uint32_t smoothed   : 1;  // bit7      : pseudo-distance lissée
     std::uint32_t orbitSource: 3;  // bits8..10 : 0=unknown, 1=eph, 2=alm, 3=assist, 4=aop, 5=decoded
     std::uint32_t ephAvail   : 1;  // bit11
     std::uint32_t almAvail   : 1;  // bit12
@@ -273,7 +272,7 @@ namespace UBX {
     std::uint32_t prCorrUsed   : 1; // bit20
     std::uint32_t crCorrUsed   : 1; // bit21
     std::uint32_t doCorrUsed   : 1; // bit22
-    std::uint32_t reserved2    : 9; // bits23..31
+    std::uint32_t reserved3    : 9; // bits23..31
   };
 
   static_assert(sizeof(NavSatFlags) == 4);

@@ -80,7 +80,20 @@ bool GpsUBX::navPvtCb(const UBX::NavPvt& msg)
     fix.sub_mode = UAVCAN_EQUIPMENT_GNSS_FIX2_SUB_MODE_DGPS_OTHER;
   }
 
-  fix.covariance.len = 0;
+  // Covariance diag (len=6) suivant l’usage ArduPilot : Pn, Pe, Pd, Vn, Ve, Vd (variances).
+  const float hacc_m = static_cast<float>(msg.hAcc) * 0.001F; // mm -> m
+  const float vacc_m = static_cast<float>(msg.vAcc) * 0.001F;
+  const float sacc_mps = static_cast<float>(msg.sAcc) * 0.001F; // mm/s -> m/s
+  const float hacc_var = hacc_m * hacc_m;
+  const float vacc_var = vacc_m * vacc_m;
+  const float sacc_var = sacc_mps * sacc_mps;
+  fix.covariance.len = 6;
+  fix.covariance.data[0] = hacc_var; // Pn
+  fix.covariance.data[1] = hacc_var; // Pe
+  fix.covariance.data[2] = vacc_var; // Pd
+  fix.covariance.data[3] = sacc_var; // Vn
+  fix.covariance.data[4] = sacc_var; // Ve
+  fix.covariance.data[5] = sacc_var; // Vd
   fix.pdop = static_cast<float>(msg.pDOP) * 0.01F;
   fix.ecef_position_velocity.len = 0;
 
