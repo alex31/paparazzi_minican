@@ -36,7 +36,7 @@ DeviceStatus ServoSmart::start()
     return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT);
   }
   // MSB F4 F3 F2a F0b F0a LSB
-  DynPin::setScenario(DynPin::Scenario::UART, 0b01100););
+  DynPin::setScenario(DynPin::Scenario::UART, 0b01100);
 #endif
 
   

@@ -146,6 +146,16 @@ namespace UBX {
     PVT = 0x00,
   };
 
+  // NAV-PVT fixType (UBX-13003221)
+  enum class NavFixType : std::uint8_t {
+    NO_FIX = 0,
+    DEAD_RECKONING_ONLY = 1,
+    TWO_D = 2,
+    THREE_D = 3,
+    GNSS_AND_DR = 4,
+    TIME_ONLY = 5
+  };
+
   // Byte 11 : X1 valid
   struct NavPvtValid {
     std::uint8_t validDate     : 1; // bit0 : 1 = date UTC valide
@@ -296,4 +306,3 @@ namespace UBX {
 
 
 } // namespace UBX
-

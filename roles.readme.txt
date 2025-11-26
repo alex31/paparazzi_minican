@@ -23,7 +23,7 @@ Roles UAVCAN – messages reçus / envoyés
 
 - GpsUBX (`role.gnss.ubx`)
   - Reçoit : rien en UAVCAN (consomme les messages UBX sur l’UART).
-  - Envoie : `uavcan.equipment.gnss.Fix` (NAV-PVT), `uavcan.equipment.gnss.Auxiliary` (NAV-DOP/NAV-SAT).
+  - Envoie : `uavcan.equipment.gnss.Fix2` (NAV-PVT), `uavcan.equipment.gnss.Auxiliary` (NAV-DOP/NAV-SAT).
 
 Services/protocoles gérés par le nœud (pubSub/UAVCanSlave)
 -----------------------------------------------------------

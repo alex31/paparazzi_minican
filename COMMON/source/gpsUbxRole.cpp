@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cstdint>
 
 #include "gpsUbxRole.hpp"
 #include "hardwareConf.hpp"
@@ -9,6 +10,10 @@
 #include "dynamicPinConfig.hpp"
 #endif
 
+namespace {
+  bool utcToUnixUsec(const UBX::NavPvt& msg, uint64_t& out);
+}
+
 bool GpsUBX::navPvtCb(const UBX::NavPvt& msg)
 {
   auto* self = RoleCrtp<GpsUBX>::singleton;
@@ -18,12 +23,14 @@ bool GpsUBX::navPvtCb(const UBX::NavPvt& msg)
 
   self->satsUsed = msg.numSV;
 
-  uavcan_equipment_gnss_Fix fix{};
+  uavcan_equipment_gnss_Fix2 fix{};
   // Timestamp node local (temps de publication)
   fix.timestamp.usec = static_cast<uint64_t>(TIME_I2US(chVTGetSystemTimeX()));
-  fix.gnss_timestamp.usec = static_cast<uint64_t>(msg.iTOW) * 1000ULL; // ms -> usec
-  fix.gnss_time_standard = UAVCAN_EQUIPMENT_GNSS_FIX_GNSS_TIME_STANDARD_GPS;
-  fix.num_leap_seconds = UAVCAN_EQUIPMENT_GNSS_FIX_NUM_LEAP_SECONDS_UNKNOWN;
+  if (!utcToUnixUsec(msg, fix.gnss_timestamp.usec)) {
+    fix.gnss_timestamp.usec = 0;
+  }
+  fix.gnss_time_standard = UAVCAN_EQUIPMENT_GNSS_FIX2_GNSS_TIME_STANDARD_UTC;
+  fix.num_leap_seconds = UAVCAN_EQUIPMENT_GNSS_FIX2_NUM_LEAP_SECONDS_UNKNOWN;
 
   fix.longitude_deg_1e8 = static_cast<int64_t>(msg.lon) * 10; // 1e-7 -> 1e-8
   fix.latitude_deg_1e8  = static_cast<int64_t>(msg.lat) * 10;
@@ -35,16 +42,47 @@ bool GpsUBX::navPvtCb(const UBX::NavPvt& msg)
   fix.ned_velocity[2] = static_cast<float>(msg.velD) / 1000.F;
 
   fix.sats_used = msg.numSV;
-  switch (msg.fixType) {
-  case 0: fix.status = UAVCAN_EQUIPMENT_GNSS_FIX_STATUS_NO_FIX; break;
-  case 1: fix.status = UAVCAN_EQUIPMENT_GNSS_FIX_STATUS_TIME_ONLY; break;
-  case 2: fix.status = UAVCAN_EQUIPMENT_GNSS_FIX_STATUS_2D_FIX; break;
-  default: fix.status = UAVCAN_EQUIPMENT_GNSS_FIX_STATUS_3D_FIX; break;
+  if (msg.flags.gnssFixOK == 0) {
+    fix.status = UAVCAN_EQUIPMENT_GNSS_FIX2_STATUS_NO_FIX;
+  } else {
+    switch (static_cast<UBX::NavFixType>(msg.fixType)) {
+    case UBX::NavFixType::NO_FIX:
+    case UBX::NavFixType::DEAD_RECKONING_ONLY:
+      fix.status = UAVCAN_EQUIPMENT_GNSS_FIX2_STATUS_NO_FIX;
+      break;
+    case UBX::NavFixType::TWO_D:
+      fix.status = UAVCAN_EQUIPMENT_GNSS_FIX2_STATUS_2D_FIX;
+      break;
+    case UBX::NavFixType::THREE_D:
+    case UBX::NavFixType::GNSS_AND_DR:
+      fix.status = UAVCAN_EQUIPMENT_GNSS_FIX2_STATUS_3D_FIX;
+      break;
+    case UBX::NavFixType::TIME_ONLY:
+      fix.status = UAVCAN_EQUIPMENT_GNSS_FIX2_STATUS_TIME_ONLY;
+      break;
+    default:
+      DebugTrace("UBX PVT fixType inconnu: %u", static_cast<unsigned>(msg.fixType));
+      fix.status = UAVCAN_EQUIPMENT_GNSS_FIX2_STATUS_NO_FIX;
+      break;
+    }
   }
 
+  fix.mode = UAVCAN_EQUIPMENT_GNSS_FIX2_MODE_SINGLE;
+  fix.sub_mode = UAVCAN_EQUIPMENT_GNSS_FIX2_SUB_MODE_DGPS_OTHER;
+  if (msg.flags.carrSoln == 1) {
+    fix.mode = UAVCAN_EQUIPMENT_GNSS_FIX2_MODE_RTK;
+    fix.sub_mode = UAVCAN_EQUIPMENT_GNSS_FIX2_SUB_MODE_RTK_FLOAT;
+  } else if (msg.flags.carrSoln == 2) {
+    fix.mode = UAVCAN_EQUIPMENT_GNSS_FIX2_MODE_RTK;
+    fix.sub_mode = UAVCAN_EQUIPMENT_GNSS_FIX2_SUB_MODE_RTK_FIXED;
+  } else if (msg.flags.diffSoln) {
+    fix.mode = UAVCAN_EQUIPMENT_GNSS_FIX2_MODE_DGPS;
+    fix.sub_mode = UAVCAN_EQUIPMENT_GNSS_FIX2_SUB_MODE_DGPS_OTHER;
+  }
+
+  fix.covariance.len = 0;
   fix.pdop = static_cast<float>(msg.pDOP) * 0.01F;
-  fix.position_covariance.len = 0;
-  fix.velocity_covariance.len = 0;
+  fix.ecef_position_velocity.len = 0;
 
   return self->m_node->sendBroadcast(fix) == UAVCAN::Node::CAN_OK;
 }
@@ -128,6 +166,57 @@ GpsUBX::GpsUBX()
  */
 
 namespace {
+  constexpr bool isLeapYear(uint16_t year)
+  {
+    return (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+  }
+
+  // Convert UBX UTC date/time to Unix epoch usec. Return false if invalid.
+  bool utcToUnixUsec(const UBX::NavPvt& msg, uint64_t& out)
+  {
+    if (!msg.valid.validDate || !msg.valid.validTime) {
+      return false;
+    }
+    if (msg.year < 1970 || msg.month < 1 || msg.month > 12 || msg.day < 1 || msg.day > 31) {
+      return false;
+    }
+
+    static constexpr uint8_t daysInMonth[12] = {31,28,31,30,31,30,31,31,30,31,30,31};
+    const bool leap = isLeapYear(msg.year);
+    const uint8_t dim = daysInMonth[msg.month - 1] + ((msg.month == 2 && leap) ? 1 : 0);
+    if (msg.day > dim) {
+      return false;
+    }
+
+    uint32_t days = 0;
+    for (uint16_t y = 1970; y < msg.year; ++y) {
+      days += isLeapYear(y) ? 366U : 365U;
+    }
+    for (uint8_t m = 1; m < msg.month; ++m) {
+      days += daysInMonth[m - 1];
+      if (m == 2 && leap) {
+        ++days;
+      }
+    }
+    days += static_cast<uint32_t>(msg.day - 1U);
+
+    const uint64_t secInDay = static_cast<uint64_t>(msg.hour) * 3600ULL
+      + static_cast<uint64_t>(msg.min) * 60ULL
+      + static_cast<uint64_t>(msg.sec);
+    const uint64_t baseUsec = (static_cast<uint64_t>(days) * 86400ULL + secInDay) * 1'000'000ULL;
+
+    // nano can be negative in UBX to represent fractional seconds before the sec tick.
+    const int64_t nano = msg.nano;
+    const int64_t nano_to_usec = nano / 1000;
+    const int64_t usecSigned = static_cast<int64_t>(baseUsec) + nano_to_usec;
+    if (usecSigned < 0) {
+      return false;
+    }
+
+    out = static_cast<uint64_t>(usecSigned);
+    return true;
+  }
+
  UARTConfig gpscfg =
   {
     .txend1_cb =nullptr,
@@ -168,7 +257,7 @@ DeviceStatus GpsUBX::start(UAVCAN::Node& node)
 {
   using HR = HWResource;
   DeviceStatus status(DeviceStatus::GPS_ROLE);
-  
+  frame = (uint8_t *) malloc_m(maxUbxFrameSize);
   m_node = &node;
   
   gpscfg.speed =  PARAM_CGET("role.gnss.ubx.baudrate");
@@ -189,7 +278,7 @@ DeviceStatus GpsUBX::start(UAVCAN::Node& node)
   DynPin::setScenario(DynPin::Scenario::UART, 0b01000);
 #endif
   
-  chThdCreateFromHeap(NULL, THD_WORKING_AREA_SIZE(1024), "gps", NORMALPRIO, 
+  chThdCreateFromHeap(NULL, THD_WORKING_AREA_SIZE(1536), "gps", NORMALPRIO, 
 		      &Trampoline<&GpsUBX::periodic>::fn, this);
   
   return status;
