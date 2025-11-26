@@ -139,7 +139,12 @@ bool GpsUBX::navSatCb(const UBX::NavSat& msg)
     return false;
   }
 
-  self->satsVisible = msg.numSvs;
+  if (self->lastNavSatITOW != msg.iTOW) {
+    self->satsVisible = 0;
+    self->lastNavSatITOW = msg.iTOW;
+  }
+
+  self->satsVisible += msg.numSvs;
 
   if (!self->dopCache.valid) {
     return true; // rien à publier tant qu'on n'a pas de DOP
