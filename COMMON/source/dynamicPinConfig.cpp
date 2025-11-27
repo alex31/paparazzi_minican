@@ -2,7 +2,7 @@
 #include "stdutil.h"
 #include "UAVCAN/persistantParam.hpp"
 
-#ifdef  BOARD_ENAC_MINICANv5
+#if PLATFORM_MINICAN
 #define LINE_F0_a	LINE_PULLUP_SCL
 #define LINE_F0_b	LINE_I2C_SDA   
 #define LINE_F1_a	LINE_SPI_PERIPH_CS
@@ -100,7 +100,7 @@ namespace DynPin {
 
 }
 
-#ifdef  BOARD_ENAC_MICROCANv3
+#if PLATFORM_MICROCAN
 
 namespace {
   void scenario_UART(uint8_t mask); // MSB F4 F3 F2a F0b F0a LSB

@@ -44,7 +44,7 @@ namespace {
 
   enum class AdcChannel{
     psBat,
-#ifdef	BOARD_ENAC_MICROCANv3
+#if PLATFORM_MICROCAN
     address, 
 #endif
     coreTemp, vref, nbChannels};
@@ -73,14 +73,14 @@ namespace {
     .awd2cr       = 0, 
     .awd3cr       = 0U,
     .smpr         = {
-#ifdef	BOARD_ENAC_MICROCANv3  
+#if PLATFORM_MICROCAN  
       ADC_SMPR1_SMP_AN2(ADC_SMPR_SMP_640P5) |
 #endif
       ADC_SMPR1_SMP_AN1(ADC_SMPR_SMP_640P5),
       ADC_SMPR2_SMP_AN16(ADC_SMPR_SMP_640P5) | ADC_SMPR2_SMP_AN18(ADC_SMPR_SMP_640P5)
     },
     .sqr          = {
-#ifdef	BOARD_ENAC_MICROCANv3
+#if PLATFORM_MICROCAN
       ADC_SQR1_SQ1_N(ADC_CHANNEL_IN1) |
       ADC_SQR1_SQ2_N(ADC_CHANNEL_IN2) |
       ADC_SQR1_SQ3_N(ADC_CHANNEL_IN16) | ADC_SQR1_SQ4_N(ADC_CHANNEL_IN18),
@@ -143,7 +143,7 @@ namespace Adc {
   }
   
   
-#ifdef	BOARD_ENAC_MICROCANv3
+#if PLATFORM_MICROCAN
   uint8_t getAddress()
   {
     return adcSamples[std::to_underlying(AdcChannel::address)] >> 8;

@@ -303,12 +303,12 @@ namespace CANSlave {
 				  processRestartNodeRequest, processExecuteOpcodeRequest,
 				  processFirmwareUpdateRequest>();
 
-    if (not (addRole<ServoRole, FixedString("role.servo.pwm"),  FixedString("role.servo.smart")>()
-	     && addRole<Baro_MPL3115A2_Role, FixedString("role.i2c.barometer.mpl3115a2")>()
-	     && addRole<EscDshot, FixedString("role.esc.dshot")>()
-	     && addRole<SbusTunnel, FixedString("role.tunnel.sbus")>()
-	     && addRole<GpsUBX, FixedString("role.gnss.ubx")>()
-	     && addRole<TelemetryTunnel, FixedString("role.tunnel.telemetry")>())) {
+    if (not (addRole<ServoRole, FixedString("ROLE.servo.pwm"),  FixedString("ROLE.servo.smart")>()
+	     && addRole<Baro_MPL3115A2_Role, FixedString("ROLE.i2c.barometer.mpl3115a2")>()
+	     && addRole<EscDshot, FixedString("ROLE.esc.dshot")>()
+	     && addRole<SbusTunnel, FixedString("ROLE.tunnel.sbus")>()
+	     && addRole<GpsUBX, FixedString("ROLE.gnss.ubx")>()
+	     && addRole<TelemetryTunnel, FixedString("ROLE.tunnel.telemetry")>())) {
       node.setStatusMode(UAVCAN_PROTOCOL_NODESTATUS_MODE_OFFLINE);
       return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::NB_ROLE_TOO_LARGE);
     }
@@ -328,7 +328,7 @@ namespace CANSlave {
 	return roleStatus;
     
 
-    if (PARAM_CGET("role.health.survey")) {
+    if (PARAM_CGET("ROLE.health.survey")) {
       HealthSurvey::start(node);
     }
     

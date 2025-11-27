@@ -45,17 +45,15 @@ namespace I2CPeriph
 
     using HR = HWResource;
     
-#ifdef   BOARD_ENAC_MINICANv5
+#if PLATFORM_MINICAN
     if (not boardResource.tryAcquire(HR::PA15, HR::PB07, HR::I2C_1)) {
       return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT);
     }
-#elifdef BOARD_ENAC_MICROCANv3
+#elif PLATFORM_MICROCAN
     if (not boardResource.tryAcquire(HR::I2C_2, HR::F1, HR::F2)) {
       return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT);
     }
     DynPin::setScenario(DynPin::Scenario::I2C);
-#else
-#error only BOARD_ENAC_MINICANv5 and BOARD_ENAC_MICROCANv3 are handled
 #endif
     DynPin::i2cActivatePullup();
     

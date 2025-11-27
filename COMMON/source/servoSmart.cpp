@@ -5,26 +5,8 @@
 #include "stdutil++.hpp"
 #include "hardwareConf.hpp"
 
-/*
-  • Review – servoSmart.cpp status publishing
 
-  - COMMON/source/servoSmart.cpp:113 – status loop always iterates id = 1..numServos and ignores startIndex, so if your servo map doesn’t start at 1 you’ll publish
-    IDs that don’t match the command mapping (and you’ll query non-existent IDs on the bus).
-  - COMMON/source/servoSmart.cpp:128-131 – position, speed, power_rating_pct are published without unit conversion/clamping. STS3032::StateVector uses normalized
-    [-1..1] for position and steps/s for speed; 1011.Status expects radians and rad/s. power_rating_pct is a uint7 and should be clamped 0..100 (or 127) with UNKNOWN
-    when unavailable.
-  - COMMON/source/servoSmart.cpp:129 – Unavailable fields should be NaN/UNKNOWN per the DSDL comment; setting force = -1 misleads consumers into thinking the actuator
-    is applying -1 N·m/-1 N.
-  - COMMON/source/servoSmart.cpp:113-118 – No error handling when readStates() fails/timeouts; you’ll broadcast stale defaults (e.g., zeroed struct with
-    status=STATUS_TIMEOUT) as valid statuses and may block the loop if a servo is offline.
-
-  Suggested next steps: honor startIndex when iterating/publishing; convert normalized position/load/speed into physical units (or publish NaN/UNKNOWN when not
-  available); clamp power_rating_pct; use NaN for unknown force; add handling for read failures (e.g., skip publish or mark UNKNOWN).
- 
-
- */
-
-#ifdef     BOARD_ENAC_MICROCANv3
+#if PLATFORM_MICROCAN
 #include "dynamicPinConfig.hpp"
 #endif
 
@@ -45,7 +27,10 @@ DeviceStatus ServoSmart::start(UAVCAN::Node& node)
   using HR = HWResource;
   startIndex = PARAM_CGET("role.servo.smart.map_index1");
   numServos =  PARAM_CGET("role.servo.smart.num_servos");
-  reportPeriod = CH_CFG_ST_FREQUENCY / PARAM_CGET("role.servo.smart.status_frequency");
+  if (const uint32_t reportFrequency =  PARAM_CGET("role.servo.smart.status_frequency");
+      reportFrequency != 0) {
+    reportPeriod = CH_CFG_ST_FREQUENCY / PARAM_CGET("role.servo.smart.status_frequency");
+  }
   nodep = &node;
     
 #if PLATFORM_MINICAN
@@ -84,8 +69,10 @@ DeviceStatus ServoSmart::start(UAVCAN::Node& node)
     }
   }
 
-  chThdCreateFromHeap(NULL, THD_WORKING_AREA_SIZE(1536), "smart servos periodic", NORMALPRIO, 
-		      periodic, nullptr);
+  if (reportPeriod != 0) {
+    chThdCreateFromHeap(NULL, THD_WORKING_AREA_SIZE(1536), "smart servos periodic", NORMALPRIO, 
+			periodic, nullptr);
+  }
   return DeviceStatus(DeviceStatus::SERVO_SMART);
 }
 

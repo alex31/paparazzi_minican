@@ -117,7 +117,7 @@ int main(void)
     goto end;
   }
 
-  if (PARAM_CGET("role.identification") == true) {
+  if (PARAM_CGET("ROLE.identification") == true) {
     // mode identification
     DebugTrace ("passage en mode identification");
     RgbLed::setMotif(150, 0b1010100000000000);

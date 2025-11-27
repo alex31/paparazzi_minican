@@ -3,7 +3,7 @@ Roles UAVCAN – messages reçus / envoyés
 
 - ServoRole (`role.servo.pwm`, `role.servo.smart`)
   - Reçoit : `uavcan.equipment.actuator.ArrayCommand` (broadcast), pour piloter PWM ou SmartServo selon le type de commande.
-  - Envoie : rien.
+  - Envoie : `uavcan.equipment.actuator.Status`
 
 - Baro_MPL3115A2_Role (`role.i2c.barometer.mpl3115a2`)
   - Reçoit : rien.
