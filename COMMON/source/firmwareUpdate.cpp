@@ -71,6 +71,7 @@ namespace  {
   } currentFileRequest = {};
 
   void requestWorker(void *);
+  void releaseSectorBuffer();
 }
 
 
@@ -105,9 +106,7 @@ bool FirmwareUpdater::start(UAVCAN::Node *node, const uavcan_protocol_file_Path 
 	     "update in progress");
       return false;
     } else {
-      delete sectorBuffer;
-      sectorBuffer = nullptr;
-      currentFileIndex = 0;
+      releaseSectorBuffer();
       aborted = true;
     }
   }
@@ -162,20 +161,14 @@ bool FirmwareUpdater::newChunk(CanardRxTransfer *transfer,
   if (firmwareChunk.error.value != UAVCAN_PROTOCOL_FILE_ERROR_OK) {
     DebugTrace("DBG> firmwareChunk.error.value != UAVCAN_PROTOCOL_FILE_ERROR_OK : %u",
 	       firmwareChunk.error.value);
-    chSysLock();
-    delete sectorBuffer;
-    sectorBuffer = nullptr;
-    chSysUnlock();
-    currentFileIndex = 0;
+    releaseSectorBuffer();
     return false;
   }
   
   timestamp = chVTGetSystemTimeX();
   if (firmwareChunk.data.len == 0) { // End of file
     storeSectorBufferInEeprom(true);
-    delete sectorBuffer;
-    sectorBuffer = nullptr;
-    currentFileIndex = 0;
+    releaseSectorBuffer();
     // Restart : the bootloader will flash from spi eeprom to mcu flash
     systemReset();
   } else {
@@ -293,6 +286,15 @@ namespace {
     return Firmware::Flash::REQUIRED;
   }
 
+
+
+  void releaseSectorBuffer() {
+    chSysLock();
+    delete FirmwareUpdater::sectorBuffer;
+    FirmwareUpdater::sectorBuffer = nullptr;
+    chSysUnlock();
+    currentFileIndex = 0;
+  }
 
 
   void requestWorker(void *) {
