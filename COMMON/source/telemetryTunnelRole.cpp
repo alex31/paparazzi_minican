@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <new>
 
 #include "telemetryTunnelRole.hpp"
 #include "hardwareConf.hpp"
@@ -200,22 +201,6 @@ DeviceStatus TelemetryTunnel::subscribe(UAVCAN::Node& node)
 {
   m_node = &node;
   node.subscribeBroadcastMessages<Trampoline<&TelemetryTunnel::processPaparazziTelemetryCommand_u2s>::fn>();
-
-  xbeeFrame = PARAM_CGET("role.tunnel.telemetry.xbee_frame");
-  if (xbeeFrame) {
-    xbeeMsg = new XbeeMsg_t;
-    xbS2UBuffer = new XBEEBufferType;
-    
-  } else {
-    // pprzFrame
-    pprzMsg = new PprzMsg_t;
-    ppS2UBuffer = new PPRZBufferType;
-  }
-
-  telemetrycfg.speed =  PARAM_CGET("role.tunnel.telemetry.baudrate");
-  if (ExternalUARTD.state != UART_READY) {
-    uartStart(&ExternalUARTD, &telemetrycfg);
-  }
   return DeviceStatus(DeviceStatus::TELEMETRY_TUNNEL);
 }
 
@@ -231,6 +216,41 @@ DeviceStatus TelemetryTunnel::start(UAVCAN::Node&)
     return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT,
 			std::to_underlying(HR::USART_2));
   }
+
+  auto allocError = [] {
+    return DeviceStatus(DeviceStatus::MEMORY, DeviceStatus::HEAP_FULL);
+  };
+
+  xbeeFrame = PARAM_CGET("role.tunnel.telemetry.xbee_frame");
+  if (xbeeFrame) {
+    if (!xbeeMsg) {
+      xbeeMsg = new (std::nothrow) XbeeMsg_t;
+    }
+    if (!xbS2UBuffer) {
+      xbS2UBuffer = new (std::nothrow) XBEEBufferType;
+    }
+    if (!xbeeMsg || !xbS2UBuffer) {
+      delete xbeeMsg; xbeeMsg = nullptr;
+      delete xbS2UBuffer; xbS2UBuffer = nullptr;
+      return allocError();
+    }
+  } else {
+    // pprzFrame
+    if (!pprzMsg) {
+      pprzMsg = new (std::nothrow) PprzMsg_t;
+    }
+    if (!ppS2UBuffer) {
+      ppS2UBuffer = new (std::nothrow) PPRZBufferType;
+    }
+    if (!pprzMsg || !ppS2UBuffer) {
+      delete pprzMsg; pprzMsg = nullptr;
+      delete ppS2UBuffer; ppS2UBuffer = nullptr;
+      return allocError();
+    }
+  }
+
+  telemetrycfg.speed =  PARAM_CGET("role.tunnel.telemetry.baudrate");
+  uartStart(&ExternalUARTD, &telemetrycfg);
   
   chThdCreateFromHeap(NULL, THD_WORKING_AREA_SIZE(1024), "telemetry", NORMALPRIO, 
 		      &Trampoline<&TelemetryTunnel::periodic>::fn, this);
