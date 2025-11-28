@@ -153,12 +153,19 @@ bool FirmwareUpdater::newChunk(CanardRxTransfer *transfer,
 {
   static constexpr size_t hdrLen =  sizeof(toolChainHeader);
   chVTReset(&vtRequest);
+
+  // Ignore late responses if the update has already been aborted.
+  if (!FirmwareUpdater::sectorBuffer) {
+    return false;
+  }
   
   if (firmwareChunk.error.value != UAVCAN_PROTOCOL_FILE_ERROR_OK) {
     DebugTrace("DBG> firmwareChunk.error.value != UAVCAN_PROTOCOL_FILE_ERROR_OK : %u",
 	       firmwareChunk.error.value);
+    chSysLock();
     delete sectorBuffer;
     sectorBuffer = nullptr;
+    chSysUnlock();
     currentFileIndex = 0;
     return false;
   }
@@ -292,23 +299,24 @@ namespace {
     while(true) {
       chBSemWait(&currentFileRequest.reqSem);
       static uint32_t lastOffset = 0xffffffff;
-      
-      slaveNode->sendRequest(currentFileRequest.readReq, CANARD_TRANSFER_PRIORITY_MEDIUM,
-			     currentFileRequest.source_node_id);
-      DebugTrace("DBG> ask %s chunk %llu/%lu",
-		 lastOffset == currentFileRequest.readReq.offset ? "** AGAIN **" : "",
-		 currentFileRequest.readReq.offset - sizeof(Firmware::ToolchainHeader_t),
-		 toolChainHeader.fwSize);
-      lastOffset = currentFileRequest.readReq.offset;
-      
-      chVTSet(&vtRequest,
-	      TIME_MS2I(300),
-	      [](ch_virtual_timer*, void*) {
-		chSysLockFromISR();
-		chBSemSignalI(&currentFileRequest.reqSem);
-		chSysUnlockFromISR();
-	      },
-	      nullptr);
+
+      if (FirmwareUpdater::sectorBuffer) {
+	slaveNode->sendRequest(currentFileRequest.readReq, CANARD_TRANSFER_PRIORITY_MEDIUM,
+			       currentFileRequest.source_node_id);
+	DebugTrace("DBG> ask %s chunk %llu/%lu",
+		   lastOffset == currentFileRequest.readReq.offset ? "** AGAIN **" : "",
+		   currentFileRequest.readReq.offset - sizeof(Firmware::ToolchainHeader_t),
+		   toolChainHeader.fwSize);
+	lastOffset = currentFileRequest.readReq.offset;
+	chVTSet(&vtRequest,
+		TIME_MS2I(300),
+		[](ch_virtual_timer*, void*) {
+		  chSysLockFromISR();
+		  chBSemSignalI(&currentFileRequest.reqSem);
+		  chSysUnlockFromISR();
+		},
+		nullptr);
+      }
     }
   }
 }
