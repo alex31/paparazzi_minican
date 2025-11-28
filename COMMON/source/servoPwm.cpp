@@ -97,19 +97,24 @@ DeviceStatus ServoPWM::start()
 
   // use timer
   if (not boardResource.tryAcquire(HR::TIM_1)) {
-    return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT);
+    return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT,
+			std::to_underlying(HR::TIM_1));
   }
 
   // only the pins that are actually in use depending on role.pwm.num_servos
   for (uint8_t channelIdx=0; channelIdx < channelMap.count; channelIdx++) {
     uint8_t channel = channelMap[channelIdx];
     pwmServoCfg.channels[channel] = {.mode = PWM_OUTPUT_ACTIVE_HIGH, .callback = NULL};
-    if (not boardResource.tryAcquire(static_cast<HR>(std::to_underlying(HR::PA08) + channel))) {
-      return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT);
+    const auto pinRes = static_cast<HR>(std::to_underlying(HR::PA08) + channel);
+    if (not boardResource.tryAcquire(pinRes)) {
+      return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT,
+			  std::to_underlying(pinRes));
     }
 #if PLATFORM_MICROCAN
-    if (not boardResource.tryAcquire(static_cast<HR>(std::to_underlying(HR::F1) + channel))) {
-      return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT);
+    const auto altRes = static_cast<HR>(std::to_underlying(HR::F1) + channel);
+    if (not boardResource.tryAcquire(altRes)) {
+      return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT,
+			  std::to_underlying(altRes));
     }
 #endif      
   }

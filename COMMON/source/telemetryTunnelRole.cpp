@@ -226,7 +226,8 @@ DeviceStatus TelemetryTunnel::start(UAVCAN::Node&)
   
   // use serial2 tx/rx
   if (not boardResource.tryAcquire(HR::USART_2, HR::PB03, HR::PB04)) {
-    return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT);
+    return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT,
+			std::to_underlying(HR::USART_2));
   }
   
   chThdCreateFromHeap(NULL, THD_WORKING_AREA_SIZE(1024), "telemetry", NORMALPRIO, 

@@ -47,11 +47,13 @@ namespace I2CPeriph
     
 #if PLATFORM_MINICAN
     if (not boardResource.tryAcquire(HR::PA15, HR::PB07, HR::I2C_1)) {
-      return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT);
+      return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT,
+			  std::to_underlying(HR::I2C_1));
     }
 #elif PLATFORM_MICROCAN
     if (not boardResource.tryAcquire(HR::I2C_2, HR::F1, HR::F2)) {
-      return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT);
+      return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT,
+			  std::to_underlying(HR::I2C_2));
     }
     DynPin::setScenario(DynPin::Scenario::I2C);
 #endif
@@ -83,7 +85,6 @@ namespace I2CPeriph
     i2cStart(&ExternalI2CD, config);
   }
 };
-
 
 
 

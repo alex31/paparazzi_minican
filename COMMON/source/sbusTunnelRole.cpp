@@ -31,7 +31,8 @@ DeviceStatus SbusTunnel::start(UAVCAN::Node& _node)
   
   // use serial2 rx
   if (not boardResource.tryAcquire(HR::USART_2, HR::PB04)) {
-    return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT);
+    return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT,
+			std::to_underlying(HR::USART_2));
   }
   enabledChannels = decode_channel_mask(PARAM_CGET("role.tunnel.sbus.channel_mask"));
   tunnelFrame.channels.len = count_active_channels(enabledChannels);
@@ -79,4 +80,3 @@ void SbusTunnel::maj_rc_cb_frame(const SBUSFrame *frame)
   tunnelFrame.flags = frame->flags;
   node->sendBroadcast(tunnelFrame, CANARD_TRANSFER_PRIORITY_LOW);
 }
-

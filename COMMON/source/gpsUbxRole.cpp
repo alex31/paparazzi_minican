@@ -273,13 +273,15 @@ DeviceStatus GpsUBX::start(UAVCAN::Node& node)
   // use serial rx
 #if PLATFORM_MINICAN
   if (not boardResource.tryAcquire(HR::USART_2, HR::PB04)) {
-    return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT);
+    return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT,
+			std::to_underlying(HR::USART_2));
   }
 #endif
   
 #if PLATFORM_MICROCAN
   if (not boardResource.tryAcquire(HR::USART_1, HR::PA10, HR::F3)) {
-    return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT);
+    return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT,
+			std::to_underlying(HR::USART_1));
   }
   //  MSB F4 F3 F2a F0b F0a LSB
   DynPin::setScenario(DynPin::Scenario::UART, 0b01000);
