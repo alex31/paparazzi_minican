@@ -213,7 +213,9 @@ DeviceStatus TelemetryTunnel::subscribe(UAVCAN::Node& node)
   }
 
   telemetrycfg.speed =  PARAM_CGET("role.tunnel.telemetry.baudrate");
-  uartStart(&ExternalUARTD, &telemetrycfg);
+  if (ExternalUARTD.state != UART_READY) {
+    uartStart(&ExternalUARTD, &telemetrycfg);
+  }
   return DeviceStatus(DeviceStatus::TELEMETRY_TUNNEL);
 }
 
