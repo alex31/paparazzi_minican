@@ -45,7 +45,7 @@ DeviceStatus Baro_MPL3115A2_Role::subscribe(UAVCAN::Node&)
 DeviceStatus Baro_MPL3115A2_Role::start(UAVCAN::Node& node)
 {
   msg_t status;
-  uint8_t devId;
+  static IN_DMA_SECTION(uint8_t devId);
 
   m_node = &node;
   
