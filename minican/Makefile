@@ -49,9 +49,11 @@ DEBUG := g
 OPT_SPEED := fast
 OPT_SIZE := s
 
-EXECMODE := $(DEBUG)
-#EXECMODE := $(OPT_SPEED)
-#EXECMODE := $(OPT_SIZE)
+ifndef RELEASE
+RELEASE := $(DEBUG)
+#RELEASE := $(OPT_SPEED)
+#RELEASE := $(OPT_SIZE)
+endif
 
 GCCVERSIONGTEQ10 := $(shell expr `arm-none-eabi-gcc -dumpversion | cut -f1 -d.` \>= 10)
 GCC_DIAG =  -Werror -Wno-error=unused-variable -Wno-error=format \
@@ -75,26 +77,27 @@ endif
 
 UNUSED_DIAGS = -Wcast-align -Wsign-conversion -Wconversion
 
-ifeq ($(EXECMODE),$(DEBUG)) 
-  USE_OPT =  -O$(EXECMODE) -ggdb3  -Wall -Wextra \
+ifeq ($(RELEASE),$(DEBUG)) 
+  USE_OPT =  -O$(RELEASE) -ggdb3  -Wall -Wextra \
 	    -falign-functions=16 -fomit-frame-pointer \
 	    $(GCC_DIAG) 
   USE_LTO = no
 endif
 
 
-ifeq ($(EXECMODE),$(OPT_SPEED)) 
-  USE_OPT =  -O$(EXECMODE) -ggdb3 -flto -Wall -Wextra \
+ifeq ($(RELEASE),$(OPT_SPEED)) 
+  USE_OPT =  -O$(RELEASE) -ggdb3 -flto -Wall -Wextra \
          -falign-functions=16 -fomit-frame-pointer \
          -DCH_DBG_SYSTEM_STATE_CHECK=0 -DCH_DBG_ENABLE_CHECKS=0 \
          -DCH_DBG_ENABLE_ASSERTS=0 -DCH_DBG_ENABLE_STACK_CHECK=0 \
          -DCH_DBG_FILL_THREADS=0 \
+         -Wno-error=maybe-uninitialized  -Wno-maybe-uninitialized \
           $(GCC_DIAG)
   USE_LTO = yes
 endif
 
-ifeq ($(EXECMODE),$(OPT_SIZE)) 
-  USE_OPT =  -O$(EXECMODE) -flto  -Wall -Wextra \
+ifeq ($(RELEASE),$(OPT_SIZE)) 
+  USE_OPT =  -O$(RELEASE) -flto  -Wall -Wextra \
 	    -falign-functions=16 -fomit-frame-pointer \
             -fipa-pta --specs=nano.specs \
             -DCH_DBG_SYSTEM_STATE_CHECK=0 -DCH_DBG_ENABLE_CHECKS=0 \
@@ -325,7 +328,7 @@ UDEFS = -DCANARD_ENABLE_CANFD=true -DDRONECAN_CXX_WRAPPERS=true \
 	-DVCS_COMMIT=$(VCS_COMMIT) -DHW_VERSION=$(HW_VERSION) \
         -DSW_VERSION_MAJOR=$(SW_VERSION_MAJOR) -DSW_VERSION_MINOR=$(SW_VERSION_MINOR)
 
-ifeq ($(EXECMODE),$(DEBUG))
+ifeq ($(RELEASE),$(DEBUG))
 UDEFS += -DTRACE
 endif
 #
@@ -381,8 +384,8 @@ flash: all
 
 firmware: all
 	@echo generate $(BUILDDIR)/fw_$(PROJECT).elf for UAVCan update
-	../prepend_header.pl $(BUILDDIR)/$(PROJECT).bin $(BUILDDIR)/$(PLATFORM)❬HW$(HW_VERSION)❭❬SW$(SW_VERSION_MAJOR).$(SW_VERSION_MINOR)❭❬$(CAN_BITRATE)k❭❬-O$(EXECMODE)❭.bin $(PLATFORM)_V$(HW_VERSION) $(HW_VERSION)
-	(cd $(BUILDDIR) && rm -f LAST_$(PLATFORM)_FW.bin && ln -s $(PLATFORM)❬HW$(HW_VERSION)❭❬SW$(SW_VERSION_MAJOR).$(SW_VERSION_MINOR)❭❬$(CAN_BITRATE)k❭❬-O$(EXECMODE)❭.bin LAST_$(PLATFORM)_FW.bin)
+	../prepend_header.pl $(BUILDDIR)/$(PROJECT).bin $(BUILDDIR)/$(PLATFORM)❬HW$(HW_VERSION)❭❬SW$(SW_VERSION_MAJOR).$(SW_VERSION_MINOR)❭❬$(CAN_BITRATE)k❭❬-O$(RELEASE)❭.bin $(PLATFORM)_V$(HW_VERSION) $(HW_VERSION)
+	(cd $(BUILDDIR) && rm -f LAST_$(PLATFORM)_FW.bin && ln -s $(PLATFORM)❬HW$(HW_VERSION)❭❬SW$(SW_VERSION_MAJOR).$(SW_VERSION_MINOR)❭❬$(CAN_BITRATE)k❭❬-O$(RELEASE)❭.bin LAST_$(PLATFORM)_FW.bin)
 	@echo Done
 
 distclean:

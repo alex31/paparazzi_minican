@@ -305,10 +305,14 @@ namespace {
       if (FirmwareUpdater::sectorBuffer) {
 	slaveNode->sendRequest(currentFileRequest.readReq, CANARD_TRANSFER_PRIORITY_MEDIUM,
 			       currentFileRequest.source_node_id);
+#ifdef TRACE
 	DebugTrace("DBG> ask %s chunk %llu/%lu",
 		   lastOffset == currentFileRequest.readReq.offset ? "** AGAIN **" : "",
 		   currentFileRequest.readReq.offset - sizeof(Firmware::ToolchainHeader_t),
 		   toolChainHeader.fwSize);
+#else
+	(void) lastOffset;
+#endif
 	lastOffset = currentFileRequest.readReq.offset;
 	chVTSet(&vtRequest,
 		TIME_MS2I(300),
