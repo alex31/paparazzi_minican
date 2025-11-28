@@ -130,7 +130,6 @@ int main(void)
     DebugTrace("paramètre nodeid = %d", nodeId);
     if (const DeviceStatus status =
 	CANSlave::start(nodeId, PARAM_CGET("uavcan.dynid.fd")); not status) {
-      DebugTrace("CANSlave error is %s", status.describe().c_str());
       if (status.err == DeviceStatus::CONFLICT) {
 	RgbLed::setMotif(100, 0b110011000);
 	RgbLed::setColor(HSV{0.0, 1, 0.5});

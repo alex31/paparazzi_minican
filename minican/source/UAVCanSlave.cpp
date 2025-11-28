@@ -315,19 +315,20 @@ namespace CANSlave {
 
     for (auto rp : roles)
       if (const DeviceStatus roleStatus = rp->subscribe(node); not roleStatus) {
-	UAVCAN::Helper::log(*slaveNode, UAVCAN_PROTOCOL_DEBUG_LOGLEVEL_ERROR,
-			    "UAVCanSlave.cpp::start()", roleStatus.describe());
- 
 	return roleStatus;
       }
     
     node.start();
     
     for (auto rp : roles)
-      if (const DeviceStatus roleStatus = rp->start(node); not roleStatus)
+      if (const DeviceStatus roleStatus = rp->start(node); not roleStatus) {
+	UAVCAN::Helper::log(*slaveNode, UAVCAN_PROTOCOL_DEBUG_LOGLEVEL_ERROR,
+			    "UAVCanSlave.cpp::start()", roleStatus.describe());
+	
 	return roleStatus;
+      }
     
-
+    
     if (PARAM_CGET("ROLE.health.survey")) {
       HealthSurvey::start(node);
     }

@@ -75,12 +75,13 @@ struct DeviceStatus {
   
   etl::string<64> describe() const {
     etl::string<64> out;
-    out += "SRC=";
+    out = "SRC=";
     out += srcName.at(source);
     out += " ERR=";
     out += errName.at(err);
     out += " SPEC=";
-    etl::to_string(specific, out);  // en base 10
+    
+    etl::to_string(specific, out, true);  // en base 10, append instead of overwrite
     return out;
   }
 };
