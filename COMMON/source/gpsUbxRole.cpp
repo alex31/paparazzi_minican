@@ -267,9 +267,6 @@ DeviceStatus GpsUBX::start(UAVCAN::Node& node)
   DeviceStatus status(DeviceStatus::GPS_ROLE);
   m_node = &node;
   
-  gpscfg.speed =  PARAM_CGET("role.gnss.ubx.baudrate");
-  uartStart(&ExternalUARTD, &gpscfg);
-  
   // use serial rx
 #if PLATFORM_MINICAN
   if (not boardResource.tryAcquire(HR::USART_2, HR::PB04)) {
@@ -287,12 +284,17 @@ DeviceStatus GpsUBX::start(UAVCAN::Node& node)
   DynPin::setScenario(DynPin::Scenario::UART, 0b01000);
 #endif
   frame = (uint8_t *) malloc_dma(maxUbxFrameSize);
-  if (frame) {
-    chThdCreateFromHeap(NULL, THD_WORKING_AREA_SIZE(1536), "gps", NORMALPRIO, 
-			&Trampoline<&GpsUBX::periodic>::fn, this);
-  } else {
+  if (!frame) {
     status = DeviceStatus(DeviceStatus::MEMORY, DeviceStatus::DMA_HEAP_FULL);
+    return status;
   }
+
+  gpscfg.speed =  PARAM_CGET("role.gnss.ubx.baudrate");
+  uartStart(&ExternalUARTD, &gpscfg);
+
+  chThdCreateFromHeap(NULL, THD_WORKING_AREA_SIZE(1536), "gps", NORMALPRIO, 
+		      &Trampoline<&GpsUBX::periodic>::fn, this);
+  
   return status;
 }
 
