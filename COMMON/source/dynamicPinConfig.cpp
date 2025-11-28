@@ -125,10 +125,12 @@ namespace DynPin {
   {
     // verify that we set the scenion only once
     static bool scenarioSet = false;
-    chDbgAssert(scenarioSet == false, "setScenario more than once");
-    scenarioSet = true;
+
+    if (scenarioSet== false) {
+      scenarioSet = true;
+      inactiveAllSharedPins();
+    }
     
-    inactiveAllSharedPins();
     switch (s) {
     case Scenario::UART : scenario_UART(mask); break;
     case Scenario::I2C : scenario_I2C(); break;

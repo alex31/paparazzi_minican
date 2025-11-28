@@ -19,6 +19,7 @@
       {"role.servo.pwm.map_index1", {.min=0, .max=124, .v = 0}},
       // when pins are shared between timer and other peripherals, select
       // the channels that are in use, other will be free
+      // mask is : msb F4 F3 F2 F1 lsb
       {"role.servo.pwm.channel_mask", {.min=0, .max=0b1111, .v = 0b1111}},
 	
       {"ROLE.servo.smart", {.v = false}},

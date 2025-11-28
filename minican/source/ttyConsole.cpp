@@ -66,7 +66,7 @@ static cmd_func_t cmd_threads;
 #endif
 namespace {
   Value parse_value(etl::string_view input);
-  std::optional<int> parse_value_int(etl::string_view input);
+  std::optional<int> parse_value_int(etl::string_view input = {});
   FixedString &  appendFixed(FixedString &str, const uavcan_protocol_param_NumericValue &val);
   FixedString &  appendFixed(FixedString &str, const uavcan_protocol_param_Value &val);
   FixedString &  appendFixed(FixedString &str, const char *val);
@@ -81,7 +81,7 @@ namespace {
     return appendFixed(lhs, rhs);
   }
   
-  void  cmd_storage_list(); 
+  void  cmd_storage_list(etl::string_view = {}); 
   void  cmd_storage_display(const char* key);
   void  cmd_storage_set(const char* key, const char* value);
   void  cmd_uavcan_storage_display(etl::string_view key);
@@ -494,13 +494,41 @@ namespace {
     }
   };
 
-  void cmd_storage_list()
+  bool match(const frozen::string&  s, etl::string_view pat) {
+    // frozen::string lacks starts_with/ends_with/contains, so adapt via views.
+    const etl::string_view haystack{s.data(), s.size()};
+
+    if (pat.starts_with('^')) {
+      const auto needle = pat.substr(1);
+      return haystack.size() >= needle.size() &&
+	     etl::string_view(haystack.data(), needle.size()) == needle;
+    }
+    if (pat.ends_with('$')) {
+      const auto needle = pat.substr(0, pat.size() - 1);
+      return haystack.size() >= needle.size() &&
+	     etl::string_view(haystack.data() + (haystack.size() - needle.size()), needle.size()) == needle;
+    }
+    // contains: fallback to simple find
+    return haystack.find(pat) != etl::string_view::npos;
+  }
+
+  void cmd_storage_list(etl::string_view partial)
   {
+    bool matchOnce = false;
+    
     for (ssize_t i=0; i < Persistant::params_list_len; i++) {
       const frozen::string& paramName =  std::next(Persistant::frozenParameters.begin(), i)->first;
+      if (not partial.empty()) {
+	if (not match(paramName, partial))
+	  continue;
+      }
+      matchOnce = true;
       std::visit([&](const auto& param_ptr) {
 	OverloadDyn{}(i, paramName, param_ptr);  
       }, Persistant::Parameter::find(i).first);
+    }
+    if (not matchOnce) {
+      DebugTrace("ERROR : parameter %.*s not valid", partial.size(), partial.data());
     }
     DebugTrace("\n");
   }
@@ -514,13 +542,17 @@ namespace {
 	DebugTrace("ERROR : parameter %d not valid", index);
 	return;
       } 
+      if (static_cast<size_t>(index) >= frozenParameters.size()) {
+	DebugTrace("ERROR : parameter index %d out of bound", index);
+	return;
+      }
       const auto& frozen_key =  std::next(frozenParameters.begin(), index)->first;
       key = frozen_key.data();
     } else {
       index = Persistant::Parameter::findIndex(key);
     }
     if (index <= 0) {
-      DebugTrace("ERROR : parameter %s not valid", key);
+      cmd_storage_list(key);
     } else {
       if (const auto& p = Persistant::Parameter::find(index);
 	  std::holds_alternative<Persistant::NoValue>(p.first)) {
