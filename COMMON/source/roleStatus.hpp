@@ -18,12 +18,12 @@ struct DeviceStatus {
   enum Source : uint8_t {
     ALL, MFS, RESOURCE, SERVO_ROLE, SERVO_PWM, SERVO_SMART,
     MPL3115A2, ESC_DSHOT, SBUS_TUNNEL, TELEMETRY_TUNNEL, GPS_ROLE,
-    FIRMWARE_UPDATE, I2C, SPI, NUM_SOURCES
+    FIRMWARE_UPDATE, I2C, SPI, MEMORY, NUM_SOURCES
   };
   enum Error : uint8_t {
     OK, NOT_FOUND, INVALID_PARAM, HETEROGENEOUS_BAUDS,
     NOT_RESPONDING, CONFLICT, I2C_TIMOUT, I2C_FREQ_INVALID, NB_ROLE_TOO_LARGE,
-    INVALID_PWM_MASK, NUM_ERRORS
+    INVALID_PWM_MASK, HEAP_FULL, DMA_HEAP_FULL, NUM_ERRORS
   };
   constexpr DeviceStatus(Source s, Error e = OK,
 	       uint16_t spe = 0) : source(s), err(e), specific(spe) {}
@@ -54,7 +54,8 @@ struct DeviceStatus {
 	MKP(GPS_ROLE),
 	MKP(FIRMWARE_UPDATE),
 	MKP(I2C),
-	MKP(SPI)
+	MKP(SPI),
+	MKP(MEMORY)
       }));
 
   static constexpr auto errName = make_frozen_map(std::to_array({
@@ -67,6 +68,8 @@ struct DeviceStatus {
 	MKP(I2C_FREQ_INVALID),
 	MKP(NB_ROLE_TOO_LARGE),
 	MKP(INVALID_PWM_MASK),
+	MKP(HEAP_FULL),
+	MKP(DMA_HEAP_FULL),
 	MKP(CONFLICT)
       }));
 

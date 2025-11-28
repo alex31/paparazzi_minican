@@ -286,18 +286,20 @@ DeviceStatus GpsUBX::start(UAVCAN::Node& node)
   //  MSB F4 F3 F2a F0b F0a LSB
   DynPin::setScenario(DynPin::Scenario::UART, 0b01000);
 #endif
-  
-  chThdCreateFromHeap(NULL, THD_WORKING_AREA_SIZE(1536), "gps", NORMALPRIO, 
-		      &Trampoline<&GpsUBX::periodic>::fn, this);
-  
+  frame = (uint8_t *) malloc_dma(maxUbxFrameSize);
+  if (frame) {
+    chThdCreateFromHeap(NULL, THD_WORKING_AREA_SIZE(1536), "gps", NORMALPRIO, 
+			&Trampoline<&GpsUBX::periodic>::fn, this);
+  } else {
+    status = DeviceStatus(DeviceStatus::MEMORY, DeviceStatus::DMA_HEAP_FULL);
+  }
   return status;
 }
 
 void GpsUBX::periodic(void *)
 {
   size_t size;
-  frame = (uint8_t *) malloc_m(maxUbxFrameSize);
-  
+
   while (true) {
     size = maxUbxFrameSize;
     uartReceiveTimeout(&ExternalUARTD, &size, frame, TIME_INFINITE);
@@ -307,7 +309,13 @@ void GpsUBX::periodic(void *)
   }
 }
 
-// en statique : p &frame
-// $2 = (uint8_t (*)[1024]) 0x20008c58 <GpsUBX::frame>
 
+/*
+  en statique :
+  p &frame
+  $2 = (uint8_t (*)[1024]) 0x20008c58 <GpsUBX::frame>
+  en dynamique : 
+  p frame
+  $2 = (uint8_t *) 0x200004a0 'U' <repeats 200 times>...
+*/
 //IN_DMA_SECTION(uint8_t GpsUBX::frame[maxUbxFrameSize]);
