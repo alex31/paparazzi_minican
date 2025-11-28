@@ -296,8 +296,10 @@ DeviceStatus GpsUBX::start(UAVCAN::Node& node)
 void GpsUBX::periodic(void *)
 {
   size_t size;
+  frame = (uint8_t *) malloc_m(maxUbxFrameSize);
+  
   while (true) {
-    size = sizeof(frame);
+    size = maxUbxFrameSize;
     uartReceiveTimeout(&ExternalUARTD, &size, frame, TIME_INFINITE);
     if (size) {
       decoder.feed({frame, size});
@@ -305,4 +307,7 @@ void GpsUBX::periodic(void *)
   }
 }
 
-IN_DMA_SECTION(uint8_t GpsUBX::frame[maxUbxFrameSize]);
+// en statique : p &frame
+// $2 = (uint8_t (*)[1024]) 0x20008c58 <GpsUBX::frame>
+
+//IN_DMA_SECTION(uint8_t GpsUBX::frame[maxUbxFrameSize]);

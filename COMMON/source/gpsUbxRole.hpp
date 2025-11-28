@@ -36,6 +36,6 @@ private:
   uint8_t satsVisible = 0;
   uint8_t satsUsed = 0;
   uint32_t lastNavSatITOW = 0;
-  static uint8_t frame[maxUbxFrameSize];
+  uint8_t *frame;
   void periodic(void *);
 };
