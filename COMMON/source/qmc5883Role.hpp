@@ -23,4 +23,5 @@ private:
   DmaBuffers *dmaBuf = nullptr;
   float countsPerGauss = 3000.0f; // default 8G sensitivity
   uint16_t rotDeg = 0;
+  uint8_t sensorId = 0;
 };

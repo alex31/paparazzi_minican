@@ -88,6 +88,8 @@ DeviceStatus Qmc5883Role::start(UAVCAN::Node& node)
     return DeviceStatus(DeviceStatus::MAG_QMC5883, DeviceStatus::INVALID_PARAM);
   }
 
+  sensorId = static_cast<uint8_t>(PARAM_CGET("role.i2c.magnetometer.q5883.sensor_id"));
+
   dmaBuf = static_cast<DmaBuffers*>(malloc_dma(sizeof(DmaBuffers)));
   if (!dmaBuf) {
     return DeviceStatus(DeviceStatus::MAG_QMC5883, DeviceStatus::DMA_HEAP_FULL);
@@ -128,7 +130,7 @@ DeviceStatus Qmc5883Role::start(UAVCAN::Node& node)
 void Qmc5883Role::periodic(void *)
 {
   uavcan_equipment_ahrs_MagneticFieldStrength2 msg = {};
-  msg.sensor_id = 0;
+  msg.sensor_id = sensorId;
   msg.magnetic_field_covariance.len = 0;
   static const uint8_t statusReg = REG_STATUS;
   static const uint8_t regData = REG_DATA;

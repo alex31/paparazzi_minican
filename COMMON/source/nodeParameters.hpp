@@ -58,6 +58,7 @@
       {"ROLE.i2c.magnetometer.q5883", {.v = false}},
       {"role.i2c.magnetometer.q5883.range", {.min = 2, .max = 8, .v = 2}},
       {"role.i2c.magnetometer.q5883.rot_deg", {.min = 0, .max = 270, .v = 0}},
+      {"role.i2c.magnetometer.q5883.sensor_id", {.min = 0, .max = 250, .v = 0}},
 
 
 
