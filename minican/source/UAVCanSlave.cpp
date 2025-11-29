@@ -11,6 +11,7 @@
 #include "sbusRole.hpp"
 #include "telemetryTunnelRole.hpp"
 #include "gpsUbxRole.hpp"
+#include "qmc5883Role.hpp"
 #include "firmwareUpdate.hpp"
 #include "hardwareConf.hpp"
 #include "UAVCanHelper.hpp"
@@ -305,6 +306,7 @@ namespace CANSlave {
 
     if (not (addRole<ServoRole, FixedString("ROLE.servo.pwm"),  FixedString("ROLE.servo.smart")>()
 	     && addRole<Baro_MPL3115A2_Role, FixedString("ROLE.i2c.barometer.mpl3115a2")>()
+	     && addRole<MagQMC5883, FixedString("ROLE.i2c.magnetometer.q5883")>()
 	     && addRole<EscDshot, FixedString("ROLE.esc.dshot")>()
 	     && addRole<RC_Sbus, FixedString("ROLE.sbus")>()
 	     && addRole<GpsUBX, FixedString("ROLE.gnss.ubx")>()
