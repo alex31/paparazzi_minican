@@ -9,7 +9,6 @@
 #include "hardwareConf.hpp"
 #include "I2C_periph.hpp"
 #include "UAVCAN/persistantParam.hpp"
-#include "uavcan.equipment.ahrs.MagneticFieldStrength2.h"
 
 static_assert(__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__, "QMC5883L driver assumes little-endian MCU");
 
@@ -57,13 +56,13 @@ namespace {
 }
 
 
-DeviceStatus MagQMC5883::subscribe(UAVCAN::Node&)
+DeviceStatus Qmc5883Role::subscribe(UAVCAN::Node&)
 {
   return DeviceStatus(DeviceStatus::MAG_QMC5883);
 }
 
 
-DeviceStatus MagQMC5883::start(UAVCAN::Node& node)
+DeviceStatus Qmc5883Role::start(UAVCAN::Node& node)
 {
   m_node = &node;
 
@@ -81,6 +80,11 @@ DeviceStatus MagQMC5883::start(UAVCAN::Node& node)
     countsPerGauss = countsPerGauss8G;
     rangeBits = CTRL1_RANGE_8G;
   } else {
+    return DeviceStatus(DeviceStatus::MAG_QMC5883, DeviceStatus::INVALID_PARAM);
+  }
+
+  rotDeg = PARAM_CGET("role.i2c.magnetometer.q5883.rot_deg");
+  if (!((rotDeg == 0) || (rotDeg == 90) || (rotDeg == 180) || (rotDeg == 270))) {
     return DeviceStatus(DeviceStatus::MAG_QMC5883, DeviceStatus::INVALID_PARAM);
   }
 
@@ -115,13 +119,13 @@ DeviceStatus MagQMC5883::start(UAVCAN::Node& node)
 
   chThdCreateFromHeap(NULL, THD_WORKING_AREA_SIZE(768), "qmc5883",
 		      NORMALPRIO,
-		      &Trampoline<&MagQMC5883::periodic>::fn,
+		      &Trampoline<&Qmc5883Role::periodic>::fn,
 		      this);
   return DeviceStatus(DeviceStatus::MAG_QMC5883);
 }
 
 
-void MagQMC5883::periodic(void *)
+void Qmc5883Role::periodic(void *)
 {
   uavcan_equipment_ahrs_MagneticFieldStrength2 msg = {};
   msg.sensor_id = 0;
@@ -159,9 +163,30 @@ void MagQMC5883::periodic(void *)
     const int16_t rawY = dmaBuf->axes[1];
     const int16_t rawZ = dmaBuf->axes[2];
 
-    msg.magnetic_field_ga[0] = static_cast<float>(rawX) / countsPerGauss;
-    msg.magnetic_field_ga[1] = static_cast<float>(rawY) / countsPerGauss;
-    msg.magnetic_field_ga[2] = static_cast<float>(rawZ) / countsPerGauss;
+    float mx = static_cast<float>(rawX) / countsPerGauss;
+    float my = static_cast<float>(rawY) / countsPerGauss;
+    float mz = static_cast<float>(rawZ) / countsPerGauss;
+
+    // Apply discrete yaw rotations to match Paparazzi convention.
+    switch (rotDeg) {
+    case 90:
+      std::swap(mx, my);
+      mx = -mx;
+      break;
+    case 180:
+      mx = -mx; my = -my;
+      break;
+    case 270:
+      std::swap(mx, my);
+      my = -my;
+      break;
+    default:
+      break;
+    }
+
+    msg.magnetic_field_ga[0] = mx;
+    msg.magnetic_field_ga[1] = my;
+    msg.magnetic_field_ga[2] = mz;
 
     m_node->sendBroadcast(msg, CANARD_TRANSFER_PRIORITY_LOW);
   }

@@ -6,7 +6,7 @@
 #include "roleBase.hpp"
 #include "roleStatus.hpp"
 
-class MagQMC5883 : public RoleBase, public RoleCrtp<MagQMC5883> {
+class Qmc5883Role final : public RoleBase, public RoleCrtp<Qmc5883Role> {
 public:
   DeviceStatus subscribe(UAVCAN::Node& node) override;
   DeviceStatus start(UAVCAN::Node& node) override;
@@ -22,4 +22,5 @@ private:
   };
   DmaBuffers *dmaBuf = nullptr;
   float countsPerGauss = 3000.0f; // default 8G sensitivity
+  uint16_t rotDeg = 0;
 };

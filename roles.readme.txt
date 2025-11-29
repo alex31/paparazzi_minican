@@ -37,7 +37,7 @@ Roles UAVCAN – messages reçus / envoyés
 - Magnétomètre QMC5883 (`ROLE.i2c.magnetometer.q5883`)
   - Reçoit : rien.
   - Envoie : `uavcan.equipment.ahrs.MagneticFieldStrength2` à chaque mesure disponible.
-  - Paramètres : `role.i2c.magnetometer.q5883.range` (2 ou 8 gauss). ODR/filtre/gain fixés (OSR 256, ODR 50 Hz, mode continu).
+  - Paramètres : `role.i2c.magnetometer.q5883.range` (2 ou 8 gauss), `role.i2c.magnetometer.q5883.rot_deg` (0/90/180/270) pour ajuster l’orientation. ODR/filtre/gain fixés (OSR 256, ODR 50 Hz, mode continu).
   - Notes : utilisation directe d’I2C `i2cMasterTransmitTimeout` avec buffers DMA ; en cas d’erreur I2C, reset bus et reprise.
 
 Services/protocoles gérés par le nœud (pubSub/UAVCanSlave)

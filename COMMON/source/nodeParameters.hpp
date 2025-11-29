@@ -57,6 +57,7 @@
       // range is the only configurable parameter
       {"ROLE.i2c.magnetometer.q5883", {.v = false}},
       {"role.i2c.magnetometer.q5883.range", {.min = 2, .max = 8, .v = 2}},
+      {"role.i2c.magnetometer.q5883.rot_deg", {.min = 0, .max = 270, .v = 0}},
 
 
 
