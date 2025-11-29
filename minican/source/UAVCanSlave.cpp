@@ -8,7 +8,7 @@
 #include "healthSurvey.hpp"
 #include "baro_MPL3115A2_Role.hpp"
 #include "escDshotRole.hpp"
-#include "sbusTunnelRole.hpp"
+#include "sbusRole.hpp"
 #include "telemetryTunnelRole.hpp"
 #include "gpsUbxRole.hpp"
 #include "firmwareUpdate.hpp"
@@ -306,7 +306,7 @@ namespace CANSlave {
     if (not (addRole<ServoRole, FixedString("ROLE.servo.pwm"),  FixedString("ROLE.servo.smart")>()
 	     && addRole<Baro_MPL3115A2_Role, FixedString("ROLE.i2c.barometer.mpl3115a2")>()
 	     && addRole<EscDshot, FixedString("ROLE.esc.dshot")>()
-	     && addRole<SbusTunnel, FixedString("ROLE.tunnel.sbus")>()
+	     && addRole<RC_Sbus, FixedString("ROLE.sbus")>()
 	     && addRole<GpsUBX, FixedString("ROLE.gnss.ubx")>()
 	     && addRole<TelemetryTunnel, FixedString("ROLE.tunnel.telemetry")>())) {
       node.setStatusMode(UAVCAN_PROTOCOL_NODESTATUS_MODE_OFFLINE);

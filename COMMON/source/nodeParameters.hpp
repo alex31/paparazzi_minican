@@ -37,10 +37,12 @@
       {"role.gnss.ubx.baudrate", {.min = 57'600, .max = 460'800, .v = 115'200}},
 
 
-      {"ROLE.tunnel.sbus", {.v = false}},
+      {"ROLE.sbus", {.v = false}},
       // Sending all SBUS frames over CAN would consume 8% of the bandwidth; this must be optimized.
       // Only the active channels are sent (1 = active, 0 = inactive).
-      {"role.tunnel.sbus.channel_mask", {.min=0, .max=0b1111'1111'1111'1111, .v = 0b1111'1111'1111'1111}},
+      {"role.sbus.channel_mask", {.min=0, .max=0b1111'1111'1111'1111, .v = 0b1111'1111'1111'1111}},
+      // in case there is multiple RC, each RC must have a unique ID
+      {"role.sbus.id", {.min=0, .max=0xff, .v = 0}},
 
       {"ROLE.tunnel.telemetry", {.v = false}},
       // if xbee_frame == false, pprz_frame will be used

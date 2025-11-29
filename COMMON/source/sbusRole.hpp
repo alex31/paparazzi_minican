@@ -9,7 +9,7 @@
 #include "UAVCAN/persistantParam.hpp"
 #include "futabaSbusUart.h"
 
-class SbusTunnel : public RoleBase, public RoleCrtp<SbusTunnel> {
+class RC_Sbus : public RoleBase, public RoleCrtp<RC_Sbus> {
 public:
   DeviceStatus subscribe(UAVCAN::Node& node) override;
   DeviceStatus start(UAVCAN::Node& node) override;
@@ -22,7 +22,7 @@ private:
   ChannelBitset enabledChannels = {};
   SBUSDriver sbusd;
   UAVCAN::Node *node;
-  pprz_tunnel_SbusFrame tunnelFrame = {};
+  dronecan_sensors_rc_RCInput rcInput = {};
 
   static bool is_channel_active(ChannelMask mask, std::size_t channel_idx);
   static ChannelBitset decode_channel_mask(ChannelMask mask);
