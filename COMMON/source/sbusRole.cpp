@@ -3,6 +3,7 @@
 #include "hardwareConf.hpp"
 #include "ressourceManager.hpp"
 #include "stdutil++.hpp"
+#include <cmath>
 
 #if PLATFORM_MICROCAN
 #include "dynamicPinConfig.hpp"
@@ -50,15 +51,17 @@ DeviceStatus RC_Sbus::start(UAVCAN::Node& _node)
 #endif
   
   enabledChannels = decode_channel_mask(PARAM_CGET("role.sbus.channel_mask"));
+  rangeMin = PARAM_CGET("role.sbus.range.min");
+  rangeMax = PARAM_CGET("role.sbus.range.max");
+  if (rangeMin >= rangeMax) {
+    return DeviceStatus(DeviceStatus::RC_SBUS, DeviceStatus::INVALID_PARAM);
+  }
   rcInput.rcin.len = count_active_channels(enabledChannels);
   rcInput.id = PARAM_CGET("role.sbus.id");            
   
 
   chDbgAssert(rcInput.rcin.len <= SBUS_NUM_CHANNEL, "internal error");
-  // if the serial telemetry is used in the future,
-  // one have to add the UART and the RX pin
-  //  dshotStart(&dshotd, &dshotConfig);
-  //  chThdCreateStatic(waPeriodic, sizeof(waPeriodic), NORMALPRIO, &periodic, &node);
+
   node = &_node;
   sbusObjectInit(&sbusd);	//Init et acquisition des trames sbus
   sbusStart(&sbusd, &sbuscfg);
@@ -92,10 +95,15 @@ uint8_t RC_Sbus::count_active_channels(const ChannelBitset& bits)
 void RC_Sbus::maj_rc_cb_frame(const SBUSFrame *frame)
 {
   std::size_t outIdx = 0;
+  const std::size_t maxOut = std::min<std::size_t>(rcInput.rcin.len, max_channels);
   
-  for (size_t ch = 0; (ch < max_channels) && (outIdx < rcInput.rcin.len); ++ch) {
+  for (size_t ch = 0; (ch < max_channels) && (outIdx < maxOut); ++ch) {
     if (enabledChannels[ch]) {
-      rcInput.rcin.data[outIdx++] = frame->channel[ch];
+      const float t = std::clamp(
+	(static_cast<float>(frame->channel[ch]) - static_cast<float>(rangeMin)) /
+	static_cast<float>(rangeMax - rangeMin),
+	0.0f, 1.0f);
+      rcInput.rcin.data[outIdx++] = std::lerp(-1.0f, 1.0f, t);
     }
   }
   rcInput.status = DRONECAN_SENSORS_RC_RCINPUT_STATUS_QUALITY_VALID;
