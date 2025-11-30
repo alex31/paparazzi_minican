@@ -53,6 +53,14 @@ namespace {
 
   constexpr float countsPerGauss2G = 12000.0f;
   constexpr float countsPerGauss8G = 3000.0f;
+
+  msg_t xfer(const uint8_t *tx, size_t txlen, uint8_t *rx, size_t rxlen) {
+    i2cAcquireBus(&ExternalI2CD);
+    const msg_t ret = i2cMasterTransmitTimeout(&ExternalI2CD, qmcAddr, tx, txlen,
+					       rx, rxlen, TIME_MS2I(10));
+    i2cReleaseBus(&ExternalI2CD);
+    return ret;
+  }
 }
 
 
@@ -96,23 +104,19 @@ DeviceStatus Qmc5883Role::start(UAVCAN::Node& node)
   }
 
   msg_t status = MSG_OK;
-
   static const uint8_t resetPeriod[] = {REG_RESET_PERIOD, 0x01};
-  status = i2cMasterTransmitTimeout(&ExternalI2CD, qmcAddr, resetPeriod, sizeof(resetPeriod),
-				    nullptr, 0, TIME_MS2I(10));
+  status = xfer(resetPeriod, sizeof(resetPeriod), nullptr, 0);
 
   if (status == MSG_OK) {
     static const uint8_t ctrl2[] = {REG_CONTROL_2, CTRL2_SOFT_RESET};
-    status = i2cMasterTransmitTimeout(&ExternalI2CD, qmcAddr, ctrl2, sizeof(ctrl2),
-				      nullptr, 0, TIME_MS2I(10));
+    status = xfer(ctrl2, sizeof(ctrl2), nullptr, 0);
   }
 
   if (status == MSG_OK) {
     dmaBuf->ctrl1[0] = REG_CONTROL_1;
     dmaBuf->ctrl1[1] = static_cast<uint8_t>(CTRL1_OSR_256 | CTRL1_ODR_50HZ |
 					    rangeBits | CTRL1_MODE_CONT);
-    status = i2cMasterTransmitTimeout(&ExternalI2CD, qmcAddr, dmaBuf->ctrl1, sizeof(dmaBuf->ctrl1),
-				      nullptr, 0, TIME_MS2I(10));
+    status = xfer(dmaBuf->ctrl1, sizeof(dmaBuf->ctrl1), nullptr, 0);
   }
 
   if (status != MSG_OK) {
@@ -137,8 +141,7 @@ void Qmc5883Role::periodic(void *)
 
   while (true) {
     dmaBuf->status = 0;
-    msg_t ret = i2cMasterTransmitTimeout(&ExternalI2CD, qmcAddr, &statusReg, 1,
-					 &dmaBuf->status, 1, TIME_MS2I(10));
+    msg_t ret = xfer(&statusReg, 1, &dmaBuf->status, 1);
     if (ret != MSG_OK) {
       I2CPeriph::reset();
       chThdSleepMilliseconds(10);
@@ -151,10 +154,9 @@ void Qmc5883Role::periodic(void *)
     }
 
     // QMC5883L shares endianness with STM32; read axes directly
-    ret = i2cMasterTransmitTimeout(&ExternalI2CD, qmcAddr, &regData, 1,
-				   reinterpret_cast<uint8_t*>(dmaBuf->axes), 
-				   sizeof(dmaBuf->axes),
-				   TIME_MS2I(10));
+    ret = xfer(&regData, 1,
+	       reinterpret_cast<uint8_t*>(dmaBuf->axes),
+	       sizeof(dmaBuf->axes));
     if (ret != MSG_OK) {
       I2CPeriph::reset();
       chThdSleepMilliseconds(10);
