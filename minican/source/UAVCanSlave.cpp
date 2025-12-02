@@ -4,14 +4,50 @@
 #include "deviceRessource.hpp"
 #include "UAVCAN/persistantParam.hpp"
 #include "UAVCAN/pubSub.hpp"
+#ifndef USE_SERVO_ROLE
+#define USE_SERVO_ROLE false
+#endif
+#ifndef USE_BARO_MPL3115A2_ROLE
+#define USE_BARO_MPL3115A2_ROLE false
+#endif
+#ifndef USE_QMC5883_ROLE
+#define USE_QMC5883_ROLE false
+#endif
+#ifndef USE_ESC_DSHOT_ROLE
+#define USE_ESC_DSHOT_ROLE false
+#endif
+#ifndef USE_RC_SBUS_ROLE
+#define USE_RC_SBUS_ROLE false
+#endif
+#ifndef USE_GPS_UBX_ROLE
+#define USE_GPS_UBX_ROLE false
+#endif
+#ifndef USE_PPRZLINK_TUNNEL_ROLE
+#define USE_PPRZLINK_TUNNEL_ROLE false
+#endif
+
+#if USE_SERVO_ROLE
 #include "servoRole.hpp"
+#endif
 #include "healthSurvey.hpp"
+#if USE_BARO_MPL3115A2_ROLE
 #include "baro_MPL3115A2_Role.hpp"
+#endif
+#if USE_ESC_DSHOT_ROLE
 #include "escDshotRole.hpp"
+#endif
+#if USE_RC_SBUS_ROLE
 #include "sbusRole.hpp"
+#endif
+#if USE_PPRZLINK_TUNNEL_ROLE
 #include "telemetryTunnelRole.hpp"
+#endif
+#if USE_GPS_UBX_ROLE
 #include "gpsUbxRole.hpp"
+#endif
+#if USE_QMC5883_ROLE
 #include "qmc5883Role.hpp"
+#endif
 #include "firmwareUpdate.hpp"
 #include "hardwareConf.hpp"
 #include "UAVCanHelper.hpp"
@@ -304,13 +340,30 @@ namespace CANSlave {
 				  processRestartNodeRequest, processExecuteOpcodeRequest,
 				  processFirmwareUpdateRequest>();
 
-    if (not (addRole<ServoRole, FixedString("ROLE.servo.pwm"),  FixedString("ROLE.servo.smart")>()
-	     && addRole<Baro_MPL3115A2_Role, FixedString("ROLE.i2c.barometer.mpl3115a2")>()
-	     && addRole<Qmc5883Role, FixedString("ROLE.i2c.magnetometer.q5883")>()
-	     && addRole<EscDshot, FixedString("ROLE.esc.dshot")>()
-	     && addRole<RC_Sbus, FixedString("ROLE.sbus")>()
-	     && addRole<GpsUBX, FixedString("ROLE.gnss.ubx")>()
-	     && addRole<TelemetryTunnel, FixedString("ROLE.tunnel.telemetry")>())) {
+    bool rolesOk = true;
+#if USE_SERVO_ROLE
+    rolesOk = rolesOk && addRole<ServoRole, FixedString("ROLE.servo.pwm"),  FixedString("ROLE.servo.smart")>();
+#endif
+#if USE_BARO_MPL3115A2_ROLE
+    rolesOk = rolesOk && addRole<Baro_MPL3115A2_Role, FixedString("ROLE.i2c.barometer.mpl3115a2")>();
+#endif
+#if USE_QMC5883_ROLE
+    rolesOk = rolesOk && addRole<Qmc5883Role, FixedString("ROLE.i2c.magnetometer.q5883")>();
+#endif
+#if USE_ESC_DSHOT_ROLE
+    rolesOk = rolesOk && addRole<EscDshot, FixedString("ROLE.esc.dshot")>();
+#endif
+#if USE_RC_SBUS_ROLE
+    rolesOk = rolesOk && addRole<RC_Sbus, FixedString("ROLE.sbus")>();
+#endif
+#if USE_GPS_UBX_ROLE
+    rolesOk = rolesOk && addRole<GpsUBX, FixedString("ROLE.gnss.ubx")>();
+#endif
+#if USE_PPRZLINK_TUNNEL_ROLE
+    rolesOk = rolesOk && addRole<TelemetryTunnel, FixedString("ROLE.tunnel.telemetry")>();
+#endif
+
+    if (not rolesOk) {
       node.setStatusMode(UAVCAN_PROTOCOL_NODESTATUS_MODE_OFFLINE);
       return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::NB_ROLE_TOO_LARGE);
     }
