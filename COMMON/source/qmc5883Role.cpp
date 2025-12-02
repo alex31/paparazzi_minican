@@ -57,7 +57,7 @@ namespace {
   msg_t xfer(const uint8_t *tx, size_t txlen, uint8_t *rx, size_t rxlen) {
     i2cAcquireBus(&ExternalI2CD);
     const msg_t ret = i2cMasterTransmitTimeout(&ExternalI2CD, qmcAddr, tx, txlen,
-					       rx, rxlen, TIME_MS2I(10));
+					       rx, rxlen, TIME_MS2I(100));
     i2cReleaseBus(&ExternalI2CD);
     return ret;
   }

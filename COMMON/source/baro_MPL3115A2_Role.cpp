@@ -145,7 +145,7 @@ DeviceStatus Baro_MPL3115A2_Role::getTemperature(float *temperature)
 DeviceStatus Baro_MPL3115A2_Role::getDevId(uint8_t *devId)
 {
   msg_t status = i2cMasterTransmitTimeout(&ExternalI2CD, mplAdr, devIdReg, sizeof(devIdReg),	
-					  devId, sizeof(*devId), 100);
+					  devId, sizeof(*devId), TIME_MS2I(100));
   if (status != MSG_OK) {
     DebugTrace("getDevId : i2cMasterTransmitTimeout error");
     resetI2C();

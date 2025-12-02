@@ -128,7 +128,7 @@ namespace DynPin {
 
     if (scenarioSet== false) {
       scenarioSet = true;
-      inactiveAllSharedPins();
+      //      inactiveAllSharedPins();
     }
     
     switch (s) {
@@ -189,11 +189,9 @@ namespace {
   
   void scenario_I2C()
   {
-    palSetLineMode(LINE_PULLUP_SCL, PAL_MODE_OUTPUT_PUSHPULL);
-    palSetLineMode(LINE_PULLUP_SDA, PAL_MODE_OUTPUT_PUSHPULL);
-    palSetLine(LINE_PULLUP_SCL);
-    palSetLine(LINE_PULLUP_SDA);
-    
+    // pullup should be activated before by commun code
+    // (minican does not use dynamicPinConfig)
+
     if(DynPin::i2cUnhangBus(&I2CD2) == false) {
       DebugTrace("unhang bus I2C2 failed");
     }
@@ -208,7 +206,6 @@ namespace {
     palSetLineMode(LINE_F3, PAL_MODE_ALTERNATE(F3_SPI_AF) | PAL_STM32_OSPEED_HIGHEST);
     palSetLineMode(LINE_F4, PAL_MODE_ALTERNATE(F4_SPI_AF) | PAL_STM32_OSPEED_HIGHEST);
     palSetLineMode(LINE_F1_b, PAL_MODE_OUTPUT_PUSHPULL | PAL_STM32_OSPEED_HIGHEST);
-
   }
   
   void scenario_PWM(uint8_t mask)
