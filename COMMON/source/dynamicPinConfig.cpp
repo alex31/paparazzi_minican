@@ -86,15 +86,14 @@ namespace DynPin {
   void i2cActivatePullup()
   {
     // activate PULLUP on SDA, SCL depending on eeprom configuration
-    palSetLineMode(LINE_PULLUP_SCL, PAL_MODE_OUTPUT_PUSHPULL);
-    palSetLineMode(LINE_PULLUP_SDA, PAL_MODE_OUTPUT_PUSHPULL);
-
     if (PARAM_CGET("bus.i2c.pullup_resistor")) {
+      palSetLineMode(LINE_PULLUP_SCL, PAL_MODE_OUTPUT_PUSHPULL);
+      palSetLineMode(LINE_PULLUP_SDA, PAL_MODE_OUTPUT_PUSHPULL);
       palSetLine(LINE_PULLUP_SCL);
       palSetLine(LINE_PULLUP_SDA);
     } else {
-      palClearLine(LINE_PULLUP_SCL);
-      palClearLine(LINE_PULLUP_SDA);
+      palSetLineMode(LINE_PULLUP_SCL, PAL_MODE_INPUT);
+      palSetLineMode(LINE_PULLUP_SCL, PAL_MODE_INPUT);
     }
   }
 
@@ -144,31 +143,26 @@ namespace DynPin {
 
   bool isFirmwareMatchHardware()
   {
-    int nbTestFailed = 0;
-    
-    BOARD_GROUP_DECLFOREACH(pin, DYNAMIC_FUNCTION_PIN) {
-      palSetLineMode(pin, PAL_MODE_INPUT_PULLDOWN);
-    }
+    bool testFailed = false;
+
+    palSetLineMode(LINE_F0_b, PAL_MODE_INPUT_PULLDOWN);
     
     for (auto commander_line : (const ioline_t [])
-	   {LINE_F0_a, LINE_F1_a, LINE_F2_a}) {
+	   {LINE_F0_a}) {
       palSetLineMode(commander_line, PAL_MODE_OUTPUT_PUSHPULL);
       palSetLine(commander_line);
     }
     chThdSleepMilliseconds(1);
     for (auto connected_line : (const ioline_t [])
-	   {LINE_F0_b, LINE_F1_b, LINE_F2_b}) {
+	   {LINE_F0_b}) {
       if (palReadLine(connected_line) != PAL_HIGH) {
 	//	DebugTrace("fail PAD %lu", PAL_PAD(connected_line));
-	++nbTestFailed;
+	testFailed = true;
       }
     }
-    //    DebugTrace("%d test failed", nbTestFailed);
     inactiveAllSharedPins();
-    return nbTestFailed <= 2;
+    return not testFailed;
   }
-
-
 }
 
 
