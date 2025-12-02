@@ -1,3 +1,7 @@
+#include "projectconf.h"
+
+#if USE_BARO_MPL3115A2_ROLE
+
 #include "baro_MPL3115A2_Role.hpp"
 #include "stdutil.h"
 #include "hardwareConf.hpp"
@@ -152,3 +156,5 @@ DeviceStatus Baro_MPL3115A2_Role::getDevId(uint8_t *devId)
   }
   return status == MSG_OK ? DeviceStatus(DeviceStatus::MPL3115A2) : DeviceStatus(DeviceStatus::MPL3115A2, DeviceStatus::I2C_TIMOUT);
 }
+
+#endif // USE_BARO_MPL3115A2_ROLE

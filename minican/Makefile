@@ -45,7 +45,7 @@ PRECISE_FDCAN_TIMINGS = false
 endif
 
 
-DEBUG := 0
+DEBUG := g
 OPT_SPEED := fast
 OPT_SIZE := s
 
@@ -84,7 +84,8 @@ ifeq ($(RELEASE),$(DEBUG))
   USE_LTO = no
 endif
 
-
+#   theses options : -fipa-pta --specs=nano.specs
+#   can be enabled to save 25ko but only if TRACE is not enabled (no shell)
 ifeq ($(RELEASE),$(OPT_SPEED)) 
   USE_OPT =  -O$(RELEASE) -ggdb3 -flto -Wall -Wextra \
          -falign-functions=16 -fomit-frame-pointer \
@@ -99,7 +100,6 @@ endif
 ifeq ($(RELEASE),$(OPT_SIZE)) 
   USE_OPT =  -O$(RELEASE) -flto  -Wall -Wextra \
 	    -falign-functions=16 -fomit-frame-pointer \
-            -fipa-pta --specs=nano.specs \
             -DCH_DBG_SYSTEM_STATE_CHECK=0 -DCH_DBG_ENABLE_CHECKS=0 \
             -DCH_DBG_ENABLE_ASSERTS=0 -DCH_DBG_ENABLE_STACK_CHECK=0 \
             -DCH_DBG_FILL_THREADS=0 \
@@ -329,9 +329,9 @@ UDEFS = -DCANARD_ENABLE_CANFD=true -DDRONECAN_CXX_WRAPPERS=true \
 	-DVCS_COMMIT=$(VCS_COMMIT) -DHW_VERSION=$(HW_VERSION) \
         -DSW_VERSION_MAJOR=$(SW_VERSION_MAJOR) -DSW_VERSION_MINOR=$(SW_VERSION_MINOR)
 
-ifeq ($(RELEASE),$(DEBUG))
+#ifeq ($(RELEASE),$(DEBUG))
 UDEFS += -DTRACE
-endif
+#endif
 #
 # Define ASM defines here
 UADEFS =

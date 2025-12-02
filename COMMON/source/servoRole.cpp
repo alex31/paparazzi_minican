@@ -1,3 +1,7 @@
+#include "projectconf.h"
+
+#if USE_SERVO_ROLE
+
 #include "servoRole.hpp"
 #include <algorithm>
 #include "ressourceManager.hpp"
@@ -37,11 +41,10 @@ void ServoRole::processActuatorArrayCommand(CanardRxTransfer *,
 		 UAVCAN_EQUIPMENT_ACTUATOR_COMMAND_COMMAND_TYPE_SPEED) {
 	ServoSmart::setSpeed(msg.commands.data[idx].actuator_id,
 			     msg.commands.data[idx].command_value);
-      } 
+      }
     }
   }
 }
-
 
 DeviceStatus ServoRole::subscribe(UAVCAN::Node& node)
 {
@@ -69,3 +72,5 @@ DeviceStatus ServoRole::start(UAVCAN::Node& node)
 
 bool ServoRole::m_role_servo_pwm = false;
 bool ServoRole::m_role_servo_smart = false;
+
+#endif // USE_SERVO_ROLE

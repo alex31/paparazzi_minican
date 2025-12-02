@@ -376,7 +376,8 @@ static void cmd_threads(BaseSequentialStream *lchp, int argc,const char * const 
   
   chprintf (lchp, "    addr    stack  frestk prio refs  state        time \t percent        name\r\n");
   uint32_t idx=0;
-  do {
+   do {
+#if defined(CH_DBG_SYSTEM_STATE_CHECK) &&  CH_DBG_SYSTEM_STATE_CHECK    
     chprintf (lchp, "%.8lx %.8lx %6lu %4lu %4lu %9s %9lu   %.2f%%    \t%s\r\n",
 	      (uint32_t)tp, (uint32_t)tp->ctx.sp,
 	      get_stack_free(tp),
@@ -385,7 +386,16 @@ static void cmd_threads(BaseSequentialStream *lchp, int argc,const char * const 
 	      (uint32_t)RTC2MS(STM32_SYSCLK, tp->stats.cumulative),
 	      stampThreadGetCpuPercent (&threadCpuInfo, idx),
 	      chRegGetThreadNameX(tp));
+#else
+    chprintf (lchp, "%.8lx %.8lx %4lu %4lu %9s %9lu   %.2f%%    \t%s\r\n",
+	      (uint32_t)tp, (uint32_t)tp->ctx.sp,
+	      (uint32_t)tp->hdr.pqueue.prio, (uint32_t)(tp->refs - 1),
+	      states[tp->state],
+	      (uint32_t)RTC2MS(STM32_SYSCLK, tp->stats.cumulative),
+	      stampThreadGetCpuPercent (&threadCpuInfo, idx),
+	      chRegGetThreadNameX(tp));
 
+#endif
     totalTicks+= (float)tp->stats.cumulative;
     if (strcmp(chRegGetThreadNameX(tp), "idle") == 0)
     idleTicks = (float)tp->stats.cumulative;

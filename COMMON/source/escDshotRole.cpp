@@ -1,3 +1,7 @@
+#include "projectconf.h"
+
+#if USE_ESC_DSHOT_ROLE
+
 #include "escDshotRole.hpp"
 #include <algorithm>
 #include "ressourceManager.hpp"
@@ -14,7 +18,6 @@ DeviceStatus EscDshot::subscribe(UAVCAN::Node& node)
   node.subscribeBroadcastMessages<Trampoline<&EscDshot::processEscRawCommand>::fn>();
   return DeviceStatus::ESC_DSHOT;
 }
-
 
 DeviceStatus EscDshot::start(UAVCAN::Node& /*node*/)
 {
@@ -73,7 +76,7 @@ DeviceStatus EscDshot::start(UAVCAN::Node& /*node*/)
 
 
 void EscDshot::processEscRawCommand(CanardRxTransfer* /*transfer*/,
-				  const  uavcan_equipment_esc_RawCommand &msg)
+					  const  uavcan_equipment_esc_RawCommand &msg)
 {
   // raw command are in the range [-8192, 8191]
   // we normalize and clamp to the range [ 0; 2000]
@@ -81,10 +84,9 @@ void EscDshot::processEscRawCommand(CanardRxTransfer* /*transfer*/,
     for (size_t idx = 0; idx < numChannels; ++idx) {
       throttles[idx] = std::clamp((msg.cmd.data[idx + mapIndex1]) / 4, 0,
 					     2000);
-    }
-  }
+	  }
+	}
 }
-
 
 void  EscDshot::periodic(void *)	
 {
@@ -130,3 +132,5 @@ void  EscDshot::periodic(void *)
     chThdSleepUntilWindowed(ts, ts + loopPeriod);
   }
 }
+
+#endif // USE_ESC_DSHOT_ROLE

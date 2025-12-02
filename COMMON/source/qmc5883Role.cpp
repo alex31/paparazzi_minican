@@ -3,6 +3,10 @@
  * @brief QMC5883L magnetometer role: fixed config, publishes MagneticFieldStrength2.
  */
 
+#include "projectconf.h"
+
+#if USE_QMC5883_ROLE
+
 #include "qmc5883Role.hpp"
 #include <algorithm>
 #include "stdutil.h"
@@ -195,3 +199,5 @@ void Qmc5883Role::periodic(void *)
     m_node->sendBroadcast(msg, CANARD_TRANSFER_PRIORITY_LOW);
   }
 }
+
+#endif // USE_QMC5883_ROLE

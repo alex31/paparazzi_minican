@@ -1,3 +1,7 @@
+#include "projectconf.h"
+
+#if USE_SERVO_ROLE
+
 #include "servoSmart.hpp"
 #include "ressourceManager.hpp"
 #include "UAVCAN/persistantParam.hpp"
@@ -141,3 +145,5 @@ namespace {
 
   
 }
+
+#endif // USE_SERVO_ROLE

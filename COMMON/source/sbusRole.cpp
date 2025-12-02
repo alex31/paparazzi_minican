@@ -1,3 +1,7 @@
+#include "projectconf.h"
+
+#if USE_RC_SBUS_ROLE
+
 #include "sbusRole.hpp"
 #include <algorithm>
 #include "hardwareConf.hpp"
@@ -113,3 +117,5 @@ void RC_Sbus::maj_rc_cb_frame(const SBUSFrame *frame)
   rcInput.quality = frame->flags & (1 << SBUS_FRAME_LOST_BIT) ? 0 : 255;
   node->sendBroadcast(rcInput, CANARD_TRANSFER_PRIORITY_HIGH);
 }
+
+#endif // USE_RC_SBUS_ROLE

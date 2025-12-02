@@ -1,3 +1,7 @@
+#include "projectconf.h"
+
+#if USE_GPS_UBX_ROLE
+
 #include "gpsUbxDecoder.hpp"
 #include "stdutil.h"
 #include <cstring>
@@ -190,3 +194,5 @@ void UBX::Decoder::feed(etl::span<const uint8_t> data)
     }
   }
 }
+
+#endif // USE_GPS_UBX_ROLE

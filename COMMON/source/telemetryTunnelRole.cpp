@@ -1,3 +1,7 @@
+#include "projectconf.h"
+
+#if USE_PPRZLINK_TUNNEL_ROLE
+
 #include <algorithm>
 #include <new>
 
@@ -276,3 +280,5 @@ void TelemetryTunnel::periodic(void *)
 }
 
 bool TelemetryTunnel::xbeeFrame = {};
+
+#endif // USE_PPRZLINK_TUNNEL_ROLE

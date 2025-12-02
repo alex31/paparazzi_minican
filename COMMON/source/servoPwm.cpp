@@ -1,3 +1,7 @@
+#include "projectconf.h"
+
+#if USE_SERVO_ROLE
+
 #include "servoPwm.hpp"
 #include <algorithm>
 #include "ressourceManager.hpp"
@@ -163,3 +167,5 @@ void ServoPWM::setUnitless(uint8_t index, float value)
 		     );
   } 
 }
+
+#endif // USE_SERVO_ROLE

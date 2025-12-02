@@ -1,3 +1,7 @@
+#include "projectconf.h"
+
+#if USE_GPS_UBX_ROLE
+
 #include <algorithm>
 #include <cstdint>
 
@@ -321,3 +325,5 @@ void GpsUBX::periodic(void *)
   $2 = (uint8_t *) 0x200004a0 'U' <repeats 200 times>...
 */
 //IN_DMA_SECTION(uint8_t GpsUBX::frame[maxUbxFrameSize]);
+
+#endif // USE_GPS_UBX_ROLE
