@@ -90,6 +90,8 @@ int main(void)
   RgbLed::setMotif(500, 0b1010101010101010);
   if (not DynPin::isFirmwareMatchHardware()) {
     RgbLed::setWheelOfDeath();
+    for (int i = 0; i < 5; i++)
+      DebugTrace ("FATAL : FIRMWARE do not match HARDWARE");
     goto end;
   }
 

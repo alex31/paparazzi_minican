@@ -258,7 +258,7 @@ namespace {
     return true;
   }
   
-
+  void printOnceInATime(const etl::string_view sv);
 }
 
  
@@ -297,7 +297,7 @@ namespace CANSlave {
       .flagCb = [] -> uint8_t {return nodeId;},
       .infoCb = [](const etl::string_view sv) {
 #ifdef TRACE
-	  DebugTrace("UAVDbg : %s", sv.data());
+	printOnceInATime(sv);
 #else
 	(void) sv;
 #endif
@@ -375,4 +375,20 @@ namespace CANSlave {
 
 
 namespace {
+ void printOnceInATime(const etl::string_view sv)
+ {
+   static etl::string<120> lastMsg = "";
+   static systime_t lastTime = 0;
+   const systime_t now = chVTGetSystemTimeX();
+   
+   const bool canRedisplay = chTimeDiffX(lastTime, now) > TIME_S2I(15);
+
+   if ((sv != lastMsg) or canRedisplay) {
+     lastMsg = sv;
+     lastTime = now;
+     DebugTrace("UAVDbg : %s", sv.data());
+   }
+ }
+
 }
+  
