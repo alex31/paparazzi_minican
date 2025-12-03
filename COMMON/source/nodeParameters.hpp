@@ -9,6 +9,8 @@
       {"bus.i2c.pullup_resistor", {.v = true}},
       // I²C frequency : valid values : 100, 400, 1000
       {"bus.i2c.frequency_khz", {.min = 100, .max = 1000, .v = 400}},
+      // shared baudrate for all roles that use usart (but smart servo which use autobaud)
+      {"bus.serial.baudrate", {.min = 57'600, .max = 460'800, .v = 115'200}},
       {"hardware.nickname", {.v = "nickname"}},
       // fancy led pattern if role.identification is true
       {"ROLE.identification", {.v = true}},
@@ -41,7 +43,6 @@
 
 #if USE_GPS_UBX_ROLE
       {"ROLE.gnss.ubx", {.v = false}},
-      {"role.gnss.ubx.baudrate", {.min = 57'600, .max = 460'800, .v = 115'200}},
 #endif
 
 #if USE_RC_SBUS_ROLE
@@ -55,11 +56,9 @@
       {"role.sbus.range.max", {.min=0, .max=2047, .v = 1811}},
 #endif
 
-#if USE_PPRZLINK_TUNNEL_ROLE
-      {"ROLE.tunnel.telemetry", {.v = false}},
-      // if xbee_frame == false, pprz_frame will be used
-      {"role.tunnel.telemetry.xbee_frame", {.v = false}},
-      {"role.tunnel.telemetry.baudrate", {.min = 1'200, .max = 460'800, .v = 57'600}},
+#if USE_SERIAL_STREAM_ROLE
+      {"ROLE.tunnel.serial", {.v = false}},
+      {"role.tunnel.serial.protocol", {.min = 0, .max = 255, .v = 0}},
 #endif
 
 #if USE_BARO_MPL3115A2_ROLE

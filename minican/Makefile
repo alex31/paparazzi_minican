@@ -284,7 +284,7 @@ CPPSRC = $(ALLCPPSRC) \
 	$(COMMON)/servoSmart.cpp \
 	$(COMMON)/escDshotRole.cpp \
 	$(COMMON)/sbusRole.cpp \
-	$(COMMON)/telemetryTunnelRole.cpp \
+	$(COMMON)/serialStreamRole.cpp \
 	$(COMMON)/qmc5883Role.cpp \
 	$(COMMON)/baro_MPL3115A2_Role.cpp \
 	$(COMMON)/deviceRessource.cpp \

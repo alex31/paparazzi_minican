@@ -1,37 +1,36 @@
 Roles UAVCAN – messages reçus / envoyés
 ======================================
 
-- ServoRole (`role.servo.pwm`, `role.servo.smart`)
+- ServoRole (`ROLE.servo.pwm`, `ROLE.servo.smart`)
   - Reçoit : `uavcan.equipment.actuator.ArrayCommand` (broadcast), pour piloter PWM ou SmartServo selon le type de commande.
   - Envoie : `uavcan.equipment.actuator.Status`.
   - Paramètres PWM : `role.servo.pwm.frequency`, `role.servo.pwm.pulse_half_width` (mi-largeur us), `role.servo.pwm.map_index1` (premier servo), `role.servo.pwm.channel_mask` (canaux actifs).
   - Paramètres Smart : `role.servo.smart.map_index1`, `role.servo.smart.num_servos`, `role.servo.smart.status_frequency` (Hz, 0 = pas de retour).
 
-- Baro_MPL3115A2_Role (`role.i2c.barometer.mpl3115a2`)
+- Baro_MPL3115A2_Role (`ROLE.i2c.barometer.mpl3115a2`)
   - Reçoit : rien.
   - Envoie : `uavcan.equipment.air_data.StaticPressure`, `uavcan.equipment.air_data.StaticTemperature` (mesures périodiques).
 
-- EscDshot (`role.esc.dshot`)
+- EscDshot (`ROLE.esc.dshot`)
   - Reçoit : `uavcan.equipment.esc.RawCommand` (broadcast) pour les consignes moteurs.
   - Envoie : `uavcan.equipment.esc.Status` uniquement si la télémétrie bidirectionnelle DSHOT_BIDIR est activée et avec la cadence configurée.
   - Paramètres : `role.esc.dshot.map_index1` (premier ESC), `role.esc.dshot.num_channels`, `role.esc.dshot.cmd_rate` (Hz), `role.esc.dshot.rpm_freq_div` (0 = pas de télémétrie bidir).
 
-- SBUS RC (`role.sbus`)
+- SBUS RC (`ROLE.sbus`)
   - Reçoit : rien en UAVCAN (écoute SBUS série).
   - Envoie : `pprz.tunnel.SbusFrame` (trame SBUS relayée sur le bus).
   - Paramètres : `role.sbus.channel_mask` pour sélectionner les voies, `role.sbus.range.min/max` pour mapper le 0..2047 SBUS vers [-1, 1] (valeurs hors plage clampées), `role.sbus.id` pour l’identifiant.
   - Notes : seules les voies actives sont publiées ; qualité/failsafe reflètent les flags SBUS.
 
-- TelemetryTunnel (`role.tunnel.telemetry`)
-  - Reçoit : `pprz.tunnel.Telemetry` (broadcast) côté UAVCAN, et les flux série PPRZ/XBee selon la config.
-  - Envoie : `pprz.tunnel.Telemetry` (republication vers UAVCAN des flux PPRZ/XBee lus sur l’UART).
-  - Paramètres : `role.tunnel.telemetry.xbee_frame` (true = encapsulation XBee, false = PPRZ), `role.tunnel.telemetry.baudrate`.
-  - Notes : acquisition des ressources USART/pins avant démarrage de l’UART et allocation des buffers ; en cas de conflit ou d’OOM, le rôle échoue proprement.
+- SerialStream (`ROLE.tunnel.serial`)
+  - Reçoit : `uavcan.tunnel.Broadcast` (ID 2010) et envoie le payload brut sur l’UART si le protocole correspond.
+  - Envoie : `uavcan.tunnel.Broadcast` (flux série lu sur l’UART, segmenté en blocs).
+  - Paramètres : `role.tunnel.serial.protocol` (sélecteur de protocole), `bus.serial.baudrate`.
 
-- GpsUBX (`role.gnss.ubx`)
+- GpsUBX (`ROLE.gnss.ubx`)
   - Reçoit : rien en UAVCAN (consomme les messages UBX sur l’UART).
   - Envoie : `uavcan.equipment.gnss.Fix2` (NAV-PVT), `uavcan.equipment.gnss.Auxiliary` (NAV-DOP/NAV-SAT).
-  - Paramètres : `role.gnss.ubx.baudrate`.
+  - Paramètres : `bus.serial.baudrate`.
   - Notes : acquisition des ressources USART/pins avant démarrage de l’UART ; allocation DMA vérifiée avant de lancer le thread, sinon retour erreur mémoire.
 
 - Magnétomètre QMC5883 (`ROLE.i2c.magnetometer.q5883`)

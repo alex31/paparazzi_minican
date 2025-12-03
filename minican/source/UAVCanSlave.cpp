@@ -4,27 +4,6 @@
 #include "deviceRessource.hpp"
 #include "UAVCAN/persistantParam.hpp"
 #include "UAVCAN/pubSub.hpp"
-#ifndef USE_SERVO_ROLE
-#define USE_SERVO_ROLE false
-#endif
-#ifndef USE_BARO_MPL3115A2_ROLE
-#define USE_BARO_MPL3115A2_ROLE false
-#endif
-#ifndef USE_QMC5883_ROLE
-#define USE_QMC5883_ROLE false
-#endif
-#ifndef USE_ESC_DSHOT_ROLE
-#define USE_ESC_DSHOT_ROLE false
-#endif
-#ifndef USE_RC_SBUS_ROLE
-#define USE_RC_SBUS_ROLE false
-#endif
-#ifndef USE_GPS_UBX_ROLE
-#define USE_GPS_UBX_ROLE false
-#endif
-#ifndef USE_PPRZLINK_TUNNEL_ROLE
-#define USE_PPRZLINK_TUNNEL_ROLE false
-#endif
 
 #if USE_SERVO_ROLE
 #include "servoRole.hpp"
@@ -39,8 +18,8 @@
 #if USE_RC_SBUS_ROLE
 #include "sbusRole.hpp"
 #endif
-#if USE_PPRZLINK_TUNNEL_ROLE
-#include "telemetryTunnelRole.hpp"
+#if USE_SERIAL_STREAM_ROLE
+#include "serialStreamRole.hpp"
 #endif
 #if USE_GPS_UBX_ROLE
 #include "gpsUbxRole.hpp"
@@ -359,8 +338,8 @@ namespace CANSlave {
 #if USE_GPS_UBX_ROLE
     rolesOk = rolesOk && addRole<GpsUBX, FixedString("ROLE.gnss.ubx")>();
 #endif
-#if USE_PPRZLINK_TUNNEL_ROLE
-    rolesOk = rolesOk && addRole<TelemetryTunnel, FixedString("ROLE.tunnel.telemetry")>();
+#if USE_SERIAL_STREAM_ROLE
+    rolesOk = rolesOk && addRole<SerialStream, FixedString("ROLE.tunnel.serial")>();
 #endif
 
     if (not rolesOk) {

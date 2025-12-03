@@ -36,7 +36,8 @@ DeviceStatus ServoSmart::start(UAVCAN::Node& node)
     reportPeriod = CH_CFG_ST_FREQUENCY / PARAM_CGET("role.servo.smart.status_frequency");
   }
   nodep = &node;
-    
+
+  // use serial2 TX + RX
 #if PLATFORM_MINICAN
   if (not boardResource.tryAcquire(HR::USART_2, HR::PB03, HR::PB04)) {
     return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT,
