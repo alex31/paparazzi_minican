@@ -15,6 +15,35 @@
 #include "dynamicPinConfig.hpp"
 #endif
 
+/*
+  Todo:
+
+  declarer 2 fifo de type input_queue_t de 2Ko chacune
+  
+  dans le sens uart -> uavcan, il faut 2 threads :
+  thread uartReceive
+   do loop
+    uartReceive[recBufferSize] -> fifo push
+   end loop
+
+  thread UAVCanTransmit
+   do loop
+    fifoReceive[60] avec timeout de 5ms
+    sendBroadcast[effective size]
+   end loop
+
+   dans le sens uavcan -> uart, il faut 1 thread :
+   dans la callback du message -> fifo push
+
+   thread UartTransmit
+   do loop
+    fifoReceive[60] avec timeout de 5ms
+    uartTransmit[effective size]
+   end loop
+
+  
+  ---
+ */
 
 
 /*
