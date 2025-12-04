@@ -15,7 +15,15 @@ public:
 private:
   void processUavcanToSerial(CanardRxTransfer *,
 			     const uavcan_tunnel_Broadcast &msg);
+  void uartReceiveThread(void *);
+  void uavcanTransmitThread(void *);
+  void uartTransmitThread(void *);
+  bool pushToFifo(input_queue_t &fifo, const uint8_t *data, size_t len);
   uint8_t protocol = 0;
   uint8_t *recBuffer = nullptr;
-  void periodic(void *);
+  uint8_t *txBuffer = nullptr;
+  uint8_t *uartToCanBuffer = nullptr;
+  uint8_t *canToUartBuffer = nullptr;
+  input_queue_t uartToCanFifo;
+  input_queue_t canToUartFifo;
 };

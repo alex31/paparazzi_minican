@@ -45,7 +45,7 @@ PRECISE_FDCAN_TIMINGS = false
 endif
 
 
-DEBUG := g
+DEBUG := 0
 OPT_SPEED := fast
 OPT_SIZE := s
 

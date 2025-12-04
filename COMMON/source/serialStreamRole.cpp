@@ -2,10 +2,6 @@
 
 #if USE_SERIAL_STREAM_ROLE
 
-#include <algorithm>
-#include <new>
-#include <cstring>
-
 #include "serialStreamRole.hpp"
 #include "hardwareConf.hpp"
 #include "ressourceManager.hpp"
@@ -74,7 +70,10 @@ namespace {
     .cr2 = USART_CR2_STOP1_BITS | USART_CR2_RTOEN,
     .cr3 = 0
   };
-  constexpr size_t recBufferSize = 300;
+  constexpr size_t recBufferSize = 320;
+  constexpr size_t fifoSize = 8192;
+  constexpr size_t chunkSize = sizeof(uavcan_tunnel_Broadcast{}.buffer.data);
+  constexpr sysinterval_t fifoTimeout = TIME_MS2I(1);
 }
 
 
@@ -83,10 +82,11 @@ namespace {
 void SerialStream::processUavcanToSerial(CanardRxTransfer *,
 			   const uavcan_tunnel_Broadcast &msg)
 {
-  if (msg.protocol.protocol == protocol) {
-    size_t len = msg.buffer.len;
-    uartSendTimeout(&ExternalUARTD, &len, msg.buffer.data, TIME_INFINITE);
+  if (msg.protocol.protocol != protocol) {
+    return;
   }
+
+  pushToFifo(canToUartFifo, msg.buffer.data, msg.buffer.len);
 }
 
 
@@ -124,6 +124,18 @@ DeviceStatus SerialStream::subscribe(UAVCAN::Node& node)
   if (recBuffer = (uint8_t *) malloc_dma(recBufferSize); !recBuffer) {
     return allocError();
   }
+  if (txBuffer = (uint8_t *) malloc_dma(chunkSize); !txBuffer) {
+    return allocError();
+  }
+  if (uartToCanBuffer = (uint8_t *) malloc_m(fifoSize); !uartToCanBuffer) {
+    return allocError();
+  }
+  if (canToUartBuffer = (uint8_t *) malloc_m(fifoSize); !canToUartBuffer) {
+    return allocError();
+  }
+
+  iqObjectInit(&uartToCanFifo, uartToCanBuffer, fifoSize, nullptr, nullptr);
+  iqObjectInit(&canToUartFifo, canToUartBuffer, fifoSize, nullptr, nullptr);
 
   protocol =  PARAM_CGET("role.tunnel.serial.protocol");
   serialStreamcfg.speed =  PARAM_CGET("bus.serial.baudrate");
@@ -134,32 +146,71 @@ DeviceStatus SerialStream::subscribe(UAVCAN::Node& node)
 
 DeviceStatus SerialStream::start(UAVCAN::Node&)
 {
-  chThdCreateFromHeap(NULL, THD_WORKING_AREA_SIZE(1024), "serial stream", NORMALPRIO, 
-		      &Trampoline<&SerialStream::periodic>::fn, this);
+  chThdCreateFromHeap(NULL, THD_WORKING_AREA_SIZE(512), "serial rx", NORMALPRIO, 
+		      &Trampoline<&SerialStream::uartReceiveThread>::fn, this);
+  chThdCreateFromHeap(NULL, THD_WORKING_AREA_SIZE(512), "serial uavcan tx", NORMALPRIO, 
+		      &Trampoline<&SerialStream::uavcanTransmitThread>::fn, this);
+  chThdCreateFromHeap(NULL, THD_WORKING_AREA_SIZE(512), "serial uart tx", NORMALPRIO, 
+		      &Trampoline<&SerialStream::uartTransmitThread>::fn, this);
   
   return DeviceStatus(DeviceStatus::SERIAL_STREAM);
 }
 
-void SerialStream::periodic(void *)
+bool SerialStream::pushToFifo(input_queue_t &fifo, const uint8_t *data, size_t len)
 {
-  size_t size;
+  if (len == 0) {
+    return true;
+  }
+
+  osalSysLock();
+  if (iqGetEmptyI(&fifo) < len) {
+    osalSysUnlock();
+    return false;
+  }
+
+  for (size_t i = 0; i < len; ++i) {
+    iqPutI(&fifo, data[i]);
+  }
+  osalSysUnlock();
+  return true;
+}
+
+void SerialStream::uartReceiveThread(void *)
+{
+  while (true) {
+    size_t size = recBufferSize;
+    uartReceiveTimeout(&ExternalUARTD, &size, recBuffer, TIME_MS2I(1));
+    pushToFifo(uartToCanFifo, recBuffer, size);
+  }
+}
+
+void SerialStream::uavcanTransmitThread(void *)
+{
   uavcan_tunnel_Broadcast msg = {
     .protocol = {.protocol = protocol},
     .channel_id = PLATFORM_MINICAN ? 2 : 1,
     .buffer = {}
   };
-  
+
   while (true) {
-    size = recBufferSize;
-    uartReceiveTimeout(&ExternalUARTD, &size, recBuffer, TIME_INFINITE);
-    uint8_t *begin = recBuffer;
-    while (size) {
-      msg.buffer.len = std::min(size, std::size(uavcan_tunnel_Broadcast{}.buffer.data));
-      memcpy(msg.buffer.data, begin, msg.buffer.len);
-      begin += msg.buffer.len;
-      size -= msg.buffer.len;
-      m_node->sendBroadcast(msg);
+    msg.buffer.len = iqReadTimeout(&uartToCanFifo, msg.buffer.data, chunkSize, fifoTimeout);
+    if (msg.buffer.len == 0) {
+      continue;
     }
+    m_node->sendBroadcast(msg);
+  }
+}
+
+void SerialStream::uartTransmitThread(void *)
+{
+  while (true) {
+    const size_t n = iqReadTimeout(&canToUartFifo, txBuffer, chunkSize, fifoTimeout);
+    if (n == 0) {
+      continue;
+    }
+
+    size_t toSend = n;
+    uartSendTimeout(&ExternalUARTD, &toSend, txBuffer, TIME_INFINITE);
   }
 }
 
