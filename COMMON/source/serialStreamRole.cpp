@@ -6,6 +6,7 @@
 #include "hardwareConf.hpp"
 #include "ressourceManager.hpp"
 #include "stdutil++.hpp"
+#include <type_traits>
 
 #if PLATFORM_MICROCAN
 #include "dynamicPinConfig.hpp"
@@ -15,7 +16,7 @@
   Todo:
 
   declarer 2 fifoobject :
-  dans le sens uart -> uavcan object = std::array<uint8_t, 320> et il y en a 5
+  dans le sens uart -> uavcan object = std::array<uint8_t, 300> et il y en a 5
   dans le sens uavcan -> uart object = std::array<uint8_t, 60> et il y en a 20
   
   dans le sens uart -> uavcan, il faut 2 threads :
@@ -72,8 +73,6 @@ namespace {
     .cr2 = USART_CR2_STOP1_BITS | USART_CR2_RTOEN,
     .cr3 = 0
   };
-  constexpr size_t recBufferSize = 320;
-  constexpr size_t chunkSize = sizeof(uavcan_tunnel_Broadcast{}.buffer.data);
 }
 
 
@@ -85,8 +84,18 @@ void SerialStream::processUavcanToSerial(CanardRxTransfer *,
   if (msg.protocol.protocol != protocol) {
     return;
   }
-
-  //  pushToFifo(canToUartFifo, msg.buffer.data, msg.buffer.len);
+  auto [status, msg_buffer] = fifoObjectUav2Serial.takeObject(TIME_IMMEDIATE);
+  if (status == MSG_OK) {
+    memcpy(&msg_buffer, &msg, sizeof(msg));
+    using MsgT = std::remove_cvref_t<decltype(msg)>;
+    using BufT = std::remove_cvref_t<decltype(msg_buffer)>;
+    static_assert(std::is_base_of_v<MsgT, BufT>,
+		  "msg_buffer must derive from uavcan_tunnel_Broadcast");
+    static_assert(std::is_trivially_copyable_v<MsgT> &&
+		  std::is_trivially_copyable_v<BufT>);
+    static_assert(sizeof(MsgT) == sizeof(BufT));
+    fifoObjectUav2Serial.sendObject(msg_buffer);
+  }
 }
 
 
@@ -140,9 +149,17 @@ DeviceStatus SerialStream::start(UAVCAN::Node&)
 void SerialStream::uartReceiveThread(void *)
 {
   while (true) {
-    size_t size = recBufferSize;
-    //    uartReceiveTimeout(&ExternalUARTD, &size, recBuffer, TIME_MS2I(1));
-    //    pushToFifo(uartToCanFifo, recBuffer, size);
+    auto [status, msg_buffer] = fifoObjectSerial2Uav.takeObject(TIME_INFINITE);
+    if (status == MSG_OK) {
+      size_t size = Uart2uavcan_t::MAX_SIZE;
+      uartReceiveTimeout(&ExternalUARTD, &size, msg_buffer.data(), TIME_INFINITE);
+      if (size) {
+	msg_buffer.uninitialized_resize(size);
+	fifoObjectSerial2Uav.sendObject(msg_buffer);
+      } else {
+	fifoObjectSerial2Uav.returnObject(msg_buffer);
+      }
+    }
   }
 }
 
@@ -155,28 +172,36 @@ void SerialStream::uavcanTransmitThread(void *)
   };
 
   while (true) {
-    //    msg.buffer.len = iqReadTimeout(&uartToCanFifo, msg.buffer.data, chunkSize, fifoTimeout);
-    if (msg.buffer.len == 0) {
-      continue;
+    auto [status, msg_buffer] = fifoObjectSerial2Uav.receiveObject(TIME_INFINITE);
+    if (status == MSG_OK) {
+      uint8_t *start = msg_buffer.data();
+      size_t len = msg_buffer.size();
+      while (len != 0) {
+	msg.buffer.len = std::min(chunkSize, len);
+	memcpy(msg.buffer.data, start,  msg.buffer.len);
+	m_node->sendBroadcast(msg);
+	len -= msg.buffer.len;
+	start += msg.buffer.len;
+      }
+      fifoObjectSerial2Uav.returnObject(msg_buffer);
     }
-    m_node->sendBroadcast(msg);
   }
 }
 
 void SerialStream::uartTransmitThread(void *)
 {
   while (true) {
-    //    const size_t n = iqReadTimeout(&canToUartFifo, txBuffer, chunkSize, fifoTimeout);
-    // if (n == 0) {
-    //   continue;
-    // }
-
-    // size_t toSend = n;
-    // uartSendTimeout(&ExternalUARTD, &toSend, txBuffer, TIME_INFINITE);
+    auto [status, msg_buffer] = fifoObjectUav2Serial.receiveObject(TIME_INFINITE);
+    if (status == MSG_OK) {
+      size_t toSend = msg_buffer.buffer.len;
+      uartSendTimeout(&ExternalUARTD, &toSend, msg_buffer.buffer.data, TIME_INFINITE);
+      fifoObjectUav2Serial.returnObject(msg_buffer);
+    }
   }
 }
 
-
+ObjectFifo<SerialStream::Uart2uavcan_t, 5>  IN_DMA_SECTION(SerialStream::fifoObjectSerial2Uav);
+ObjectFifo<SerialStream::Uavcan2uart_t, 25> IN_DMA_SECTION(SerialStream::fifoObjectUav2Serial);
 
 
 #endif // USE_SERIAL_STREAM_ROLE
