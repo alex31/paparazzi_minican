@@ -14,7 +14,9 @@
 /*
   Todo:
 
-  declarer 2 fifo de type input_queue_t de 2Ko chacune
+  declarer 2 fifoobject :
+  dans le sens uart -> uavcan object = std::array<uint8_t, 320> et il y en a 5
+  dans le sens uavcan -> uart object = std::array<uint8_t, 60> et il y en a 20
   
   dans le sens uart -> uavcan, il faut 2 threads :
   thread uartReceive
@@ -71,9 +73,7 @@ namespace {
     .cr3 = 0
   };
   constexpr size_t recBufferSize = 320;
-  constexpr size_t fifoSize = 8192;
   constexpr size_t chunkSize = sizeof(uavcan_tunnel_Broadcast{}.buffer.data);
-  constexpr sysinterval_t fifoTimeout = TIME_MS2I(1);
 }
 
 
@@ -86,7 +86,7 @@ void SerialStream::processUavcanToSerial(CanardRxTransfer *,
     return;
   }
 
-  pushToFifo(canToUartFifo, msg.buffer.data, msg.buffer.len);
+  //  pushToFifo(canToUartFifo, msg.buffer.data, msg.buffer.len);
 }
 
 
@@ -117,26 +117,6 @@ DeviceStatus SerialStream::subscribe(UAVCAN::Node& node)
   DynPin::setScenario(DynPin::Scenario::UART, 0b01100);
 #endif
   
-  auto allocError = [] {
-    return DeviceStatus(DeviceStatus::MEMORY, DeviceStatus::HEAP_FULL);
-  };
-
-  if (recBuffer = (uint8_t *) malloc_dma(recBufferSize); !recBuffer) {
-    return allocError();
-  }
-  if (txBuffer = (uint8_t *) malloc_dma(chunkSize); !txBuffer) {
-    return allocError();
-  }
-  if (uartToCanBuffer = (uint8_t *) malloc_m(fifoSize); !uartToCanBuffer) {
-    return allocError();
-  }
-  if (canToUartBuffer = (uint8_t *) malloc_m(fifoSize); !canToUartBuffer) {
-    return allocError();
-  }
-
-  iqObjectInit(&uartToCanFifo, uartToCanBuffer, fifoSize, nullptr, nullptr);
-  iqObjectInit(&canToUartFifo, canToUartBuffer, fifoSize, nullptr, nullptr);
-
   protocol =  PARAM_CGET("role.tunnel.serial.protocol");
   serialStreamcfg.speed =  PARAM_CGET("bus.serial.baudrate");
   uartStart(&ExternalUARTD, &serialStreamcfg);
@@ -156,31 +136,13 @@ DeviceStatus SerialStream::start(UAVCAN::Node&)
   return DeviceStatus(DeviceStatus::SERIAL_STREAM);
 }
 
-bool SerialStream::pushToFifo(input_queue_t &fifo, const uint8_t *data, size_t len)
-{
-  if (len == 0) {
-    return true;
-  }
-
-  osalSysLock();
-  if (iqGetEmptyI(&fifo) < len) {
-    osalSysUnlock();
-    return false;
-  }
-
-  for (size_t i = 0; i < len; ++i) {
-    iqPutI(&fifo, data[i]);
-  }
-  osalSysUnlock();
-  return true;
-}
 
 void SerialStream::uartReceiveThread(void *)
 {
   while (true) {
     size_t size = recBufferSize;
-    uartReceiveTimeout(&ExternalUARTD, &size, recBuffer, TIME_MS2I(1));
-    pushToFifo(uartToCanFifo, recBuffer, size);
+    //    uartReceiveTimeout(&ExternalUARTD, &size, recBuffer, TIME_MS2I(1));
+    //    pushToFifo(uartToCanFifo, recBuffer, size);
   }
 }
 
@@ -193,7 +155,7 @@ void SerialStream::uavcanTransmitThread(void *)
   };
 
   while (true) {
-    msg.buffer.len = iqReadTimeout(&uartToCanFifo, msg.buffer.data, chunkSize, fifoTimeout);
+    //    msg.buffer.len = iqReadTimeout(&uartToCanFifo, msg.buffer.data, chunkSize, fifoTimeout);
     if (msg.buffer.len == 0) {
       continue;
     }
@@ -204,13 +166,13 @@ void SerialStream::uavcanTransmitThread(void *)
 void SerialStream::uartTransmitThread(void *)
 {
   while (true) {
-    const size_t n = iqReadTimeout(&canToUartFifo, txBuffer, chunkSize, fifoTimeout);
-    if (n == 0) {
-      continue;
-    }
+    //    const size_t n = iqReadTimeout(&canToUartFifo, txBuffer, chunkSize, fifoTimeout);
+    // if (n == 0) {
+    //   continue;
+    // }
 
-    size_t toSend = n;
-    uartSendTimeout(&ExternalUARTD, &toSend, txBuffer, TIME_INFINITE);
+    // size_t toSend = n;
+    // uartSendTimeout(&ExternalUARTD, &toSend, txBuffer, TIME_INFINITE);
   }
 }
 

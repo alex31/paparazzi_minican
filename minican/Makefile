@@ -45,7 +45,8 @@ PRECISE_FDCAN_TIMINGS = false
 endif
 
 
-DEBUG := 0
+DEBUG_0 := 0
+DEBUG_g := g
 OPT_SPEED := fast
 OPT_SIZE := s
 
@@ -77,7 +78,14 @@ endif
 
 UNUSED_DIAGS = -Wcast-align -Wsign-conversion -Wconversion
 
-ifeq ($(RELEASE),$(DEBUG)) 
+ifeq ($(RELEASE),$(DEBUG_0)) 
+  USE_OPT =  -O$(RELEASE) -ggdb3  -Wall -Wextra \
+	    -falign-functions=16 -fomit-frame-pointer \
+	    $(GCC_DIAG) 
+  USE_LTO = no
+endif
+
+ifeq ($(RELEASE),$(DEBUG_g)) 
   USE_OPT =  -O$(RELEASE) -ggdb3  -Wall -Wextra \
 	    -falign-functions=16 -fomit-frame-pointer \
 	    $(GCC_DIAG) 
