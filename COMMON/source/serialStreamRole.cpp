@@ -258,7 +258,10 @@ void SerialStream::uavcanTransmitThread(void *)
       while (len != 0) {
 	msg.buffer.len = std::min(chunkSize, len);
 	memcpy(msg.buffer.data, start,  msg.buffer.len);
-	m_node->sendBroadcast(msg);
+	while (m_node->sendBroadcast(msg) != UAVCAN::Node::CAN_OK) {
+	  // libcanard queue is full
+	  chThdSleepMilliseconds(1);
+	}
 	len -= msg.buffer.len;
 	start += msg.buffer.len;
       }
