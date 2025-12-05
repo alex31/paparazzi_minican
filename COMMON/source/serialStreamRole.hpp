@@ -9,9 +9,17 @@
 #include "etl/vector.h"
 
 
+/**
+ * @brief UART <-> uavcan.tunnel.Broadcast bridge role.
+ *
+ * Dynamically allocates DMA-backed FIFOs when started, and runs three threads to
+ * shuttle frames between UART and UAVCAN.
+ */
 class SerialStream final : public RoleBase, public RoleCrtp<SerialStream> {
 public:
+  /// Subscribe to tunnel broadcasts and prepare UART resources.
   DeviceStatus subscribe(UAVCAN::Node& node) override;
+  /// Start worker threads for UART RX, UAVCAN TX, and UART TX.
   DeviceStatus start(UAVCAN::Node& node) override;
 
 private:
@@ -33,9 +41,13 @@ private:
 
   void processUavcanToSerial(CanardRxTransfer *,
 			     const uavcan_tunnel_Broadcast &msg);
+  /// Drain bytes received between DMA armings into a FIFO object.
   void uartReceiveThread(void *);
+  /// Dequeue UART frames and publish them as tunnel chunks.
   void uavcanTransmitThread(void *);
+  /// Dequeue tunnel frames and send them over UART.
   void uartTransmitThread(void *);
+  /// Harvest inter-DMA bytes captured by rxchar_cb.
   void gatherLostBytes();
   uint8_t protocol = 0;
   // 6Ko of dma allocated memory

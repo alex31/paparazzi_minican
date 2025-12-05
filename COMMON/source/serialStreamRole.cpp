@@ -13,6 +13,25 @@
 #include "dynamicPinConfig.hpp"
 #endif
 
+/**
+ * @file serialStreamRole.cpp
+ *
+ * UART <-> uavcan.tunnel.BroadCast bridge.
+ *
+ * Flow:
+ *  - `processUavcanToSerial` enqueues UAVCAN frames to the UART TX FIFO.
+ *  - `uartReceiveThread` continuously DMA-reads from UART and enqueues frames to CAN.
+ *  - `gatherLostBytes` drains bytes received between DMA armings (via `rxchar_cb`)
+ *    and packs them into the FIFO when a slot is available.
+ *  - `uavcanTransmitThread` splits UART frames into tunnel chunks and publishes them.
+ *  - `uartTransmitThread` dequeues tunnel frames and sends them over UART.
+ *
+ * Buffers:
+ *  - UART->CAN: ObjectFifo<Uart2uavcan_t, 10> (DMA heap) + small gap input_queue.
+ *  - CAN->UART: ObjectFifo<Uavcan2uart_t, 50> (DMA heap).
+ *  - Hardware UART FIFO is enabled with 1-byte thresholds to preserve RXNE semantics.
+ */
+
 
 namespace {
   void rxchar_cb(hal_uart_driver *udp, uint16_t c);
@@ -32,6 +51,7 @@ namespace {
     .cr3 = 0
   };
 
+  /// Small queue to capture bytes that arrive between DMA armings.
   struct UartGapCapture_t {
     input_queue_t rxq;
     uint8_t rxbuf[60];
@@ -39,9 +59,12 @@ namespace {
 
 }
 
-
-
-
+/**
+ * @brief UAVCAN subscriber callback: queue tunnel frames for UART TX.
+ *
+ * Drops frames whose tunnel protocol does not match. Copies the message into a
+ * pooled UART TX object and enqueues it if a slot is available.
+ */
 void SerialStream::processUavcanToSerial(CanardRxTransfer *,
 			   const uavcan_tunnel_Broadcast &msg)
 {
@@ -63,33 +86,17 @@ void SerialStream::processUavcanToSerial(CanardRxTransfer *,
 }
 
 
-// It is assumed that thread live forever (until poweroff) dynamic memory allocation is
-// done there to not use ram if the role is not enabled. It's normal that the memory is never
-// released
+/**
+ * @brief UAVCAN subscription handler. Bridges tunnel frames to the UART TX FIFO.
+ *
+ * @details Drops frames with protocol mismatch, copies the payload into a
+ *          pooled UART TX object, then queues it for uartTransmitThread.
+ */
 DeviceStatus SerialStream::subscribe(UAVCAN::Node& node)
 {
   m_node = &node;
-  if (!fifoObjectSerial2Uav || !fifoObjectUav2Serial) {
-    using SerialToUavFifo = std::remove_reference_t<decltype(*fifoObjectSerial2Uav)>;
-    using UavToSerialFifo = std::remove_reference_t<decltype(*fifoObjectUav2Serial)>;
-    void *serialToUavMem = malloc_dma(sizeof(SerialToUavFifo));
-    void *uavToSerialMem = malloc_dma(sizeof(UavToSerialFifo));
-    gapCapture = (UartGapCapture_t *) malloc_m(sizeof(UartGapCapture_t));
-			  
-    if (!serialToUavMem || !uavToSerialMem || !gapCapture) {
-      free_dma(serialToUavMem);
-      free_dma(uavToSerialMem);
-      free_m(gapCapture);
-      return DeviceStatus(DeviceStatus::SERIAL_STREAM, DeviceStatus::DMA_HEAP_FULL);
-    }
-    fifoObjectSerial2Uav = new (serialToUavMem) SerialToUavFifo();
-    fifoObjectUav2Serial = new (uavToSerialMem) UavToSerialFifo();
-  }
-  node.subscribeBroadcastMessages<Trampoline<&SerialStream::processUavcanToSerial>::fn>();
-  using HR = HWResource;
-  DeviceStatus status(DeviceStatus::SERIAL_STREAM);
-  
   // use serial2 TX + RX
+  using HR = HWResource;
 #if PLATFORM_MINICAN
   if (not boardResource.tryAcquire(HR::USART_2, HR::PB03, HR::PB04)) {
     return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT,
@@ -106,6 +113,31 @@ DeviceStatus SerialStream::subscribe(UAVCAN::Node& node)
   DynPin::setScenario(DynPin::Scenario::UART, 0b01100);
 #endif
   
+  using SerialToUavFifo = std::remove_reference_t<decltype(*fifoObjectSerial2Uav)>;
+  using UavToSerialFifo = std::remove_reference_t<decltype(*fifoObjectUav2Serial)>;
+  void *serialToUavMem = malloc_dma(sizeof(SerialToUavFifo));
+  void *uavToSerialMem = malloc_dma(sizeof(UavToSerialFifo));
+  if (!serialToUavMem || !uavToSerialMem) {
+    free_dma(serialToUavMem);
+    free_dma(uavToSerialMem);
+    return DeviceStatus(DeviceStatus::SERIAL_STREAM, DeviceStatus::DMA_HEAP_FULL);
+  }
+
+  gapCapture = (UartGapCapture_t *) malloc_m(sizeof(UartGapCapture_t));
+  if (!gapCapture) {
+    free_dma(serialToUavMem);
+    free_dma(uavToSerialMem);
+    free_m(gapCapture);
+    return DeviceStatus(DeviceStatus::SERIAL_STREAM, DeviceStatus::HEAP_FULL);
+  }
+  
+  fifoObjectSerial2Uav = new (serialToUavMem) SerialToUavFifo();
+  fifoObjectUav2Serial = new (uavToSerialMem) UavToSerialFifo();
+
+  node.subscribeBroadcastMessages<Trampoline<&SerialStream::processUavcanToSerial>::fn>();
+  DeviceStatus status(DeviceStatus::SERIAL_STREAM);
+  
+ 
   protocol =  PARAM_CGET("role.tunnel.serial.protocol");
   serialStreamcfg.speed =  PARAM_CGET("bus.serial.baudrate");
   iqObjectInit(&gapCapture->rxq, gapCapture->rxbuf, sizeof(gapCapture->rxbuf),
@@ -115,6 +147,9 @@ DeviceStatus SerialStream::subscribe(UAVCAN::Node& node)
 }
 
 
+/**
+ * @brief Starts the worker threads for UART RX, UAVCAN TX, and UART TX.
+ */
 DeviceStatus SerialStream::start(UAVCAN::Node&)
 {
   chThdCreateFromHeap(NULL, THD_WORKING_AREA_SIZE(512), "serial rx", NORMALPRIO, 
@@ -127,6 +162,11 @@ DeviceStatus SerialStream::start(UAVCAN::Node&)
   return DeviceStatus(DeviceStatus::SERIAL_STREAM);
 }
 
+/**
+ * @brief Pack bytes captured between DMA armings into a FIFO object.
+ *
+ * Best effort: if no free FIFO object is available, the captured bytes are dropped.
+ */
 void SerialStream::gatherLostBytes()
 {
   etl::vector<uint8_t, sizeof(gapCapture->rxbuf)> interDmaBytes = {};
@@ -150,6 +190,9 @@ void SerialStream::gatherLostBytes()
   }
 }
 
+/**
+ * @brief UART RX loop: drain gap bytes, arm DMA receive, enqueue completed frames.
+ */
 void SerialStream::uartReceiveThread(void *)
 {
   while (true) {
@@ -168,6 +211,11 @@ void SerialStream::uartReceiveThread(void *)
   }
 }
 
+/**
+ * @brief Dequeue UART frames and send as uavcan.tunnel.Broadcast chunks.
+ *
+ * Retries if the CAN TX queue is temporarily full.
+ */
 void SerialStream::uavcanTransmitThread(void *)
 {
   uavcan_tunnel_Broadcast msg = {
@@ -196,6 +244,9 @@ void SerialStream::uavcanTransmitThread(void *)
   }
 }
 
+/**
+ * @brief Dequeue CAN-originated frames and send them over UART.
+ */
 void SerialStream::uartTransmitThread(void *)
 {
   while (true) {
