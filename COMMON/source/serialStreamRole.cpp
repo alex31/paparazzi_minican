@@ -13,83 +13,6 @@
 #include "dynamicPinConfig.hpp"
 #endif
 
-/*
-  Todo:
-
-  declarer 2 fifoobject :
-  dans le sens uart -> uavcan object = std::array<uint8_t, 300> et il y en a 5
-  dans le sens uavcan -> uart object = std::array<uint8_t, 60> et il y en a 20
-  
-  dans le sens uart -> uavcan, il faut 2 threads :
-  thread uartReceive
-   do loop
-    uartReceive[recBufferSize] -> fifo push
-   end loop
-
-  thread UAVCanTransmit
-   do loop
-    fifoReceive[60] avec timeout de 5ms
-    sendBroadcast[effective size]
-   end loop
-
-   dans le sens uavcan -> uart, il faut 1 thread :
-   dans la callback du message -> fifo push
-
-   thread UartTransmit
-   do loop
-    fifoReceive[60] avec timeout de 5ms
-    uartTransmit[effective size]
-   end loop
-
-  
-  ---
- */
-
-
-/*
-  SerialStream : raw UART <-> uavcan.tunnel.Broadcast (2010) bridge
-
-  - subscribe : listens to uavcan_tunnel_Broadcast and forwards payload to UART if protocol matches.
-  - start     : configures UART (baudrate param), allocates DMA buffer, spawns thread.
-  - thread    : loops on UART RX, chunks into frames, publishes uavcan_tunnel_Broadcast.
- */
-
-/*
-  input_queue_t works fine if it’s fully built before the ISR fires. Typical segfault causes are “queue not initialized” or “buffer storage out of scope”. Minimal
-  pattern:
-
-  // Lifetime-static objects
-  static input_queue_t rxq;
-  static uint8_t rxbuf[16];
-
-  static void rxchar_cb(hal_uart_driver *udp, uint16_t c) {
-    (void)udp;
-    chSysLockFromISR();
-    chIQPutI(&rxq, static_cast<uint8_t>(c));  // drops if full
-    chSysUnlockFromISR();
-  }
-
-  // During init (before uartStart / before enabling RX interrupts):
-  chIQObjectInit(&rxq, rxbuf, sizeof(rxbuf), nullptr);
-  // set UARTConfig.rxchar_cb = rxchar_cb; then uartStart(...)
-
-  Thread side:
-
-  int ch;
-  while (true) {
-    ch = chIQGetTimeout(&rxq, TIME_MS2I(5));  // or TIME_IMMEDIATE
-    if (ch >= 0) {
-      // process byte
-    }
-  }
-
-  Key points to avoid crashes:
-
-  - rxq and rxbuf must be static/global (not on the stack).
-  - Call chIQObjectInit once before any callback can run.
-  - Use the *I variants inside the ISR (wrapped in chSysLockFromISR/UnlockFromISR).
-  - Don’t free or move the buffer while the queue is in use.
-*/
 
 namespace {
   void rxchar_cb(hal_uart_driver *udp, uint16_t c);
@@ -101,11 +24,6 @@ namespace {
     .rxend_cb = nullptr,
     .rxchar_cb = rxchar_cb,
     .rxerr_cb = nullptr,
-    // .timeout_cb = [](hal_uart_driver *) {
-    //   palSetLine(LINE_DBG_TIMOUT_CB);
-    //   chSysPolledDelayX(1);
-    //   palClearLine(LINE_DBG_TIMOUT_CB);
-    // },
     .timeout_cb = nullptr,
     .timeout = 6,
     .speed = 0, // will be be at init
@@ -113,8 +31,12 @@ namespace {
     .cr2 = USART_CR2_STOP1_BITS | USART_CR2_RTOEN,
     .cr3 = 0
   };
-  input_queue_t rxq;
-  uint8_t rxbuf[60];
+
+  struct UartGapCapture_t {
+    input_queue_t rxq;
+    uint8_t rxbuf[60];
+  } *gapCapture = nullptr;
+
 }
 
 
@@ -152,9 +74,12 @@ DeviceStatus SerialStream::subscribe(UAVCAN::Node& node)
     using UavToSerialFifo = std::remove_reference_t<decltype(*fifoObjectUav2Serial)>;
     void *serialToUavMem = malloc_dma(sizeof(SerialToUavFifo));
     void *uavToSerialMem = malloc_dma(sizeof(UavToSerialFifo));
-    if (!serialToUavMem || !uavToSerialMem) {
+    gapCapture = (UartGapCapture_t *) malloc_m(sizeof(UartGapCapture_t));
+			  
+    if (!serialToUavMem || !uavToSerialMem || !gapCapture) {
       free_dma(serialToUavMem);
       free_dma(uavToSerialMem);
+      free_m(gapCapture);
       return DeviceStatus(DeviceStatus::SERIAL_STREAM, DeviceStatus::DMA_HEAP_FULL);
     }
     fifoObjectSerial2Uav = new (serialToUavMem) SerialToUavFifo();
@@ -183,7 +108,8 @@ DeviceStatus SerialStream::subscribe(UAVCAN::Node& node)
   
   protocol =  PARAM_CGET("role.tunnel.serial.protocol");
   serialStreamcfg.speed =  PARAM_CGET("bus.serial.baudrate");
-  iqObjectInit(&rxq, rxbuf, sizeof(rxbuf), nullptr, nullptr);
+  iqObjectInit(&gapCapture->rxq, gapCapture->rxbuf, sizeof(gapCapture->rxbuf),
+	       nullptr, nullptr);
   uartStart(&ExternalUARTD, &serialStreamcfg);
   return status;
 }
@@ -203,11 +129,11 @@ DeviceStatus SerialStream::start(UAVCAN::Node&)
 
 void SerialStream::gatherLostBytes()
 {
-  etl::vector<uint8_t, sizeof(rxbuf)> interDmaBytes = {};
+  etl::vector<uint8_t, sizeof(gapCapture->rxbuf)> interDmaBytes = {};
 
-  for (int ch = iqGetTimeout(&rxq, TIME_IMMEDIATE);
+  for (int ch = iqGetTimeout(&gapCapture->rxq, TIME_IMMEDIATE);
        (ch >= 0) && !interDmaBytes.full();
-       ch = iqGetTimeout(&rxq, TIME_IMMEDIATE)) {
+       ch = iqGetTimeout(&gapCapture->rxq, TIME_IMMEDIATE)) {
 
     interDmaBytes.push_back((uint8_t)ch);
   }
@@ -285,7 +211,7 @@ void SerialStream::uartTransmitThread(void *)
 namespace {
   void rxchar_cb(hal_uart_driver *, uint16_t c) {
     chSysLockFromISR();
-    iqPutI(&rxq, static_cast<uint8_t>(c));  // drops if full
+    iqPutI(&gapCapture->rxq, static_cast<uint8_t>(c));  // drops if full
     chSysUnlockFromISR();
   }
 }
