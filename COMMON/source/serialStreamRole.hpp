@@ -27,6 +27,7 @@ private:
   {
     Uavcan2uart_t() = default;
     Uavcan2uart_t(const Uavcan2uart_t&) = delete;
+    uint8_t _pad = 0;
   };
 
 
@@ -35,7 +36,9 @@ private:
   void uartReceiveThread(void *);
   void uavcanTransmitThread(void *);
   void uartTransmitThread(void *);
+  void gatherLostBytes();
   uint8_t protocol = 0;
-  static ObjectFifo<Uart2uavcan_t, 5> fifoObjectSerial2Uav;
-  static ObjectFifo<Uavcan2uart_t, 25> fifoObjectUav2Serial;
+  // 6Ko of dma allocated memory
+  ObjectFifo<Uart2uavcan_t, 10> *fifoObjectSerial2Uav = nullptr;
+  ObjectFifo<Uavcan2uart_t, 50> *fifoObjectUav2Serial = nullptr;
 };
