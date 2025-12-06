@@ -1,5 +1,5 @@
 #pragma once
-#include "projectconf.h"
+#include "roleConf.h"
 // roles are enabled with boolean setting with ROLE uppercase to make them visible in GUI or TUI
       {"can.terminal_resistor", {.v = true}},
 	

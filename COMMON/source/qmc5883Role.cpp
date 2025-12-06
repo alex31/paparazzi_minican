@@ -3,7 +3,7 @@
  * @brief QMC5883L magnetometer role: fixed config, publishes MagneticFieldStrength2.
  */
 
-#include "projectconf.h"
+#include "roleConf.h"
 
 #if USE_QMC5883_ROLE
 

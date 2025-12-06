@@ -1,4 +1,4 @@
-#include "projectconf.h"
+#include "roleConf.h"
 
 #if USE_RC_SBUS_ROLE
 

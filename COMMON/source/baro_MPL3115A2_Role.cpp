@@ -1,4 +1,4 @@
-#include "projectconf.h"
+#include "roleConf.h"
 
 #if USE_BARO_MPL3115A2_ROLE
 

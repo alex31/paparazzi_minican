@@ -57,7 +57,7 @@ OPT_SPEED := fast
 OPT_SIZE := s
 
 ifndef RELEASE
-RELEASE := $(DEBUG)
+RELEASE := $(DEBUG_g)
 #RELEASE := $(OPT_SPEED)
 #RELEASE := $(OPT_SIZE)
 endif

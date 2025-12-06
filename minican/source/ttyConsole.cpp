@@ -482,6 +482,11 @@ void consoleLaunch (void)
 }
 
 namespace {
+  /**
+   * @brief Visitor used by console commands to pretty-print parameter values.
+   * @details Matches the runtime StoredValue kind (int/float/bool/string/empty)
+   *          and emits a human-readable line through DebugTrace.
+   */
   struct OverloadDyn {
     void operator()(const ssize_t i, const frozen::string& name, Persistant::NoValue) const {
       DebugTrace("store %d '%s' has no value !!", i, name.data());
@@ -499,8 +504,8 @@ namespace {
     void operator()(const ssize_t i, const frozen::string& name, float f) const {
       DebugTrace("store %d '%s'  is Double = %f", i, name.data(), f);
     }
-    void operator()(const ssize_t i, const frozen::string& name, Persistant::StoredString *s) const {
-      DebugTrace("store %d '%s'  is String = %s", i, name.data(),  s->c_str());
+    void operator()(const ssize_t i, const frozen::string& name, const Persistant::StoredString &s) const {
+      DebugTrace("store %d '%s'  is String = %s", i, name.data(),  s.c_str());
     }
   };
 
