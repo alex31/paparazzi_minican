@@ -538,9 +538,9 @@ namespace {
 	  continue;
       }
       matchOnce = true;
-      std::visit([&](const auto& param_ptr) {
+      Persistant::Parameter::find(i).first.visit([&](const auto& param_ptr) {
 	OverloadDyn{}(i, paramName, param_ptr);  
-      }, Persistant::Parameter::find(i).first);
+      });
     }
     if (not matchOnce) {
       DebugTrace("ERROR : parameter %.*s not valid", partial.size(), partial.data());
@@ -575,9 +575,9 @@ namespace {
 	return;
       }
 
-      std::visit([&](const auto& param_ptr) {
+      Persistant::Parameter::find(index).first.visit([&](const auto& param_ptr) {
 	OverloadDyn{}(index, frozen::string(key), param_ptr);
-      }, Persistant::Parameter::find(index).first);
+      });
     }
   }
 
@@ -587,9 +587,9 @@ namespace {
       DebugTrace("ERROR : parameter index %d not valid", index);
     } else {
       const auto& key =  std::next(frozenParameters.begin(), index)->first;
-      std::visit([&](const auto& param_ptr) {
+      Persistant::Parameter::find(index).first.visit([&](const auto& param_ptr) {
 	OverloadDyn{}(index, frozen::string(key), param_ptr);
-      }, Persistant::Parameter::find(index).first);
+      });
     }
   }
   
