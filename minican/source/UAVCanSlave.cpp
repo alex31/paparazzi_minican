@@ -308,7 +308,7 @@ namespace CANSlave {
     slaveNode = &node;
     
     // terminal CAN 120 Ohms resistor activation (or not)
-    const bool activateR =  PARAM_CGET("can.terminal_resistor");
+    const bool activateR =  param_cget<"can.terminal_resistor">();
     palWriteLine(LINE_CAN_TERMR_EN, activateR ? PAL_HIGH : PAL_LOW);
 
     
@@ -363,7 +363,7 @@ namespace CANSlave {
       }
     
     
-    if (PARAM_CGET("ROLE.health.survey")) {
+    if (param_cget<"ROLE.health.survey">()) {
       HealthSurvey::start(node);
     }
     

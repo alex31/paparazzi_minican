@@ -83,11 +83,11 @@ namespace  {
 DeviceStatus ServoPWM::start()
 {
   using HR = HWResource;
-  servoPwmFreq = PARAM_CGET("role.servo.pwm.frequency");
+  servoPwmFreq = param_cget<"role.servo.pwm.frequency">();
   chDbgAssert(servoPwmFreq >= 50, "invalid servoPwmFreq parameter");
-  halfWidthFactor = PARAM_CGET("role.servo.pwm.pulse_half_width") ? 1.0f : 2.0f;
-  startIndex = PARAM_CGET("role.servo.pwm.map_index1");
-  channelMap = PARAM_CGET("role.servo.pwm.channel_mask");
+  halfWidthFactor = param_cget<"role.servo.pwm.pulse_half_width">() ? 1.0f : 2.0f;
+  startIndex = param_cget<"role.servo.pwm.map_index1">();
+  channelMap = param_cget<"role.servo.pwm.channel_mask">();
   
   if (channelMap.count > 4) {
     return DeviceStatus(DeviceStatus::SERVO_PWM, DeviceStatus::INVALID_PWM_MASK);

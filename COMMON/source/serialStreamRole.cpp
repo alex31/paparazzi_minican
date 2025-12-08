@@ -138,8 +138,8 @@ DeviceStatus SerialStream::subscribe(UAVCAN::Node& node)
   DeviceStatus status(DeviceStatus::SERIAL_STREAM);
   
  
-  protocol =  PARAM_CGET("role.tunnel.serial.protocol");
-  serialStreamcfg.speed =  PARAM_CGET("bus.serial.baudrate");
+  protocol =  param_cget<"role.tunnel.serial.protocol">();
+  serialStreamcfg.speed =  param_cget<"bus.serial.baudrate">();
   iqObjectInit(&gapCapture->rxq, gapCapture->rxbuf, sizeof(gapCapture->rxbuf),
 	       nullptr, nullptr);
   uartStart(&ExternalUARTD, &serialStreamcfg);

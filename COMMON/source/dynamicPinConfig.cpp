@@ -86,7 +86,7 @@ namespace DynPin {
   void i2cActivatePullup()
   {
     // activate PULLUP on SDA, SCL depending on eeprom configuration
-    if (PARAM_CGET("bus.i2c.pullup_resistor")) {
+    if (param_cget<"bus.i2c.pullup_resistor">()) {
       palSetLineMode(LINE_PULLUP_SCL, PAL_MODE_OUTPUT_PUSHPULL);
       palSetLineMode(LINE_PULLUP_SDA, PAL_MODE_OUTPUT_PUSHPULL);
       palSetLine(LINE_PULLUP_SCL);

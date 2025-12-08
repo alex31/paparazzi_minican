@@ -294,7 +294,7 @@ DeviceStatus GpsUBX::start(UAVCAN::Node& node)
     return status;
   }
 
-  gpscfg.speed =  PARAM_CGET("bus.serial.baudrate");
+  gpscfg.speed =  param_cget<"bus.serial.baudrate">();
   uartStart(&ExternalUARTD, &gpscfg);
 
   chThdCreateFromHeap(NULL, THD_WORKING_AREA_SIZE(1536), "gps", NORMALPRIO, 

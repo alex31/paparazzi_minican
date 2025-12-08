@@ -83,7 +83,7 @@ DeviceStatus Qmc5883Role::start(UAVCAN::Node& node)
     return i2cStatus;
   }
 
-  const uint16_t range = PARAM_CGET("role.i2c.magnetometer.q5883.range");
+  const uint16_t range = param_cget<"role.i2c.magnetometer.q5883.range">();
   uint8_t rangeBits = CTRL1_RANGE_8G;
   if (range == 2) {
     countsPerGauss = countsPerGauss2G;
@@ -95,12 +95,12 @@ DeviceStatus Qmc5883Role::start(UAVCAN::Node& node)
     return DeviceStatus(DeviceStatus::MAG_QMC5883, DeviceStatus::INVALID_PARAM);
   }
 
-  rotDeg = PARAM_CGET("role.i2c.magnetometer.q5883.rot_deg");
+  rotDeg = param_cget<"role.i2c.magnetometer.q5883.rot_deg">();
   if (!((rotDeg == 0) || (rotDeg == 90) || (rotDeg == 180) || (rotDeg == 270))) {
     return DeviceStatus(DeviceStatus::MAG_QMC5883, DeviceStatus::INVALID_PARAM);
   }
 
-  sensorId = static_cast<uint8_t>(PARAM_CGET("role.i2c.magnetometer.q5883.sensor_id"));
+  sensorId = static_cast<uint8_t>(param_cget<"role.i2c.magnetometer.q5883.sensor_id">());
 
   dmaBuf = static_cast<DmaBuffers*>(malloc_dma(sizeof(DmaBuffers)));
   if (!dmaBuf) {

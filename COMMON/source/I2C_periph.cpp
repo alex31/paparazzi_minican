@@ -59,7 +59,7 @@ namespace I2CPeriph
 #endif
     DynPin::i2cActivatePullup();
     
-    const uint32_t freqKhz = PARAM_CGET("bus.i2c.frequency_khz");
+    const uint32_t freqKhz = param_cget<"bus.i2c.frequency_khz">();
     
     if (freqKhz < 400)
       i2cStart(&ExternalI2CD, &i2ccfg_100);

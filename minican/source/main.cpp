@@ -119,7 +119,7 @@ int main(void)
     goto end;
   }
 
-  if (PARAM_CGET("ROLE.identification") == true) {
+  if (param_cget<"ROLE.identification">() == true) {
     // mode identification
     DebugTrace ("passage en mode identification");
     RgbLed::setMotif(150, 0b1010100000000000);
@@ -128,10 +128,10 @@ int main(void)
   }
 
   {
-    const int8_t nodeId = PARAM_CGET("uavcan.node_id");
+    const int8_t nodeId = param_cget<"uavcan.node_id">();
     DebugTrace("paramètre nodeid = %d", nodeId);
     if (const DeviceStatus status =
-	CANSlave::start(nodeId, PARAM_CGET("uavcan.dynid.fd")); not status) {
+	CANSlave::start(nodeId, param_cget<"uavcan.dynid.fd">()); not status) {
       if (status.err == DeviceStatus::CONFLICT) {
 	RgbLed::setMotif(100, 0b110011000);
 	RgbLed::setColor(HSV{0.0, 1, 0.5});

@@ -54,14 +54,14 @@ DeviceStatus RC_Sbus::start(UAVCAN::Node& _node)
   DynPin::setScenario(DynPin::Scenario::UART, 0b01000);
 #endif
   
-  enabledChannels = decode_channel_mask(PARAM_CGET("role.sbus.channel_mask"));
-  rangeMin = PARAM_CGET("role.sbus.range.min");
-  rangeMax = PARAM_CGET("role.sbus.range.max");
+  enabledChannels = decode_channel_mask(param_cget<"role.sbus.channel_mask">());
+  rangeMin = param_cget<"role.sbus.range.min">();
+  rangeMax = param_cget<"role.sbus.range.max">();
   if (rangeMin >= rangeMax) {
     return DeviceStatus(DeviceStatus::RC_SBUS, DeviceStatus::INVALID_PARAM);
   }
   rcInput.rcin.len = count_active_channels(enabledChannels);
-  rcInput.id = PARAM_CGET("role.sbus.id");            
+  rcInput.id = param_cget<"role.sbus.id">();            
   
 
   chDbgAssert(rcInput.rcin.len <= SBUS_NUM_CHANNEL, "internal error");

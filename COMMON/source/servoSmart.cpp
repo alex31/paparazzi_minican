@@ -29,11 +29,11 @@ namespace  {
 DeviceStatus ServoSmart::start(UAVCAN::Node& node)
 {
   using HR = HWResource;
-  startIndex = PARAM_CGET("role.servo.smart.map_index1");
-  numServos =  PARAM_CGET("role.servo.smart.num_servos");
-  if (const uint32_t reportFrequency =  PARAM_CGET("role.servo.smart.status_frequency");
+  startIndex = param_cget<"role.servo.smart.map_index1">();
+  numServos =  param_cget<"role.servo.smart.num_servos">();
+  if (const uint32_t reportFrequency =  param_cget<"role.servo.smart.status_frequency">();
       reportFrequency != 0) {
-    reportPeriod = CH_CFG_ST_FREQUENCY / PARAM_CGET("role.servo.smart.status_frequency");
+    reportPeriod = CH_CFG_ST_FREQUENCY / param_cget<"role.servo.smart.status_frequency">();
   }
   nodep = &node;
 

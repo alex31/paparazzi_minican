@@ -23,10 +23,10 @@ DeviceStatus EscDshot::start(UAVCAN::Node& /*node*/)
 {
   using HR = HWResource;
   DeviceStatus status(DeviceStatus::ESC_DSHOT);
-  mapIndex1 = PARAM_CGET("role.esc.dshot.map_index1");
-  numChannels = PARAM_CGET("role.esc.dshot.num_channels");
-  loopPeriod = PARAM_CGET("role.esc.dshot.cmd_rate");
-  rpmFrqDiv = PARAM_CGET("role.esc.dshot.rpm_freq_div");
+  mapIndex1 = param_cget<"role.esc.dshot.map_index1">();
+  numChannels = param_cget<"role.esc.dshot.num_channels">();
+  loopPeriod = param_cget<"role.esc.dshot.cmd_rate">();
+  rpmFrqDiv = param_cget<"role.esc.dshot.rpm_freq_div">();
 
   chDbgAssert(numChannels <= 4, "too many channels for dshot esc");
 

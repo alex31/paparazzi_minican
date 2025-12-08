@@ -57,8 +57,8 @@ DeviceStatus ServoRole::start(UAVCAN::Node& node)
 {
   DeviceStatus status(DeviceStatus::SERVO_ROLE);
   
-  m_role_servo_pwm = PARAM_CGET("ROLE.servo.pwm");
-  m_role_servo_smart = PARAM_CGET("ROLE.servo.smart");
+  m_role_servo_pwm = param_cget<"ROLE.servo.pwm">();
+  m_role_servo_smart = param_cget<"ROLE.servo.smart">();
 
   if (m_role_servo_pwm)
     status = ServoPWM::start();
