@@ -16,6 +16,7 @@
 #include "etl/string.h"
 #include "UAVCAN/persistantParam.hpp"
 #include "UAVCAN/persistantStorage.hpp"
+#include "UAVCanSlave.hpp"
 #include "deviceRessource.hpp"
 
 using FixedString = etl::string<128>;
@@ -206,8 +207,9 @@ static void cmd_can(BaseSequentialStream *lchp, int ,const char* const [])
   
   constexpr bool fdframe = (CAN_BITRATE > 1000) or (CAN_BITRATE < 0);
 
-  chprintf(lchp, "platform = %s version %d; %s; frame = %s; software version = %02u.%03u\r\n",
+  chprintf(lchp, "platform = %s version %d; node_id = %u; %s; frame = %s; software version = %02u.%03u\r\n",
 	   STR(PLATFORM), HW_VERSION,
+           CANSlave::getNodeId(),
 	   CAN_BITRATE_STR_ARR.data(),
 	   fdframe ? "CAN-FD" : "CAN-2.0",
 	   SW_VERSION_MAJOR, SW_VERSION_MINOR);
