@@ -14,6 +14,7 @@
 #include "etl/string_view.h"
 #include "etl/span.h"
 #include "hardwareConf.hpp"
+#include "UAVCAN/dsdlStringUtils.hpp"
 #include "UAVCanHelper.hpp"
 /*
     TODO :
@@ -94,9 +95,7 @@ bool FirmwareUpdater::start(UAVCAN::Node *node, const uavcan_protocol_file_Path 
   firmwareHeader.size = 0;
   auto doResp = [&resp] (uint8_t err, etl::string_view str) {
     resp.error = err;
-    resp.optional_error_message.len = str.size();
-    memcpy(resp.optional_error_message.data, str.data(),
-	   std::min(sizeof(resp.optional_error_message.data), str.size()));
+    UAVCAN::dsdlAssign(resp.optional_error_message, str);
   };
 
 

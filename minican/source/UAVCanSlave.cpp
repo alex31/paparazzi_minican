@@ -1,8 +1,11 @@
+#include <algorithm>
 #include <ch.h>
+#include <cstring>
 #include "etl/vector.h"
 #include "UAVCanSlave.hpp"
 #include "deviceRessource.hpp"
 #include "UAVCAN/persistantParam.hpp"
+#include "UAVCAN/dsdlStringUtils.hpp"
 #include "UAVCAN/pubSub.hpp"
 
 #if USE_SERVO_ROLE
@@ -303,6 +306,9 @@ namespace CANSlave {
 #endif
       }
     };
+    const auto& nickname = param_cget<"hardware.nickname">();
+    UAVCAN::dsdlAppend(uavCanCfg.nodeInfo.name, " ");
+    UAVCAN::dsdlAppend(uavCanCfg.nodeInfo.name, nickname.c_str());
     static UAVCAN::Node node(uavCanCfg);
     
     slaveNode = &node;
