@@ -64,7 +64,12 @@ DeviceStatus RC_Sbus::start(UAVCAN::Node& _node)
   rcInput.id = param_cget<"role.sbus.id">();            
   
 
-  chDbgAssert(rcInput.rcin.len <= SBUS_NUM_CHANNEL, "internal error");
+  if (rcInput.rcin.len > SBUS_NUM_CHANNEL) {
+    _node.infoCb("sbus: channel count %u exceeds max %u",
+		 rcInput.rcin.len, SBUS_NUM_CHANNEL);
+    return DeviceStatus(DeviceStatus::RC_SBUS, DeviceStatus::INVALID_PARAM,
+			rcInput.rcin.len);
+  }
 
   node = &_node;
   sbusObjectInit(&sbusd);	//Init et acquisition des trames sbus

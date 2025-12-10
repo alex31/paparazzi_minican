@@ -28,7 +28,12 @@ DeviceStatus EscDshot::start(UAVCAN::Node& /*node*/)
   loopPeriod = param_cget<"role.esc.dshot.cmd_rate">();
   rpmFrqDiv = param_cget<"role.esc.dshot.rpm_freq_div">();
 
-  chDbgAssert(numChannels <= 4, "too many channels for dshot esc");
+  if (numChannels > 4) {
+    if (m_node) {
+      m_node->infoCb("esc.dshot: num_channels=%u exceeds 4", numChannels);
+    }
+    return DeviceStatus(DeviceStatus::ESC_DSHOT, DeviceStatus::INVALID_PARAM, numChannels);
+  }
 
   dshotConfig = {
     .dma_stream = STM32_DMA_STREAM_ID_ANY,

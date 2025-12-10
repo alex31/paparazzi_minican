@@ -53,16 +53,15 @@ namespace  {
     }
     
     constexpr std::uint8_t operator[](std::size_t i) const {
-      chDbgAssert(i < count, "buffer overflow");
-      return idx[i];
+      return i < count ? idx[i] : 0;
     }
   };
   
   
-  constexpr uint32_t servoTickFreq = 2'000'000U;
   constinit uint32_t servoPwmFreq  =  50U;
-  constexpr uint32_t servoTicksPerPeriod = 40000; // servoTickFreq / servoPwmFreq
-  float              halfWidthFactor = 1.0f;
+  constexpr uint32_t servoTickFreq = 2'000'000U;
+  constexpr uint32_t servoTicksPerPeriod = 40000; // servoTickFreq / 50 Hz default
+  float              halfWidthFactor = 2.0f;
   uint32_t	     startIndex = std::numeric_limits<uint32_t>::max();
   ChannelMap	     channelMap;
   
@@ -84,8 +83,12 @@ DeviceStatus ServoPWM::start()
 {
   using HR = HWResource;
   servoPwmFreq = param_cget<"role.servo.pwm.frequency">();
-  chDbgAssert(servoPwmFreq >= 50, "invalid servoPwmFreq parameter");
-  halfWidthFactor = param_cget<"role.servo.pwm.pulse_half_width">() ? 1.0f : 2.0f;
+  const bool halfWidth = param_cget<"role.servo.pwm.pulse_half_width">();
+  // Guardrail: full-width pulses at low rate, half-width only for high-rate servos.
+  if ((servoPwmFreq <= 100 && halfWidth) || (servoPwmFreq > 400 && !halfWidth)) {
+    return DeviceStatus(DeviceStatus::SERVO_PWM, DeviceStatus::INVALID_PARAM, servoPwmFreq);
+  }
+  halfWidthFactor = halfWidth ? 1.0f : 2.0f;
   startIndex = param_cget<"role.servo.pwm.map_index1">();
   channelMap = param_cget<"role.servo.pwm.channel_mask">();
   
