@@ -13,9 +13,10 @@ PROPAGATE_FLAGS := $(foreach v,$(PROPAGATE_VARS),$(if $(value $(v)),$v=$(value $
 
 #all: minican
 all: check-bootloader-size bootloader minican microcan
+	@cp  minican/build*/LAST*.bin /tmp
 
 bootloader:
-	$(MAKE) -C bootloader $(PROPAGATE_FLAGS)
+	$(MAKE) -C bootloader
 
 minican:
 	@rm -f minican/cfg/board.h
@@ -30,6 +31,7 @@ clean:
 	$(MAKE) -C bootloader $(PROPAGATE_FLAGS) clean
 	$(MAKE) -C minican PLATFORM=MICROCAN $(PROPAGATE_FLAGS) clean
 	$(MAKE) -C minican PLATFORM=MINICAN $(PROPAGATE_FLAGS) clean
+
 
 check-bootloader-size:
 	./set_bootloader_size.pl $(BOOTLOADER_SIZE) $(BOOTLOADER_LD) $(MINICAN_LD)
