@@ -91,6 +91,10 @@ static constexpr I2CDriver& ExternalI2CD  = I2CD1;
 #if HAL_USE_UART
 static constexpr UARTDriver &ExternalUARTD = CONCAT(UARTD, UART_TX_USART);
 #endif
+// External WS2812 strip on PB07 (TIM3_CH4)
+#define LED2812_TIM      I2C_SDA_TIM
+#define LED2812_TIM_CH   I2C_SDA_TIM_CH
+static constexpr PWMDriver& LedStripPWMD  = CONCAT(PWMD, LED2812_TIM);
 #elif  PLATFORM_MICROCAN
 static constexpr SPIDriver& ExternalSPID  = SPID2;
 static constexpr I2CDriver& ExternalI2CD  = I2CD2;
@@ -98,6 +102,10 @@ static constexpr I2CDriver& ExternalI2CD  = I2CD2;
 #if HAL_USE_UART
 static constexpr UARTDriver& ExternalUARTD =  CONCAT(UARTD, F2_a_USART);
 #endif
+// External WS2812 strip on F0_b (PB07, TIM3_CH4)
+#define LED2812_TIM      F0_b_TIM
+#define LED2812_TIM_CH   F0_b_TIM_CH
+static constexpr PWMDriver& LedStripPWMD  = CONCAT(PWMD, LED2812_TIM);
 #endif
 #endif
 
