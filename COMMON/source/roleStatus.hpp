@@ -17,7 +17,7 @@ constexpr frozen::map<K, V, N> make_frozen_map(std::array<std::pair<K, V>, N> ar
 struct DeviceStatus {
   enum Source : uint8_t {
     ALL, MFS, RESOURCE, SERVO_ROLE, SERVO_PWM, SERVO_SMART,
-    MPL3115A2, ESC_DSHOT, RC_SBUS, SERIAL_STREAM, GPS_ROLE,
+    MPL3115A2, ESC_DSHOT, RC_SBUS, SERIAL_STREAM, LED2812_ROLE, GPS_ROLE,
     MAG_QMC5883, FIRMWARE_UPDATE, I2C, SPI, MEMORY, NUM_SOURCES
   };
   enum Error : uint8_t {
@@ -51,6 +51,7 @@ struct DeviceStatus {
 	MKP(ESC_DSHOT),
 	MKP(RC_SBUS),
 	MKP(SERIAL_STREAM),
+	MKP(LED2812_ROLE),
 	MKP(GPS_ROLE),
 	MKP(MAG_QMC5883),
 	MKP(FIRMWARE_UPDATE),

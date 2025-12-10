@@ -73,3 +73,8 @@
       {"role.i2c.magnetometer.q5883.rot_deg", {.min = 0, .max = 270, .v = 0}},
       {"role.i2c.magnetometer.q5883.sensor_id", {.min = 0, .max = 250, .v = 0}},
 #endif
+
+#if USE_LED2812_ROLE
+{"ROLE.led2812", {.v = false}},	
+{"role.led2812.led_number", {.min = 1, .max = 8, .v = 1}},	
+#endif

@@ -301,6 +301,7 @@ CPPSRC = $(ALLCPPSRC) \
 	$(COMMON)/serialStreamRole.cpp \
 	$(COMMON)/qmc5883Role.cpp \
 	$(COMMON)/baro_MPL3115A2_Role.cpp \
+	$(COMMON)/rgbLedRole.cpp \
 	$(COMMON)/deviceRessource.cpp \
 	$(COMMON)/MFS.cpp \
 	$(COMMON)/firmwareUpdate.cpp \
