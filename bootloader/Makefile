@@ -242,6 +242,7 @@ CPPWARN = -Wall -Wextra -Wundef
 # Start of user section
 #
 
+UDEFS = -DBOOTLOADER_MCAN=1
 # List all user C define here, like -D_DEBUG=1
 ifeq ($(EXECMODE),$(DEBUG))
 UDEFS += -DTRACE

@@ -18,16 +18,17 @@ namespace Firmware {
    * @brief Enumerates the possible states of the firmware flashing process.
    */
   enum class Flash {
-    REQUIRED,                 ///< A new firmware is present and needs to be flashed.
-    STARTED,                  ///< The flashing process has begun.
-    DONE,                     ///< The firmware has been successfully flashed.
-    CRC_ERROR,                ///< CRC validation of the firmware failed.
-    LEN_ERROR,                ///< The firmware header length is incorrect.
-    MAGIC_ERROR,              ///< The magic number in the header is incorrect.
-    INVALID_SIZE,             ///< The firmware size is out of the expected range.
-    ADDRESS_MISMATCH,         ///< The firmware's target flash address is incorrect.
-    APPLICATION_CORRUPTED,    ///< The application in flash is corrupted (post-flash check failed).
-    PROTOCOL_VERSION_MISMATCH ///< The firmware protocol version is incompatible.
+    REQUIRED,                  ///< A new firmware is present and needs to be flashed.
+    STARTED,                   ///< The flashing process has begun.
+    DONE,                      ///< The firmware has been successfully flashed.
+    CRC_ERROR,                 ///< CRC validation of the firmware failed.
+    LEN_ERROR,                 ///< The firmware header length is incorrect.
+    MAGIC_ERROR,               ///< The magic number in the header is incorrect: first detection
+    INVALID_SIZE,              ///< The firmware size is out of the expected range.
+    ADDRESS_MISMATCH,          ///< The firmware's target flash address is incorrect.
+    APPLICATION_CORRUPTED,     ///< The application in flash is corrupted (post-flash check failed).
+    PROTOCOL_VERSION_MISMATCH, ///< The firmware protocol version is incompatible.
+    MAGIC_ERROR_AGAIN,         ///< The magic number in the header is incorrect: subsequent decection
   };
 
  /**

@@ -146,7 +146,12 @@ namespace {
 
     if (firmwareHeader.magicNumber != Firmware::magicNumberCheck) {
       DebugTrace("magic number not found in header");
-      firmwareHeader.state = Firmware::Flash::MAGIC_ERROR;
+      if ((firmwareHeader.state != Firmware::Flash::MAGIC_ERROR) and
+	  (firmwareHeader.state != Firmware::Flash::MAGIC_ERROR_AGAIN)) {
+	firmwareHeader.state = Firmware::Flash::MAGIC_ERROR;
+      } else {
+	firmwareHeader.state = Firmware::Flash::MAGIC_ERROR_AGAIN;
+      }
       return false;
     }
 
@@ -331,6 +336,8 @@ namespace {
     switch (firmwareHeader.state) {
     case Firmware::Flash::APPLICATION_CORRUPTED:
       haltAndCatchFire(TIME_INFINITE); break;
+    case Firmware::Flash::MAGIC_ERROR_AGAIN:
+      haltAndCatchFire(TIME_S2I(2)); break;
     case Firmware::Flash::DONE: break;
     default: haltAndCatchFire(TIME_S2I(10));
     }

@@ -29,8 +29,11 @@
 #define STR_(x) #x
 #define STR(x)  STR_(x)
 #define NAME_STRING(prefix, sep, version) prefix sep version
-#define DEVICE_NAME NAME_STRING(STR(PLATFORM), "_V", STR(HW_VERSION))
-
+#if defined(PLATFORM_MINICAN) && PLATFORM_MINICAN
+#define DEVICE_NAME NAME_STRING("org.pprz.minican", "V", STR(HW_VERSION))
+#elif defined(PLATFORM_MICROCAN) && PLATFORM_MICROCAN
+#define DEVICE_NAME NAME_STRING("org.pprz.microcan", "V", STR(HW_VERSION))
+#endif
 using namespace std::literals;
 
 static constexpr uint32_t operator""_hz (unsigned long long int freq)
@@ -107,6 +110,8 @@ static constexpr UARTDriver& ExternalUARTD =  CONCAT(UARTD, F2_a_USART);
 #define LED2812_TIM_CH   F0_b_TIM_CH
 static constexpr PWMDriver& LedStripPWMD  = CONCAT(PWMD, LED2812_TIM);
 #endif
+#elif (!defined BOOTLOADER_MCAN)
+#error  PLATFORM_MINICAN and/or PLATFORM_MINICAN and/or BOOTLOADER_MCAN not defined
 #endif
 
 static inline const SPIConfig eepromSpiCfg = {
