@@ -25,8 +25,4 @@ private:
   SBUSDriver sbusd;
   UAVCAN::Node *node;
   dronecan_sensors_rc_RCInput rcInput = {};
-
-  static bool is_channel_active(ChannelMask mask, std::size_t channel_idx);
-  static ChannelBitset decode_channel_mask(ChannelMask mask);
-  static uint8_t count_active_channels(const ChannelBitset& bits);
 };
