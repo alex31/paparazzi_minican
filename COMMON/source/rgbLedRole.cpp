@@ -118,13 +118,10 @@ namespace {
   {
     (void)arg;
     chRegSetThreadName("led2812");
-    std::array<RGB, kMaxLeds> colors{};
     systime_t next = chVTGetSystemTimeX();
     while(true) {
-      std::copy_n(desiredColors.begin(), ledCount, colors.begin());
-
       for (size_t i = 0; i < ledCount; ++i) {
-	(*ledStrip)[i].setRGB(colors[i]);
+	(*ledStrip)[i].setRGB(desiredColors[i]);
       }
       ledStrip->emitFrame();
       next += kFramePeriod;
