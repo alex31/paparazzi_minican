@@ -78,8 +78,21 @@ DeviceStatus RgbLedRole::start(UAVCAN::Node& /*node*/)
 
   const size_t activeLedCount = std::clamp(ledCount, size_t{1}, kMaxLeds);
 
-  if (not boardResource.tryAcquire(HR::TIM_3, HR::PB07)) {
-    const auto conflict = boardResource.isAllocated(HR::TIM_3) ? HR::TIM_3 : HR::PB07;
+  const bool acquired =
+#if PLATFORM_MICROCAN
+    boardResource.tryAcquire(HR::TIM_3, HR::PB07, HR::F0);
+#else
+    boardResource.tryAcquire(HR::TIM_3, HR::PB07);
+#endif
+
+  if (not acquired) {
+    const auto conflict =
+      boardResource.isAllocated(HR::TIM_3) ? HR::TIM_3 :
+#if PLATFORM_MICROCAN
+      (boardResource.isAllocated(HR::F0) ? HR::F0 : HR::PB07);
+#else
+      HR::PB07;
+#endif
     return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT,
 			std::to_underlying(conflict));
   }

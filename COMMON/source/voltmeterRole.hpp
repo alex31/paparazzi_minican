@@ -6,7 +6,7 @@
 #include "roleBase.hpp"
 #include "roleStatus.hpp"
 
-class RoleVoltmeter final : public RoleBase, public RoleCrtp<RoleVoltmeter> {
+class VoltmeterRole final : public RoleBase, public RoleCrtp<VoltmeterRole> {
 public:
   DeviceStatus subscribe(UAVCAN::Node& node) override;
   DeviceStatus start(UAVCAN::Node& node) override;

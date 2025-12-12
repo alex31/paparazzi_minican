@@ -2,10 +2,9 @@
 
 #if USE_VOLTMETER_ROLE
 
-#include "roleVoltmeter.hpp"
+#include "voltmeterRole.hpp"
 
 #include <algorithm>
-#include <array>
 #include <cmath>
 
 #include "UAVCAN/persistantParam.hpp"
@@ -23,6 +22,8 @@ namespace {
   constexpr size_t kLedCount = 8;
   constexpr systime_t kFramePeriod = TIME_MS2I(50);
   constexpr systime_t kEmptyFlashPeriod = TIME_MS2I(500);
+  constexpr float kCellEmptyVoltage = 3.4f;
+  constexpr float kCellFullVoltage = 4.2f;
 
   static constexpr PWMDriver &ledPwm = LedStripPWMD;
   static constexpr uint32_t dmaMux = CONCAT3(STM32_DMAMUX1_TIM, LED2812_TIM, _UP);
@@ -34,19 +35,60 @@ namespace {
   THD_WORKING_AREA(waMinican, 512);
   void voltmeterThread(void *arg);
 
-  float getMinVoltage()
+  uint8_t getCells()
   {
-    return param_cget<"role.voltmeter.min_voltage">();
-  }
-
-  float getMaxVoltage()
-  {
-    return param_cget<"role.voltmeter.max_voltage">();
+    const auto cells = static_cast<int>(param_cget<"role.voltmeter.cells">());
+    return static_cast<uint8_t>(std::clamp(cells, 2, 6));
   }
 
   float getBrightness()
   {
     return std::clamp(param_cget<"role.voltmeter.brightness">(), 0.0f, 1.0f);
+  }
+
+  float lipoSocFromCellVoltage(float cellV)
+  {
+    struct Point {
+      float v;
+      float soc;
+    };
+
+    // Typical LiPo OCV-ish curve anchors; good enough for "on tarmac, motors off".
+    static constexpr Point curve[] = {
+      {3.40f, 0.00f},
+      {3.50f, 0.02f},
+      {3.60f, 0.05f},
+      {3.70f, 0.15f},
+      {3.75f, 0.25f},
+      {3.80f, 0.40f},
+      {3.85f, 0.50f},
+      {3.90f, 0.60f},
+      {3.95f, 0.70f},
+      {4.00f, 0.80f},
+      {4.10f, 0.90f},
+      {4.15f, 0.95f},
+      {4.20f, 1.00f},
+    };
+
+    if (cellV <= curve[0].v) {
+      return curve[0].soc;
+    }
+    if (cellV >= curve[(sizeof curve / sizeof curve[0]) - 1].v) {
+      return curve[(sizeof curve / sizeof curve[0]) - 1].soc;
+    }
+
+    for (size_t i = 1; i < (sizeof curve / sizeof curve[0]); ++i) {
+      if (cellV <= curve[i].v) {
+        const float v0 = curve[i - 1].v;
+        const float v1 = curve[i].v;
+        const float soc0 = curve[i - 1].soc;
+        const float soc1 = curve[i].soc;
+        const float t = (cellV - v0) / (v1 - v0);
+        return soc0 + t * (soc1 - soc0);
+      }
+    }
+
+    return 0.0f;
   }
 
   HSV pickColor(float pct, float brightness)
@@ -80,25 +122,32 @@ namespace {
   }
 }
 
-DeviceStatus RoleVoltmeter::subscribe(UAVCAN::Node& node)
+DeviceStatus VoltmeterRole::subscribe(UAVCAN::Node& node)
 {
   m_node = &node;
   return DeviceStatus(DeviceStatus::VOLTMETER_ROLE);
 }
 
-DeviceStatus RoleVoltmeter::start(UAVCAN::Node& /*node*/)
+DeviceStatus VoltmeterRole::start(UAVCAN::Node& /*node*/)
 {
   using HR = HWResource;
   DeviceStatus status(DeviceStatus::VOLTMETER_ROLE);
 
-  const float minV = getMinVoltage();
-  const float maxV = getMaxVoltage();
-  if (!(maxV > minV)) {
-    return DeviceStatus(DeviceStatus::VOLTMETER_ROLE, DeviceStatus::INVALID_PARAM);
-  }
+  const bool acquired =
+#if PLATFORM_MICROCAN
+    boardResource.tryAcquire(HR::TIM_3, HR::PB07, HR::F0);
+#else
+    boardResource.tryAcquire(HR::TIM_3, HR::PB07);
+#endif
 
-  if (not boardResource.tryAcquire(HR::TIM_3, HR::PB07)) {
-    const auto conflict = boardResource.isAllocated(HR::TIM_3) ? HR::TIM_3 : HR::PB07;
+  if (not acquired) {
+    const auto conflict =
+      boardResource.isAllocated(HR::TIM_3) ? HR::TIM_3 :
+#if PLATFORM_MICROCAN
+      (boardResource.isAllocated(HR::F0) ? HR::F0 : HR::PB07);
+#else
+      HR::PB07;
+#endif
     return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT,
                         std::to_underlying(conflict));
   }
@@ -133,15 +182,13 @@ namespace {
 
     while (true) {
       const float voltage = Adc::getPsBat();
-      const float minV = getMinVoltage();
-      const float maxV = getMaxVoltage();
+      const uint8_t cells = getCells();
+      const float cellVoltage = voltage / static_cast<float>(cells);
       const float brightness = getBrightness();
 
-      if (maxV <= minV) {
-        setAll(RGB{0, 0, 0});
-      } else if (voltage >= maxV) {
+      if (cellVoltage >= kCellFullVoltage) {
         setAll(hsv2rgb(HSV{0.333f, 1.0f, brightness}));
-      } else if (voltage <= minV) {
+      } else if (cellVoltage <= kCellEmptyVoltage) {
         const systime_t now = chVTGetSystemTimeX();
         if (chTimeDiffX(lastFlash, now) >= kEmptyFlashPeriod) {
           lastFlash = now;
@@ -149,10 +196,10 @@ namespace {
         }
         setAll(flashOn ? hsv2rgb(HSV{0.0f, 1.0f, brightness}) : RGB{0, 0, 0});
       } else {
-        const float pct = std::clamp((voltage - minV) / (maxV - minV), 0.0f, 1.0f);
-        const long litRounded = std::lround(pct * static_cast<float>(kLedCount));
-        const size_t litCount = pct > 0.0f ? std::max<size_t>(1U, static_cast<size_t>(std::clamp(litRounded, 0L, static_cast<long>(kLedCount))))
-                                           : 0U;
+        const float pct = std::clamp(lipoSocFromCellVoltage(cellVoltage), 0.0f, 1.0f);
+        const float scaled = pct * static_cast<float>(kLedCount);
+        const size_t litCount =
+          std::clamp<size_t>(static_cast<size_t>(std::ceil(scaled)), 1U, kLedCount);
         setGauge(litCount, hsv2rgb(pickColor(pct, brightness)));
       }
 

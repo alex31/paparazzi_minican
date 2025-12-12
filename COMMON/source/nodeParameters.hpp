@@ -73,13 +73,12 @@
 #endif
 
 #if USE_LED2812_ROLE
-{"ROLE.led2812", {.v = false}},	
-{"role.led2812.led_number", {.min = 1, .max = 8, .v = 1}},	
+      {"ROLE.led2812", {.v = false}},	
+      {"role.led2812.led_number", {.min = 1, .max = 8, .v = 8}},	
 #endif
 
 #if USE_VOLTMETER_ROLE
       {"ROLE.voltmeter", {.v = false}},
-      {"role.voltmeter.min_voltage", {.min = 6.0f, .max = 26.0f, .v = 14.0f}},
-      {"role.voltmeter.max_voltage", {.min = 6.0f, .max = 26.0f, .v = 16.8f}},
+      {"role.voltmeter.cells", {.min = 2, .max = 6, .v = 4}},
       {"role.voltmeter.brightness", {.min = 0.0f, .max = 1.0f, .v = 0.2f}},
 #endif
