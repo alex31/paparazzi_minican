@@ -25,7 +25,7 @@
       // when pins are shared between timer and other peripherals, select
       // the channels that are in use, other will be free
       // mask is : msb F4 F3 F2 F1 lsb
-      {"role.servo.pwm.channel_mask", {.min=0, .max=0b1111, .v = 0b1111}},
+      {"role.servo.pwm.channel_mask", {.min=0b0001, .max=0b1111, .v = 0b1111}},
 	
       {"ROLE.servo.smart", {.v = false}},
       {"role.servo.smart.map_index1", {.min=0, .max=124, .v = 0}},
@@ -36,7 +36,8 @@
 #if USE_ESC_DSHOT_ROLE
       {"ROLE.esc.dshot", {.v = false}},
       {"role.esc.dshot.map_index1", {.min=0, .max=19, .v = 0}},
-      {"role.esc.dshot.num_channels",  {.min=1, .max=4, .v = 1}}, // FIXME : use mask as servoPwm instead of num_channels
+      // Mask is: msb CH4 CH3 CH2 CH1 lsb.
+      {"role.esc.dshot.channel_mask", {.min=0b0001, .max=0b1111, .v = 0b0001}},
       {"role.esc.dshot.cmd_rate",  {.min=100, .max=1000, .v = 100}},
       {"role.esc.dshot.rpm_freq_div",  {.min=0, .max=1000, .v = 0}}, // 0 disable bidir telemetry
 #endif

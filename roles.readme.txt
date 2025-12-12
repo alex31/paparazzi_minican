@@ -4,7 +4,7 @@ Roles UAVCAN – messages reçus / envoyés
 - ServoRole (`ROLE.servo.pwm`, `ROLE.servo.smart`)
   - Reçoit : `uavcan.equipment.actuator.ArrayCommand` (broadcast), pour piloter PWM ou SmartServo selon le type de commande.
   - Envoie : `uavcan.equipment.actuator.Status`.
-  - Paramètres PWM : `role.servo.pwm.frequency`, `role.servo.pwm.pulse_half_width` (mi-largeur us), `role.servo.pwm.map_index1` (premier servo), `role.servo.pwm.channel_mask` (canaux actifs).
+  - Paramètres PWM : `role.servo.pwm.frequency`, `role.servo.pwm.pulse_half_width` (mi-largeur us), `role.servo.pwm.map_index1` (premier servo), `role.servo.pwm.channel_mask` (canaux actifs CH1..CH4).
   - Paramètres Smart : `role.servo.smart.map_index1`, `role.servo.smart.num_servos`, `role.servo.smart.status_frequency` (Hz, 0 = pas de retour).
 
 - Baro_MPL3115A2_Role (`ROLE.i2c.barometer.mpl3115a2`)
@@ -14,12 +14,15 @@ Roles UAVCAN – messages reçus / envoyés
 - EscDshot (`ROLE.esc.dshot`)
   - Reçoit : `uavcan.equipment.esc.RawCommand` (broadcast) pour les consignes moteurs.
   - Envoie : `uavcan.equipment.esc.Status` uniquement si la télémétrie bidirectionnelle DSHOT_BIDIR est activée et avec la cadence configurée.
-  - Paramètres : `role.esc.dshot.map_index1` (premier ESC), `role.esc.dshot.num_channels`, `role.esc.dshot.cmd_rate` (Hz), `role.esc.dshot.rpm_freq_div` (0 = pas de télémétrie bidir).
+  - Paramètres : `role.esc.dshot.map_index1` (premier ESC), `role.esc.dshot.channel_mask` (canaux actifs CH1..CH4), `role.esc.dshot.cmd_rate` (Hz), `role.esc.dshot.rpm_freq_div` (0 = pas de télémétrie bidir).
+  - Notes :
+    - Le driver bas niveau émet toujours une trame DShot 4 canaux (DMA/TIM). Les canaux masqués sont forcés à MOTOR_STOP (0), et seuls les canaux sélectionnés contiennent une consigne utile.
+    - Sur MicroCAN, `channel_mask` sert aussi à configurer les broches partagées via `dynamicPinConfig`.
 
 - SBUS RC (`ROLE.sbus`)
   - Reçoit : rien en UAVCAN (écoute SBUS série).
   - Envoie : `pprz.tunnel.SbusFrame` (trame SBUS relayée sur le bus).
-  - Paramètres : `role.sbus.channel_mask` pour sélectionner les voies, `role.sbus.range.min/max` pour mapper le 0..2047 SBUS vers [-1, 1] (valeurs hors plage clampées), `role.sbus.id` pour l’identifiant.
+  - Paramètres : `role.sbus.channel_mask` pour sélectionner les voies, `role.sbus.id` pour l’identifiant.
   - Notes : seules les voies actives sont publiées ; qualité/failsafe reflètent les flags SBUS.
 
 - SerialStream (`ROLE.tunnel.serial`)
@@ -39,6 +42,28 @@ Roles UAVCAN – messages reçus / envoyés
   - Paramètres : `role.i2c.magnetometer.q5883.range` (2 ou 8 gauss), `role.i2c.magnetometer.q5883.rot_deg` (0/90/180/270) pour ajuster l’orientation, `role.i2c.magnetometer.q5883.sensor_id` (0–250). ODR/filtre/gain fixés (OSR 256, ODR 50 Hz, mode continu).
   - Notes : utilisation directe d’I2C `i2cMasterTransmitTimeout` avec buffers DMA ; en cas d’erreur I2C, reset bus et reprise.
 
+- HealthSurvey (`ROLE.health.survey`)
+  - Reçoit : rien.
+  - Envoie : `mppt.Stream` (tension batterie, Vcc, température core) périodiquement.
+
+- Led2812 / RGB strip (`ROLE.led2812`)
+  - Reçoit : `uavcan.equipment.indication.LightsCommand` (broadcast) pour piloter une bande WS2812 externe.
+  - Envoie : rien.
+  - Paramètres : `role.led2812.led_number` (1..8).
+  - Notes :
+    - Utilise le même matériel que le voltmètre (TIM3_CH4 sur PB07 / F0_b selon la carte), donc ne peut pas être activé en même temps que `ROLE.voltmeter`.
+    - Sur MicroCAN, acquisition de ressource supplémentaire côté connecteur (`F0`) pour éviter les conflits quand plusieurs broches partagent le même header.
+
+- Voltmeter (`ROLE.voltmeter`)
+  - Reçoit : rien (utilise l’ADC interne qui mesure la tension batterie).
+  - Envoie : rien.
+  - Affichage : jauge de charge sur 8 LEDs WS2812 (vert/jaune/rouge) + clignotement rouge à vide.
+  - Paramètres : `role.voltmeter.cells` (2..6), `role.voltmeter.brightness` (0..1).
+  - Notes :
+    - La conversion tension->% n’est pas linéaire : lookup table LiPo (tension par cellule).
+    - Seuil "vide" : 3.4V/cellule (clignotement rouge), "plein" : 4.2V/cellule (8 vertes fixes).
+    - Matériel partagé avec `ROLE.led2812` : mutualisation TIM3/PB07 et, sur MicroCAN, le connecteur `F0`.
+
 Services/protocoles gérés par le nœud (pubSub/UAVCanSlave)
 -----------------------------------------------------------
 - Diffusion périodique : `uavcan.protocol.NodeStatus`.
@@ -49,4 +74,4 @@ Services/protocoles gérés par le nœud (pubSub/UAVCanSlave)
 - Mise à jour firmware : `uavcan.protocol.file.BeginFirmwareUpdate` (req/res) + `uavcan.protocol.file.Read` (client) pour récupérer l’image.
 - Réception passive : souscription aux `uavcan.protocol.NodeStatus` reçus (monitoring).
 
-Remarque : les rôles sont instanciés au démarrage selon les paramètres persistants et utilisent `sendBroadcast` du nœud UAVCAN. Les services ci-dessus sont fournis par la couche pubSub/UAVCanSlave indépendamment des rôles applicatifs.
+Remarque : les rôles sont instanciés au démarrage selon les paramètres persistants et utilisent `sendBroadcast` du nœud UAVCAN. Les services ci-dessus sont fournis par la couche pubSub/UAVCanSlave indépendamment des rôles applicatifs. Si `ROLE.identification` est vrai, la carte passe en mode identification (LED interne) et le nœud UAVCAN n’est pas démarré.
