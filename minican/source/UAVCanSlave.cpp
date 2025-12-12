@@ -27,6 +27,9 @@
 #if USE_LED2812_ROLE
 #include "rgbLedRole.hpp"
 #endif
+#if USE_VOLTMETER_ROLE
+#include "roleVoltmeter.hpp"
+#endif
 #if USE_GPS_UBX_ROLE
 #include "gpsUbxRole.hpp"
 #endif
@@ -353,6 +356,9 @@ namespace CANSlave {
 #endif
 #if USE_LED2812_ROLE
     rolesOk = rolesOk && addRole<RgbLedRole, FixedString("ROLE.led2812")>();
+#endif
+#if USE_VOLTMETER_ROLE
+    rolesOk = rolesOk && addRole<RoleVoltmeter, FixedString("ROLE.voltmeter")>();
 #endif
 
     if (not rolesOk) {

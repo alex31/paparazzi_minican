@@ -9,3 +9,4 @@
 #define USE_GPS_UBX_ROLE         true
 #define USE_SERIAL_STREAM_ROLE   true
 #define USE_LED2812_ROLE         true
+#define USE_VOLTMETER_ROLE       true

@@ -308,6 +308,7 @@ CPPSRC = $(ALLCPPSRC) \
 	$(COMMON)/qmc5883Role.cpp \
 	$(COMMON)/baro_MPL3115A2_Role.cpp \
 	$(COMMON)/rgbLedRole.cpp \
+	$(COMMON)/roleVoltmeter.cpp \
 	$(COMMON)/deviceRessource.cpp \
 	$(COMMON)/MFS.cpp \
 	$(COMMON)/firmwareUpdate.cpp \
