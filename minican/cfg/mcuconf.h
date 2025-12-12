@@ -414,7 +414,9 @@
 #define CH_HEAP_USE_TLSF 0 // if 0 or undef, chAlloc will be used
 #define CONSOLE_DEV_SD LPSD1
 #define CONSOLE_DEV_USB 0
+#ifndef CHPRINTF_USE_STDLIB
 #define CHPRINTF_USE_STDLIB   1
+#endif
 #define UAVNODE_MEMORYPOOL_SIZE	 (6 * 1024)
 
 #endif /* MCUCONF_H */

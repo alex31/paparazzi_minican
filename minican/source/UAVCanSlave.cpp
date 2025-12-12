@@ -263,8 +263,9 @@ namespace {
     }
     return true;
   }
-  
+#ifdef TRACE
   void printOnceInATime(const etl::string_view sv);
+#endif
 }
 
  
@@ -387,6 +388,7 @@ namespace CANSlave {
 
 
 namespace {
+#ifdef TRACE
  void printOnceInATime(const etl::string_view sv)
  {
    static etl::string<120> lastMsg = "";
@@ -401,6 +403,6 @@ namespace {
      DebugTrace("UAVDbg : %s", sv.data());
    }
  }
-
+#endif
 }
   

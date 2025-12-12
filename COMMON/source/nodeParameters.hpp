@@ -52,8 +52,6 @@
       {"role.sbus.channel_mask", {.min=0, .max=0b1111'1111'1111'1111, .v = 0b1111'1111'1111'1111}},
       // in case there is multiple RC, each RC must have a unique ID
       {"role.sbus.id", {.min=0, .max=0xff, .v = 0}},
-      {"role.sbus.range.min", {.min=0, .max=2047, .v = 172}},
-      {"role.sbus.range.max", {.min=0, .max=2047, .v = 1811}},
 #endif
 
 #if USE_SERIAL_STREAM_ROLE

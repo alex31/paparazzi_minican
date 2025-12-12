@@ -20,8 +20,6 @@ private:
   using ChannelMask = std::uint64_t;
   using ChannelBitset = std::bitset<max_channels>;
   ChannelBitset enabledChannels = {};
-  uint16_t rangeMin = 172;
-  uint16_t rangeMax = 1811;
   SBUSDriver sbusd;
   UAVCAN::Node *node;
   dronecan_sensors_rc_RCInput rcInput = {};

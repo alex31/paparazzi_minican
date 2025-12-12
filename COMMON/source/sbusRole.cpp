@@ -17,8 +17,11 @@
 namespace {
   SBUSConfig sbuscfg = {	//Config du sbus de la RC
     .uartd = &ExternalUARTD,
+#ifdef TRACE
     .errorCb = [](SBUSError err) {DebugTrace("Sbus Err %u", err)},
-    //.errorCb = nullptr,
+#else
+    .errorCb = nullptr,
+#endif
     .frameCb = &Trampoline<&RC_Sbus::maj_rc_cb_frame>::fn,
     .threadWASize = 1024,
     .externallyInverted = false,
@@ -55,11 +58,6 @@ DeviceStatus RC_Sbus::start(UAVCAN::Node& _node)
 #endif
   
   enabledChannels = param_cget<"role.sbus.channel_mask">();
-  rangeMin = param_cget<"role.sbus.range.min">();
-  rangeMax = param_cget<"role.sbus.range.max">();
-  if (rangeMin >= rangeMax) {
-    return DeviceStatus(DeviceStatus::RC_SBUS, DeviceStatus::INVALID_PARAM);
-  }
   rcInput.rcin.len = enabledChannels.count();
   rcInput.id = param_cget<"role.sbus.id">();            
   

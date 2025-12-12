@@ -40,6 +40,7 @@ ifndef CAN_BITRATE
 CAN_BITRATE = 1000
 endif
 
+
 ifneq ($(shell [ $(CAN_BITRATE) -gt 1000 -o $(CAN_BITRATE) -lt 0 ] && echo yes),)
 CANARD_ENABLE_CANFD := true
 else
@@ -62,6 +63,7 @@ RELEASE := $(DEBUG_g)
 #RELEASE := $(OPT_SIZE)
 endif
 
+
 GCCVERSIONGTEQ10 := $(shell expr `arm-none-eabi-gcc -dumpversion | cut -f1 -d.` \>= 10)
 GCC_DIAG =  -Werror -Wno-error=unused-variable -Wno-error=format \
 	    -Wno-error=cpp -Wno-error=type-limits \
@@ -83,11 +85,13 @@ ifeq "$(GCCVERSIONGTEQ10)" "1"
 endif
 
 UNUSED_DIAGS = -Wcast-align -Wsign-conversion -Wconversion
+#   theses options : -fipa-pta --specs=nano.specs
+#   can be enabled to save 25ko but only if TRACE is not enabled (no shell)
 
 ifeq ($(RELEASE),$(DEBUG_0)) 
-  USE_OPT =  -O$(RELEASE) -ggdb3  -Wall -Wextra \
+  USE_OPT = -O$(RELEASE) -ggdb3  -Wall -Wextra \
 	    -falign-functions=16 -fomit-frame-pointer \
-	    $(GCC_DIAG) 
+	    $(NANO_OPT) $(GCC_DIAG) 
   USE_LTO = no
 endif
 
@@ -98,11 +102,11 @@ ifeq ($(RELEASE),$(DEBUG_g))
   USE_LTO = no
 endif
 
-#   theses options : -fipa-pta --specs=nano.specs
-#   can be enabled to save 25ko but only if TRACE is not enabled (no shell)
 ifeq ($(RELEASE),$(OPT_SPEED)) 
+  NANO_OPT = -fipa-pta --specs=nano.specs -Wl,-u,_printf_float
   USE_OPT =  -O$(RELEASE) -ggdb3 -flto -Wall -Wextra \
          -falign-functions=16 -fomit-frame-pointer \
+	 $(NANO_OPT) \
          -DCH_DBG_SYSTEM_STATE_CHECK=0 -DCH_DBG_ENABLE_CHECKS=0 \
          -DCH_DBG_ENABLE_ASSERTS=0 -DCH_DBG_ENABLE_STACK_CHECK=0 \
          -DCH_DBG_FILL_THREADS=0 \
@@ -113,13 +117,15 @@ endif
 
 ifeq ($(RELEASE),$(OPT_SIZE)) 
   USE_OPT =  -O$(RELEASE) -flto  -Wall -Wextra \
-	    -falign-functions=16 -fomit-frame-pointer \
-            -DCH_DBG_SYSTEM_STATE_CHECK=0 -DCH_DBG_ENABLE_CHECKS=0 \
-            -DCH_DBG_ENABLE_ASSERTS=0 -DCH_DBG_ENABLE_STACK_CHECK=0 \
-            -DCH_DBG_FILL_THREADS=0 \
-	    $(GCC_DIAG)
+	$(NANO_OPT) \
+	-falign-functions=16 -fomit-frame-pointer \
+        -DCH_DBG_SYSTEM_STATE_CHECK=0 -DCH_DBG_ENABLE_CHECKS=0 \
+        -DCH_DBG_ENABLE_ASSERTS=0 -DCH_DBG_ENABLE_STACK_CHECK=0 \
+        -DCH_DBG_FILL_THREADS=0 \
+	$(GCC_DIAG)
 	USE_LTO = yes
 endif
+
 
 # C specific options here (added to USE_OPT).
 ifeq ($(USE_COPT),)
@@ -345,9 +351,17 @@ UDEFS = -DCANARD_ENABLE_CANFD=$(CANARD_ENABLE_CANFD) -DCANARD_ENABLE_TAO_OPTION=
 	-DVCS_COMMIT=$(VCS_COMMIT) -DHW_VERSION=$(HW_VERSION) \
         -DSW_VERSION_MAJOR=$(SW_VERSION_MAJOR) -DSW_VERSION_MINOR=$(SW_VERSION_MINOR)
 
-#ifeq ($(RELEASE),$(DEBUG))
+ifeq ($(strip $(NANO_OPT)),)
+UDEFS += -DCHPRINTF_USE_STDLIB=1
+else
+UDEFS += -DCHPRINTF_USE_STDLIB=0
+endif
+
+
+ifndef NOSHELL
 UDEFS += -DTRACE
-#endif
+endif
+
 #
 # Define ASM defines here
 UADEFS =
