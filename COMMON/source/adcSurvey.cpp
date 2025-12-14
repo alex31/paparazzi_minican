@@ -29,7 +29,6 @@ namespace {
   constexpr float ts_cal1_temp = 30;
   constexpr float ts_cal2_temp = 130;
   constexpr float calib_vref = 3.0;
-  constexpr float vcc = 3.3f;
   constexpr float resistor_r1 = 2200;
   constexpr float resistor_r2 = 18000;
 
@@ -104,6 +103,7 @@ namespace Adc {
     adcStart(&ADCD1, nullptr);
     adcSTM32EnableVREF(&ADCD1);
     adcSTM32EnableTS(&ADCD1);
+    chThdSleepMilliseconds(1); // wait for stability
     convert();
 
     // no ps voltage detected, must run connected to a probe for debug
