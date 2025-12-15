@@ -7,6 +7,7 @@
 #include "UAVCAN/persistantParam.hpp"
 #include "UAVCAN/dsdlStringUtils.hpp"
 #include "UAVCAN/pubSub.hpp"
+#include "nodeParametersEnum.hpp"
 
 #if USE_SERVO_ROLE
 #include "servoRole.hpp"
@@ -180,16 +181,38 @@ namespace {
   {
     uavcan_protocol_param_GetSetResponse resp;
     const auto& [index, storeVal] = getSetResponse(req, resp);
+    bool requestStore = false;
+    bool requestReboot = false;
     if (index > 0) {
       const auto& p = Persistant::Parameter::find(index);
       if (Persistant::Parameter::set(p, storeVal)) {
-	// do we store on getset ?
-	// it seems that the protocol leave the storage to the
-	// processExecuteOpcodeRequest command
-	// Ressource::storage.store(index);
+	const int behaviorRaw = static_cast<int>(param_cget<"uavcan.param_set_behavior">());
+	const auto behavior = static_cast<ParamSetBehavior>(
+	  std::clamp(behaviorRaw, static_cast<int>(SetRam), static_cast<int>(SetRamFlashAndReboot)));
+
+	switch (behavior) {
+	case SetRam:
+	  break;
+	case SetRamFlash:
+	  requestStore = true;
+	  break;
+	case SetRamFlashAndReboot:
+	  requestStore = true;
+	  requestReboot = true;
+	  break;
+	default:
+	  break;
+	}
       }
     }
     slaveNode->sendResponse(resp, transfer);
+    if (requestStore) {
+      Ressource::storage.store(index);
+    }
+    if (requestReboot) {
+      chThdSleepMilliseconds(100);
+      systemReset();
+    }
   }
 
   void processRestartNodeRequest(CanardRxTransfer *transfer,

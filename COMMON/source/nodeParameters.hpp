@@ -5,6 +5,7 @@
 	
       {"uavcan.node_id", {.min = -124, .max = 124, .v = 0}}, // 0 is dynamic, negative is prefered dynamic
       {"uavcan.dynid.fd", {.v = false}},
+      {"uavcan.param_set_behavior", {.min = SetRam, .max = SetRamFlashAndReboot, .v = SetRamFlash}},
 	
       {"bus.i2c.pullup_resistor", {.v = true}},
       // I²C frequency : valid values : 100, 400, 1000

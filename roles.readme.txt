@@ -73,6 +73,10 @@ Services/protocoles gérés par le nœud (pubSub/UAVCanSlave)
 - Gestion ID dynamique : `uavcan.protocol.dynamic_node_id.Allocation` (req/broadcast).
 - Services de base : réponse à `uavcan.protocol.GetNodeInfo` (et client pour récupérer des infos si besoin).
 - Paramètres : `uavcan.protocol.param.GetSet` (req/res), `uavcan.protocol.param.ExecuteOpcode` (save/erase).
+  - Comportement lors d’un `GetSet` d’écriture : `uavcan.param_set_behavior`
+    - `0` (`SetRam`) : modifie uniquement en RAM (jusqu’au reboot).
+    - `1` (`SetRamFlash`) : modifie en RAM + sauvegarde en flash du paramètre modifié.
+    - `2` (`SetRamFlashAndReboot`) : modifie en RAM + sauvegarde en flash + redémarrage du nœud.
 - Redémarrage : `uavcan.protocol.RestartNode` (req/res).
 - Mise à jour firmware : `uavcan.protocol.file.BeginFirmwareUpdate` (req/res) + `uavcan.protocol.file.Read` (client) pour récupérer l’image.
 - Réception passive : souscription aux `uavcan.protocol.NodeStatus` reçus (monitoring).
