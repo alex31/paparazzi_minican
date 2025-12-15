@@ -82,6 +82,11 @@
       {"ROLE.voltmeter", {.v = false}},
       {"role.voltmeter.cells", {.min = 2, .max = 6, .v = 4}},
       {"role.voltmeter.brightness", {.min = 0.0f, .max = 1.0f, .v = 0.2f}},
+
+      // If >0 and a valid uavcan.equipment.gnss.Fix2 is received recently,
+      // blank the WS2812 LEDs when ground speed is above this threshold.
+      // Set to 0 to disable this behavior.
+      {"role.voltmeter.gps_speed_off_mps", {.min = 0.0f, .max = 100.0f, .v = 3.0f}},
 	
       // Optional linear correction on the measured battery voltage (psBat):
       // V_corrected = V_raw * adc.psbat.scale + adc.psbat.bias

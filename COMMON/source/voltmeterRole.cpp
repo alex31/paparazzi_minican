@@ -22,6 +22,8 @@ namespace {
   constexpr size_t kLedCount = 8;
   constexpr systime_t kFramePeriod = TIME_MS2I(50);
   constexpr systime_t kEmptyFlashPeriod = TIME_MS2I(500);
+  constexpr systime_t kGpsTimeout = TIME_S2I(2);
+  constexpr float kSpeedHysteresisMps = 0.5f;
   constexpr float kCellEmptyVoltage = 3.4f;
   constexpr float kCellFullVoltage = 4.2f;
 
@@ -33,7 +35,6 @@ namespace {
   Led2812Strip<kLedCount, Led_t> *ledStrip = nullptr;
 
   THD_WORKING_AREA(waMinican, 512);
-  void voltmeterThread(void *arg);
 
   uint8_t getCells()
   {
@@ -44,6 +45,12 @@ namespace {
   float getBrightness()
   {
     return std::clamp(param_cget<"role.voltmeter.brightness">(), 0.0f, 1.0f);
+  }
+
+  float getSpeedOffThresholdMps()
+  {
+    const float v = param_cget<"role.voltmeter.gps_speed_off_mps">();
+    return std::clamp(v, 0.0f, 100.0f);
   }
 
   float lipoSocFromCellVoltage(float cellV)
@@ -122,9 +129,33 @@ namespace {
   }
 }
 
+void VoltmeterRole::processFix2(CanardRxTransfer*, const uavcan_equipment_gnss_Fix2& msg)
+{
+  if (msg.status == UAVCAN_EQUIPMENT_GNSS_FIX2_STATUS_NO_FIX) {
+    chSysLock();
+    m_gpsSpeedValid = false;
+    chSysUnlock();
+    return;
+  }
+
+  const float vn = msg.ned_velocity[0];
+  const float ve = msg.ned_velocity[1];
+  const float groundSpeedMps = std::sqrt(vn * vn + ve * ve);
+  if (!std::isfinite(groundSpeedMps)) {
+    return;
+  }
+
+  chSysLock();
+  m_groundSpeedMps = groundSpeedMps;
+  m_lastGpsUpdate = chVTGetSystemTimeX();
+  m_gpsSpeedValid = true;
+  chSysUnlock();
+}
+
 DeviceStatus VoltmeterRole::subscribe(UAVCAN::Node& node)
 {
   m_node = &node;
+  node.subscribeBroadcastMessages<Trampoline<&VoltmeterRole::processFix2>::fn>();
   return DeviceStatus(DeviceStatus::VOLTMETER_ROLE);
 }
 
@@ -166,47 +197,87 @@ DeviceStatus VoltmeterRole::start(UAVCAN::Node& /*node*/)
   ledStrip = &strip;
 
   chThdCreateStatic(waMinican, sizeof(waMinican), NORMALPRIO,
-                    &voltmeterThread, nullptr);
+                    &VoltmeterRole::voltmeterThread, this);
   return status;
 }
 
-namespace {
-  void voltmeterThread(void *arg)
-  {
-    (void)arg;
-    chRegSetThreadName("voltmeter");
+void VoltmeterRole::voltmeterThread(void* arg)
+{
+  auto* self = static_cast<VoltmeterRole*>(arg);
+  chRegSetThreadName("voltmeter");
 
-    systime_t next = chVTGetSystemTimeX();
-    systime_t lastFlash = next;
-    bool flashOn = true;
+  systime_t next = chVTGetSystemTimeX();
+  systime_t lastFlash = next;
+  bool flashOn = true;
 
-    while (true) {
-      const float voltage = Adc::getPsBat();
-      const uint8_t cells = getCells();
-      const float cellVoltage = voltage / static_cast<float>(cells);
-      const float brightness = getBrightness();
+  bool blanked = false;
+  bool blankFrameSent = false;
 
-      if (cellVoltage >= kCellFullVoltage) {
-        setAll(hsv2rgb(HSV{0.333f, 1.0f, brightness}));
-      } else if (cellVoltage <= kCellEmptyVoltage) {
-        const systime_t now = chVTGetSystemTimeX();
-        if (chTimeDiffX(lastFlash, now) >= kEmptyFlashPeriod) {
-          lastFlash = now;
-          flashOn = !flashOn;
-        }
-        setAll(flashOn ? hsv2rgb(HSV{0.0f, 1.0f, brightness}) : RGB{0, 0, 0});
-      } else {
-        const float pct = std::clamp(lipoSocFromCellVoltage(cellVoltage), 0.0f, 1.0f);
-        const float scaled = pct * static_cast<float>(kLedCount);
-        const size_t litCount =
-          std::clamp<size_t>(static_cast<size_t>(std::ceil(scaled)), 1U, kLedCount);
-        setGauge(litCount, hsv2rgb(pickColor(pct, brightness)));
+  while (true) {
+    const float speedOffMps = getSpeedOffThresholdMps();
+    const systime_t now = chVTGetSystemTimeX();
+
+    bool gpsValid = false;
+    float groundSpeedMps = 0.0f;
+    systime_t lastGpsUpdate = 0;
+    {
+      chSysLock();
+      gpsValid = self->m_gpsSpeedValid;
+      groundSpeedMps = self->m_groundSpeedMps;
+      lastGpsUpdate = self->m_lastGpsUpdate;
+      chSysUnlock();
+    }
+
+    if (gpsValid && (chTimeDiffX(lastGpsUpdate, now) > kGpsTimeout)) {
+      gpsValid = false;
+    }
+
+    if ((speedOffMps > 0.0f) && gpsValid) {
+      if (!blanked && (groundSpeedMps > speedOffMps)) {
+        blanked = true;
+      } else if (blanked && (groundSpeedMps < (speedOffMps - kSpeedHysteresisMps))) {
+        blanked = false;
       }
+    } else {
+      blanked = false;
+    }
 
-      ledStrip->emitFrame();
+    if (blanked) {
+      if (!blankFrameSent) {
+        setAll(RGB{0, 0, 0});
+        ledStrip->emitFrame();
+        blankFrameSent = true;
+      }
       next += kFramePeriod;
       chThdSleepUntil(next);
+      continue;
     }
+    blankFrameSent = false;
+
+    const float voltage = Adc::getPsBat();
+    const uint8_t cells = getCells();
+    const float cellVoltage = voltage / static_cast<float>(cells);
+    const float brightness = getBrightness();
+
+    if (cellVoltage >= kCellFullVoltage) {
+      setAll(hsv2rgb(HSV{0.333f, 1.0f, brightness}));
+    } else if (cellVoltage <= kCellEmptyVoltage) {
+      if (chTimeDiffX(lastFlash, now) >= kEmptyFlashPeriod) {
+        lastFlash = now;
+        flashOn = !flashOn;
+      }
+      setAll(flashOn ? hsv2rgb(HSV{0.0f, 1.0f, brightness}) : RGB{0, 0, 0});
+    } else {
+      const float pct = std::clamp(lipoSocFromCellVoltage(cellVoltage), 0.0f, 1.0f);
+      const float scaled = pct * static_cast<float>(kLedCount);
+      const size_t litCount =
+        std::clamp<size_t>(static_cast<size_t>(std::ceil(scaled)), 1U, kLedCount);
+      setGauge(litCount, hsv2rgb(pickColor(pct, brightness)));
+    }
+
+    ledStrip->emitFrame();
+    next += kFramePeriod;
+    chThdSleepUntil(next);
   }
 }
 

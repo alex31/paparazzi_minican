@@ -58,10 +58,13 @@ Roles UAVCAN – messages reçus / envoyés
   - Reçoit : rien (utilise l’ADC interne qui mesure la tension batterie).
   - Envoie : rien.
   - Affichage : jauge de charge sur 8 LEDs WS2812 (vert/jaune/rouge) + clignotement rouge à vide.
-  - Paramètres : `role.voltmeter.cells` (2..6), `role.voltmeter.brightness` (0..1).
+  - Paramètres : `role.voltmeter.cells` (2..6), `role.voltmeter.brightness` (0..1),
+    `role.voltmeter.gps_speed_off_mps` (m/s, 0 = désactivé).
   - Notes :
     - La conversion tension->% n’est pas linéaire : lookup table LiPo (tension par cellule).
     - Seuil "vide" : 3.4V/cellule (clignotement rouge), "plein" : 4.2V/cellule (8 vertes fixes).
+    - Pour économiser la batterie, si un `uavcan.equipment.gnss.Fix2` valide est reçu et que la vitesse sol
+      dépasse `role.voltmeter.gps_speed_off_mps`, les LEDs sont éteintes.
     - Matériel partagé avec `ROLE.led2812` : mutualisation TIM3/PB07 et, sur MicroCAN, le connecteur `F0`.
 
 Services/protocoles gérés par le nœud (pubSub/UAVCanSlave)
