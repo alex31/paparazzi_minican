@@ -4,6 +4,7 @@
 #include <variant>
 #include <charconv>
 #include <cctype>
+#include <cmath>
 #include <string_view>
 #include <optional>
 
@@ -18,6 +19,7 @@
 #include "UAVCAN/persistantStorage.hpp"
 #include "UAVCanSlave.hpp"
 #include "deviceRessource.hpp"
+#include "adcSurvey.hpp"
 
 using FixedString = etl::string<128>;
 using Value = std::variant<struct uavcan_protocol_param_Empty, int64_t, float, bool, FixedString>;
@@ -62,6 +64,7 @@ using Value = std::variant<struct uavcan_protocol_param_Empty, int64_t, float, b
 // ces declarations sont necessaires pour remplir le tableau commands[] ci-dessous
 using cmd_func_t =  void  (BaseSequentialStream *lchp, int argc,const char * const argv[]);
 static cmd_func_t cmd_mem, cmd_uid, cmd_restart, cmd_param, cmd_uavparam, cmd_storage, cmd_can;
+static cmd_func_t cmd_adc;
 #if CH_DBG_STATISTICS
 static cmd_func_t cmd_threads;
 #endif
@@ -100,6 +103,8 @@ static const ShellCommand commands[] = {
   {"param", cmd_param},		// fonction à but pedagogique qui affiche les
 				//   paramètres qui lui sont passés
 
+  {"adc", cmd_adc},		// psBat readout + 2-point calibration (stores adc.psbat.scale/bias)
+
   {"st", cmd_storage},		// manage eeprom storage
   {"uavp", cmd_uavparam},	// manage parameters via UAVCan types
   {"can", cmd_can},		// print can speed, hardware/software version
@@ -136,6 +141,78 @@ static void cmd_param(BaseSequentialStream *lchp, int argc,const char* const arg
 
 #include <array>
 #include <string_view>
+
+namespace {
+  struct AdcCalPoint {
+    float voltage;
+    float raw;
+  };
+  std::optional<AdcCalPoint> adcCalFirstPoint;
+}
+
+static void cmd_adc(BaseSequentialStream *lchp, int argc, const char * const argv[])
+{
+  if (argc == 0) {
+    const float raw = Adc::getPsBatRaw();
+    const float corrected = Adc::getPsBat();
+    chprintf(lchp, "adc: %.4f V (raw=%.4f V)\r\n", corrected, raw);
+    return;
+  }
+
+  if (argc != 1) {
+    chprintf(lchp, "usage: adc [known_voltage]\r\n");
+    return;
+  }
+
+  const float voltage = atof(argv[0]);
+  if (!(voltage > 0.0f)) {
+    chprintf(lchp, "adc: invalid voltage '%s'\r\n", argv[0]);
+    return;
+  }
+
+  const float raw = Adc::getPsBatRaw();
+
+  if (!adcCalFirstPoint.has_value()) {
+    adcCalFirstPoint = AdcCalPoint{voltage, raw};
+    const float corrected = Adc::getPsBat();
+    chprintf(lchp,
+	     "adc: captured point V=%.3f raw=%.4f V (corrected=%.4f V). Now set a second known voltage and run 'adc <V>'.\r\n",
+	     voltage, raw, corrected);
+    return;
+  }
+
+  const float v1 = adcCalFirstPoint->voltage;
+  const float m1 = adcCalFirstPoint->raw;
+  const float v2 = voltage;
+  const float m2 = raw;
+
+  const float denom = (m2 - m1);
+  if (std::fabs(denom) < 1e-3f) {
+    chprintf(lchp, "adc: invalid points (raw delta too small): m1=%.4f m2=%.4f\r\n", m1, m2);
+    return;
+  }
+
+  const float scale = (v2 - v1) / denom;
+  const float bias = v1 - (scale * m1);
+
+  const int scaleIdx = Persistant::Parameter::findIndex("adc.psbat.scale");
+  const int biasIdx = Persistant::Parameter::findIndex("adc.psbat.bias");
+  if (scaleIdx <= 0 || biasIdx <= 0) {
+    chprintf(lchp, "adc: missing parameters adc.psbat.scale/adc.psbat.bias in params_list\r\n");
+    return;
+  }
+
+  Persistant::Parameter::set("adc.psbat.scale", scale);
+  Persistant::Parameter::set("adc.psbat.bias", bias);
+  Ressource::storage.store(scaleIdx);
+  Ressource::storage.store(biasIdx);
+
+  const float corrected = Adc::getPsBat();
+  chprintf(lchp,
+	   "adc: V1=%.3f raw1=%.4f, V2=%.3f raw2=%.4f -> scale=%.6f bias=%.6f; now corrected=%.4f V\r\n",
+	   v1, m1, v2, m2, scale, bias, corrected);
+  adcCalFirstPoint.reset();
+}
 
 #ifndef CAN_BITRATE
 #define CAN_BITRATE -500   // exemple
@@ -504,7 +581,7 @@ namespace {
       DebugTrace("store %d '%s'  is Bool = %d", i, name.data(), b);
     }
     void operator()(const ssize_t i, const frozen::string& name, float f) const {
-      DebugTrace("store %d '%s'  is Double = %f", i, name.data(), f);
+      DebugTrace("store %d '%s'  is Float = %f", i, name.data(), f);
     }
     void operator()(const ssize_t i, const frozen::string& name, const Persistant::StoredString &s) const {
       DebugTrace("store %d '%s'  is String = %s", i, name.data(),  s.c_str());

@@ -6,6 +6,7 @@
 #include "adcSurvey.hpp"
 #include "adcSamples.hpp"
 #include "jobQueue.hpp"
+#include "UAVCAN/persistantParam.hpp"
 
 /*
    ° continuous conversion @ 1Khz
@@ -150,9 +151,17 @@ namespace Adc {
   }
 #endif
   
-  float getPsBat()
+  float getPsBatRaw()
   {
     return adc2volts(adcSamples[std::to_underlying(AdcChannel::psBat)]);
+  }
+
+  float getPsBat()
+  {
+    const float raw = getPsBatRaw();
+    const float scale = param_cget<"adc.psbat.scale">();
+    const float bias = param_cget<"adc.psbat.bias">();
+    return (raw * scale) + bias;
   }
 
   float getVcc()
@@ -164,6 +173,10 @@ namespace Adc {
 
   float getCoreTemp()
   {
+    // TS_CALx calibration constants are measured at VREF+ = calib_vref.
+    // The ADC code for the temperature sensor scales as 1/VDDA, so we must
+    // normalize the measured code back to the calibration voltage:
+    //   TS_DATA@cal = TS_DATA@meas * VDDA / calib_vref.
     const float ts_data = adcSamples[std::to_underlying(AdcChannel::coreTemp)]
       * getVcc() / calib_vref;
     const float fact1 = (ts_cal2_temp - ts_cal1_temp) / (ts_cal2 - ts_cal1);

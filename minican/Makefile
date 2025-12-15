@@ -403,6 +403,15 @@ build_dsdlc:
 $(CONFDIR)/board.h: $(CONFDIR)/$(PLATFORM).cfg
 	boardGen.pl --no-pp-line --no-adcp-in 	$<  $@
 
+# board.h is shared for MINICAN/MICROCAN; ensure it is regenerated when PLATFORM changes.
+BOARDGEN_STAMP := $(CONFDIR)/.boardgen_$(PLATFORM).stamp
+
+$(BOARDGEN_STAMP):
+	@rm -f $(CONFDIR)/.boardgen_*.stamp
+	@echo $(PLATFORM) > $@
+
+$(CONFDIR)/board.h: $(BOARDGEN_STAMP)
+
 
 # stflash: all
 # 	@echo write $(BUILDDIR)/$(PROJECT).bin to flash memory

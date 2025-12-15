@@ -6,8 +6,8 @@ namespace Adc {
 #if PLATFORM_MICROCAN
   uint8_t getAddress();
 #endif
+  float getPsBatRaw();
   float getPsBat();
   float getCoreTemp();
   float getVcc();
 }
-

@@ -82,4 +82,9 @@
       {"ROLE.voltmeter", {.v = false}},
       {"role.voltmeter.cells", {.min = 2, .max = 6, .v = 4}},
       {"role.voltmeter.brightness", {.min = 0.0f, .max = 1.0f, .v = 0.2f}},
+	
+      // Optional linear correction on the measured battery voltage (psBat):
+      // V_corrected = V_raw * adc.psbat.scale + adc.psbat.bias
+      {"adc.psbat.scale", {.min = 0.5f, .max = 1.5f, .v = 1.0f}},
+      {"adc.psbat.bias", {.min = -5.0f, .max = 5.0f, .v = 0.0f}},
 #endif

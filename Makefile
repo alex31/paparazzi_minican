@@ -19,15 +19,13 @@ bootloader:
 	$(MAKE) -C bootloader
 
 minican:
-	@rm -f minican/cfg/board.h
 	$(MAKE) -C minican PLATFORM=MINICAN $(PROPAGATE_FLAGS) firmware
 
-microcan: minican
-	@rm -f minican/cfg/board.h
+microcan:
 	$(MAKE) -C minican PLATFORM=MICROCAN $(PROPAGATE_FLAGS) firmware
 
 clean:
-	@rm -f minican/cfg/board.h
+	@rm -f minican/cfg/board.h minican/cfg/.boardgen_*.stamp
 	$(MAKE) -C bootloader $(PROPAGATE_FLAGS) clean
 	$(MAKE) -C minican PLATFORM=MICROCAN $(PROPAGATE_FLAGS) clean
 	$(MAKE) -C minican PLATFORM=MINICAN $(PROPAGATE_FLAGS) clean
