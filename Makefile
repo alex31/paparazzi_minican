@@ -1,4 +1,4 @@
-.PHONY: all bootloader minican microcan clean
+.PHONY: all bootloader firmwares minican microcan clean
 
 # if the bootloader is compiled in debug mode, update BOOTLOADER_SIZE to 64k else 11k should be enough
 BOOTLOADER_SIZE := 16k
@@ -11,12 +11,17 @@ PROPAGATE_FLAGS := $(foreach v,$(PROPAGATE_VARS),$(if $(value $(v)),$v=$(value $
 
 
 
-#all: minican
-all: check-bootloader-size bootloader minican microcan
+# Build MINICAN+MICROCAN sequentially to avoid races on `minican/cfg/board.h`
+# when running a parallel top-level make.
+all: check-bootloader-size bootloader firmwares
 	@cp  minican/build*/LAST*.bin /tmp
 
 bootloader:
 	$(MAKE) -C bootloader
+
+firmwares:
+	$(MAKE) -C minican PLATFORM=MINICAN $(PROPAGATE_FLAGS) firmware
+	$(MAKE) -C minican PLATFORM=MICROCAN $(PROPAGATE_FLAGS) firmware
 
 minican:
 	$(MAKE) -C minican PLATFORM=MINICAN $(PROPAGATE_FLAGS) firmware
