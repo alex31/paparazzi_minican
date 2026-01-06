@@ -93,7 +93,7 @@ namespace DynPin {
       palSetLine(LINE_PULLUP_SDA);
     } else {
       palSetLineMode(LINE_PULLUP_SCL, PAL_MODE_INPUT);
-      palSetLineMode(LINE_PULLUP_SCL, PAL_MODE_INPUT);
+      palSetLineMode(LINE_PULLUP_SDA, PAL_MODE_INPUT);
     }
   }
 

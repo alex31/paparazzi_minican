@@ -32,9 +32,8 @@ namespace {
   volatile systime_t periodI = TIME_S2I(10);
   volatile uint16_t motif = 0xffff;
   volatile uint8_t motifIndex = 0;
-  volatile union {
+  volatile struct {
     uint8_t digits[3];
-    uint32_t raw;
   } nodeId = {};
   
 }
@@ -106,7 +105,7 @@ namespace {
 	hue = hue + 0.03f;
 	if (hue > 1.0f)
 	  hue = 0;
-      } else if (nodeId.raw != 0) {
+      } else if ((nodeId.digits[0] | nodeId.digits[1] | nodeId.digits[2])   != 0) {
 	displayId();
       } else if (not off) {
 	const systime_t now = chVTGetSystemTimeX();

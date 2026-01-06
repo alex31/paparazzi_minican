@@ -177,6 +177,7 @@ bool FirmwareUpdater::newChunk(CanardRxTransfer *transfer,
       // it should never occurs
       if (firmwareChunk.data.len < hdrLen) {
 	slaveNode->infoCb("invalid first uavcan_protocol_file_ReadResponse frame size < 48");
+	releaseSectorBuffer();
 	return false;
       }
       // first 48 bytes chunk is toolChainHeader
@@ -260,6 +261,7 @@ namespace {
     if (hdr.hwVerMajor != HW_VERSION)
       return false;
 
+    static_assert(sizeof(DEVICE_NAME) <= sizeof(hdr.platform));
     if (strcmp(hdr.platform, DEVICE_NAME) != 0)
       return false;
     
@@ -289,10 +291,11 @@ namespace {
 
   void releaseSectorBuffer() {
     chSysLock();
-    delete FirmwareUpdater::sectorBuffer;
+    auto& todel = FirmwareUpdater::sectorBuffer;
     FirmwareUpdater::sectorBuffer = nullptr;
-    chSysUnlock();
     currentFileIndex = 0;
+    chSysUnlock();
+    delete todel;
   }
 
 

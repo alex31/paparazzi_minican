@@ -65,13 +65,13 @@ DeviceStatus Baro_MPL3115A2_Role::start(UAVCAN::Node& node)
     return devstatus;
   }
   
+  int tries = 4;
   while (not getDevId(&devId)) {
-    static int tries = 4;
     chThdSleepMilliseconds(100);
     if (--tries == 0)
       return DeviceStatus(DeviceStatus::MPL3115A2, DeviceStatus::I2C_TIMOUT);
   }
-    
+  
   status = xfer(enableEvent, sizeof(enableEvent), nullptr, 0);
   if (status == MSG_OK) {
     status = xfer(oneShotMode, sizeof(oneShotMode), nullptr, 0);
@@ -148,8 +148,7 @@ DeviceStatus Baro_MPL3115A2_Role::getTemperature(float *temperature)
 
 DeviceStatus Baro_MPL3115A2_Role::getDevId(uint8_t *devId)
 {
-  msg_t status = i2cMasterTransmitTimeout(&ExternalI2CD, mplAdr, devIdReg, sizeof(devIdReg),	
-					  devId, sizeof(*devId), TIME_MS2I(100));
+  msg_t status = xfer(devIdReg, sizeof(devIdReg), devId, sizeof(*devId));
   if (status != MSG_OK) {
     DebugTrace("getDevId : i2cMasterTransmitTimeout error");
     resetI2C();

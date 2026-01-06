@@ -79,10 +79,10 @@ namespace MFS {
     ssize_t result = 0;
     
     std::array<uint8_t, 4> dummy;
-    size_t size = dummy.size();
     
     while (low < high) {
       uint32_t mid = low + (high - low) / 2;
+      size_t size = dummy.size();
       int err = mfsReadRecord(&mfs1, mid, &size, dummy.data());
       
       if (err == MFS_ERR_NOT_FOUND) {
