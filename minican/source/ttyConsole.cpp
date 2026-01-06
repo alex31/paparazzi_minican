@@ -843,7 +843,7 @@ enum uavcan_protocol_param_Value_type_t {
     }
 
     // 3. Try int64_t
-    int64_t i=0;
+    int64_t i = 0;
     const auto [p1, ec1] = std::from_chars(input.begin(), input.end(), i);
     if (ec1 == std::errc() && p1 == input.end()) return i;
 
