@@ -18,8 +18,8 @@ SW_VERSION_MINOR := $(shell \
 # 8 premiers hex digits du commit
 GIT_SHA := $(shell git rev-parse --short=8 HEAD 2>/dev/null || echo 0)
 
-# Convertir en entier non signé 32 bits
-VCS_COMMIT := $(shell printf "%u\n" 0x$(GIT_SHA))
+# Convertir en entier literal hexadecimal
+VCS_COMMIT := $(shell printf "0x%s\n" $(GIT_SHA))
 
 ifndef PLATFORM
 $(warning PLATFORM should be MINICAN or MICROCAN setting MINICAN as default)
