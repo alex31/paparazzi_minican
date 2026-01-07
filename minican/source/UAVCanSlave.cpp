@@ -314,7 +314,7 @@ namespace CANSlave {
 	.software_version = {
 	  .major = SW_VERSION_MAJOR,
 	  .minor = SW_VERSION_MINOR,
-	  .optional_field_flags = 0,
+	  .optional_field_flags = UAVCAN_PROTOCOL_SOFTWAREVERSION_OPTIONAL_FIELD_FLAG_VCS_COMMIT,
 	  .vcs_commit = VCS_COMMIT,
 	  .image_crc = 0
 	},
@@ -326,8 +326,6 @@ namespace CANSlave {
 	},
 	.name = {sizeof(DEVICE_NAME) - 1U, DEVICE_NAME}
       },
-
-      .flagCb = [] -> uint8_t {return nodeId;},
       .infoCb = [](const etl::string_view sv) {
 #ifdef TRACE
 	printOnceInATime(sv);
