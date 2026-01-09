@@ -44,9 +44,6 @@ namespace {
 
   enum class AdcChannel{
     psBat,
-#if PLATFORM_MICROCAN
-    address, 
-#endif
     coreTemp, vref, nbChannels};
 
   AdcSamples<adcsample_t, std::to_underlying(AdcChannel::nbChannels), 8>
@@ -73,21 +70,12 @@ namespace {
     .awd2cr       = 0, 
     .awd3cr       = 0U,
     .smpr         = {
-#if PLATFORM_MICROCAN  
-      ADC_SMPR1_SMP_AN2(ADC_SMPR_SMP_640P5) |
-#endif
       ADC_SMPR1_SMP_AN1(ADC_SMPR_SMP_640P5),
       ADC_SMPR2_SMP_AN16(ADC_SMPR_SMP_640P5) | ADC_SMPR2_SMP_AN18(ADC_SMPR_SMP_640P5)
     },
     .sqr          = {
-#if PLATFORM_MICROCAN
-      ADC_SQR1_SQ1_N(ADC_CHANNEL_IN1) |
-      ADC_SQR1_SQ2_N(ADC_CHANNEL_IN2) |
-      ADC_SQR1_SQ3_N(ADC_CHANNEL_IN16) | ADC_SQR1_SQ4_N(ADC_CHANNEL_IN18),
-#else
       ADC_SQR1_SQ1_N(ADC_CHANNEL_IN1) |
       ADC_SQR1_SQ2_N(ADC_CHANNEL_IN16) | ADC_SQR1_SQ3_N(ADC_CHANNEL_IN18),
-#endif
       0U,
       0U,
       0U
@@ -107,15 +95,14 @@ namespace Adc {
     chThdSleepMilliseconds(1); // wait for stability
     convert();
 
+ 
     // no ps voltage detected, must run connected to a probe for debug
-    const float psBat =  getPsBat() ;
+    const float psBat =  getPsBat(); 
     const bool runOnProbe = psBat < 5.0f;
     if (runOnProbe) {
       DebugTrace("no PS voltage detected [%.2f] , "
 		 "assuming run attached to swd probe", psBat);
     }
-
-
 			   
     const adcsample_t psBatMinSample = volts2adc(psBatMin);
     const adcsample_t psBatMaxSample = volts2adc(psBatMax);
@@ -144,13 +131,6 @@ namespace Adc {
   }
   
   
-#if PLATFORM_MICROCAN
-  uint8_t getAddress()
-  {
-    return adcSamples[std::to_underlying(AdcChannel::address)] >> 8;
-  }
-#endif
-  
   float getPsBatRaw()
   {
     return adc2volts(adcSamples[std::to_underlying(AdcChannel::psBat)]);
@@ -161,7 +141,12 @@ namespace Adc {
     const float raw = getPsBatRaw();
     const float scale = param_cget<"adc.psbat.scale">();
     const float bias = param_cget<"adc.psbat.bias">();
-    return (raw * scale) + bias;
+
+    // before MFS is launched and parameters can be used, retunr raw value
+    if (scale != 0)
+      return (raw * scale) + bias;
+    else
+      return raw;
   }
 
   float getVcc()
