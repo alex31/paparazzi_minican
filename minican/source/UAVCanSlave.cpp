@@ -180,16 +180,15 @@ namespace {
 		     const uavcan_protocol_param_GetSetRequest &req)
   {
     uavcan_protocol_param_GetSetResponse resp;
+    const ParamSetBehavior behavior =
+      static_cast<ParamSetBehavior>(param_cget<"uavcan.param_set_behavior">());
+
     const auto& [index, storeVal] = getSetResponse(req, resp);
     bool requestStore = false;
     bool requestReboot = false;
     if (index > 0) {
       const auto& p = Persistant::Parameter::find(index);
       if (Persistant::Parameter::set(p, storeVal)) {
-	const int behaviorRaw = static_cast<int>(param_cget<"uavcan.param_set_behavior">());
-	const auto behavior = static_cast<ParamSetBehavior>(
-	  std::clamp(behaviorRaw, static_cast<int>(SetRam), static_cast<int>(SetRamFlashAndReboot)));
-
 	switch (behavior) {
 	case SetRam:
 	  break;
