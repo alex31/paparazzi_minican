@@ -23,8 +23,7 @@ namespace FirmwareUpdater {
   /**
    * @brief Starts the firmware update process.
    * @details This function is called when a uavcan::protocol::file::BeginFirmwareUpdate
-   * request is received. It validates the firmware file name and version, and if
-   * the update can proceed, it allocates a buffer for the incoming data.
+   * request is received.
    * @param node Pointer to the UAVCAN node.
    * @param path The path of the firmware file to be downloaded.
    * @param resp The response to be sent back to the file server.
@@ -43,6 +42,9 @@ namespace FirmwareUpdater {
    * buffer. When the buffer is full, it writes the data to the external EEPROM.
    * When the last chunk is received, it finalizes the update by writing the
    * complete firmware header.
+   * @details  Firsts bytes are a header thet permit to validate the firmware version,
+   * hardware compatibility and if the update can proceed,
+   * it allocates a buffer for the incoming data.
    * @param transfer The CANard transfer metadata.
    * @param firmwareChunk The received firmware data chunk.
    * @param readReq The next file read request to be sent.

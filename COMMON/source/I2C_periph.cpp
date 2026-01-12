@@ -3,7 +3,7 @@
 
 #include "I2C_periph.hpp"
 #include "hardwareConf.hpp"
-#include "ressourceManager.hpp"
+#include "resourceManager.hpp"
 #include "dynamicPinConfig.hpp"
 #include "UAVCAN/persistantParam.hpp"
 #include "stdutil.h"

@@ -3,7 +3,7 @@
 #if USE_SERVO_ROLE
 
 #include "servoSmart.hpp"
-#include "ressourceManager.hpp"
+#include "resourceManager.hpp"
 #include "UAVCAN/persistantParam.hpp"
 #include "smart_servos/STS3032.h"
 #include "stdutil++.hpp"

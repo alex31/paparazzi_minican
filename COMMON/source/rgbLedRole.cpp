@@ -10,7 +10,7 @@
 
 #include "UAVCAN/persistantParam.hpp"
 #include "led2812.hpp"
-#include "ressourceManager.hpp"
+#include "resourceManager.hpp"
 #include "hardwareConf.hpp"
 
 #define CONCAT_NX(st1, st2) st1 ## st2

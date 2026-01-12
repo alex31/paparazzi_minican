@@ -30,8 +30,7 @@ close($in_fh);
 
 my $firmware_size = length($firmware_data);
 # CRC-32K/4.2 (Koopman *op*)
-my $firmware_crc = 
-my $crc = crc($firmware_data,
+my $firmware_crc = crc($firmware_data,
               32,           # width
               0xFFFFFFFF,   # init
               0xFFFFFFFF,   # xorout

@@ -18,7 +18,7 @@
 #include "UAVCAN/persistantParam.hpp"
 #include "UAVCAN/persistantStorage.hpp"
 #include "UAVCanSlave.hpp"
-#include "deviceRessource.hpp"
+#include "deviceResource.hpp"
 #include "adcSurvey.hpp"
 
 using FixedString = etl::string<128>;
@@ -762,12 +762,12 @@ enum uavcan_protocol_param_Value_type_t {
 	.integer_value = 0
       },
       .name = {
-	.len = static_cast<uint8_t>(index == 0 ? strlen(key.data()) : 0),
+	.len = static_cast<uint8_t>(index == 0 ? strnlen(key.data(), key.length()) : 0),
 	.data = 0
       }
     };
     if (index < 0)
-      memcpy(req.name.data, key.data(), strlen(key.data()));
+      memcpy(req.name.data, key.data(), strnlen(key.data(), key.length()));
     
     uavcan_protocol_param_GetSetResponse resp;
     getSetResponse(req, resp);
@@ -791,12 +791,12 @@ enum uavcan_protocol_param_Value_type_t {
 	.integer_value = 0
       },
       .name = {
-	.len = static_cast<uint8_t>(index == 0 ? strlen(key.data()) : 0),
+	.len = static_cast<uint8_t>(index == 0 ? strnlen(key.data(), key.length()) : 0),
 	.data = 0
       }
     };
     if (index == 0)
-      memcpy(req.name.data, key.data(), strlen(key.data()));
+      memcpy(req.name.data, key.data(), strnlen(key.data(), key.length()));
     
     const Value value = parse_value(valuestr);
     req.value.union_tag  = static_cast<uavcan_protocol_param_Value_type_t>(value.index());
@@ -876,13 +876,13 @@ enum uavcan_protocol_param_Value_type_t {
       added = "{}";
       break;
     case UAVCAN_PROTOCOL_PARAM_NUMERICVALUE_INTEGER_VALUE :
-      snprintf(added.begin(), added.size(), "%lld", val.integer_value);
+      snprintf(added.begin(), added.capacity(), "%lld", val.integer_value);
       break;
     case UAVCAN_PROTOCOL_PARAM_NUMERICVALUE_REAL_VALUE :
-      snprintf(added.begin(), added.size(), "%f", val.real_value);
+      snprintf(added.begin(), added.capacity(), "%f", val.real_value);
       break;
       }
-    added.uninitialized_resize(strlen(added.c_str()));
+    added.uninitialized_resize(strnlen(added.c_str(), added.length()));
     str += added;
     return str;
   }
@@ -908,7 +908,7 @@ enum uavcan_protocol_param_Value_type_t {
 				val.string_value.len);
       break;
     }
-    added.uninitialized_resize(strlen(added.c_str()));
+    added.uninitialized_resize(strnlen(added.c_str(), added.length()));
     str += added;
     return str;
   }

@@ -314,7 +314,7 @@ CPPSRC = $(ALLCPPSRC) \
 	$(COMMON)/baro_MPL3115A2_Role.cpp \
 	$(COMMON)/rgbLedRole.cpp \
 	$(COMMON)/voltmeterRole.cpp \
-	$(COMMON)/deviceRessource.cpp \
+	$(COMMON)/deviceResource.cpp \
 	$(COMMON)/MFS.cpp \
 	$(COMMON)/firmwareUpdate.cpp \
 	$(COMMON)/I2C_periph.cpp \

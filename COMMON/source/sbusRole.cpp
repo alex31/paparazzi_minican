@@ -5,7 +5,7 @@
 #include "sbusRole.hpp"
 #include <algorithm>
 #include "hardwareConf.hpp"
-#include "ressourceManager.hpp"
+#include "resourceManager.hpp"
 #include "stdutil++.hpp"
 #include <cmath>
 

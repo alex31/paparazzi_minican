@@ -3,7 +3,7 @@ Roles UAVCAN – messages reçus / envoyés
 
 - ServoRole (`ROLE.servo.pwm`, `ROLE.servo.smart`)
   - Reçoit : `uavcan.equipment.actuator.ArrayCommand` (broadcast), pour piloter PWM ou SmartServo selon le type de commande.
-  - Envoie : `uavcan.equipment.actuator.Status`.
+  - Envoie : `uavcan.equipment.actuator.Status` uniquement pour SmartServo et si `role.servo.smart.status_frequency` > 0.
   - Paramètres PWM : `role.servo.pwm.frequency`, `role.servo.pwm.pulse_half_width` (mi-largeur us), `role.servo.pwm.map_index1` (premier servo), `role.servo.pwm.channel_mask` (canaux actifs CH1..CH4).
   - Paramètres Smart : `role.servo.smart.map_index1`, `role.servo.smart.num_servos`, `role.servo.smart.status_frequency` (Hz, 0 = pas de retour).
 
@@ -14,14 +14,14 @@ Roles UAVCAN – messages reçus / envoyés
 - EscDshot (`ROLE.esc.dshot`)
   - Reçoit : `uavcan.equipment.esc.RawCommand` (broadcast) pour les consignes moteurs.
   - Envoie : `uavcan.equipment.esc.Status` uniquement si la télémétrie bidirectionnelle DSHOT_BIDIR est activée et avec la cadence configurée.
-  - Paramètres : `role.esc.dshot.map_index1` (premier ESC), `role.esc.dshot.channel_mask` (canaux actifs CH1..CH4), `role.esc.dshot.cmd_rate` (Hz), `role.esc.dshot.rpm_freq_div` (0 = pas de télémétrie bidir).
+  - Paramètres : `role.esc.dshot.map_index1` (premier ESC), `role.esc.dshot.channel_mask` (canaux actifs CH1..CH4), `role.esc.dshot.cmd_rate` (période en ticks ChibiOS, base `CH_CFG_ST_FREQUENCY`), `role.esc.dshot.rpm_freq_div` (0 = pas de télémétrie bidir).
   - Notes :
     - Le driver bas niveau émet toujours une trame DShot 4 canaux (DMA/TIM). Les canaux masqués sont forcés à MOTOR_STOP (0), et seuls les canaux sélectionnés contiennent une consigne utile.
     - Sur MicroCAN, `channel_mask` sert aussi à configurer les broches partagées via `dynamicPinConfig`.
 
 - SBUS RC (`ROLE.sbus`)
   - Reçoit : rien en UAVCAN (écoute SBUS série).
-  - Envoie : `pprz.tunnel.SbusFrame` (trame SBUS relayée sur le bus).
+  - Envoie : `dronecan.sensors.rc.RCInput` (voies SBUS filtrées + flags).
   - Paramètres : `role.sbus.channel_mask` pour sélectionner les voies, `role.sbus.id` pour l’identifiant.
   - Notes : seules les voies actives sont publiées ; qualité/failsafe reflètent les flags SBUS.
 
@@ -55,7 +55,7 @@ Roles UAVCAN – messages reçus / envoyés
     - Sur MicroCAN, acquisition de ressource supplémentaire côté connecteur (`F0`) pour éviter les conflits quand plusieurs broches partagent le même header.
 
 - Voltmeter (`ROLE.voltmeter`)
-  - Reçoit : rien (utilise l’ADC interne qui mesure la tension batterie).
+  - Reçoit : `uavcan.equipment.gnss.Fix2` (pour extinction auto si `role.voltmeter.gps_speed_off_mps` > 0).
   - Envoie : rien.
   - Affichage : jauge de charge sur 8 LEDs WS2812 (vert/jaune/rouge) + clignotement rouge à vide.
   - Paramètres : `role.voltmeter.cells` (2..6), `role.voltmeter.brightness` (0..1),

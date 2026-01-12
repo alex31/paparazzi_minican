@@ -87,7 +87,7 @@ constexpr size_t BLANK_GAP_SIZE_SECTORS = ((128U * 1024U) / SECTOR_SIZE_BYTES);
 
 static constexpr SPIDriver& EepromSPID	  = SPID1;
 
-#if (defined PLATFORM_MINICAN) && (defined PLATFORM_MINICAN)
+#if (defined PLATFORM_MINICAN) && (defined PLATFORM_MICROCAN)
 #if PLATFORM_MINICAN
 static constexpr SPIDriver& ExternalSPID  = SPID1;
 static constexpr I2CDriver& ExternalI2CD  = I2CD1;
@@ -111,7 +111,7 @@ static constexpr UARTDriver& ExternalUARTD =  CONCAT(UARTD, F2_a_USART);
 static constexpr PWMDriver& LedStripPWMD  = CONCAT(PWMD, LED2812_TIM);
 #endif
 #elif (!defined BOOTLOADER_MCAN)
-#error  PLATFORM_MINICAN and/or PLATFORM_MINICAN and/or BOOTLOADER_MCAN not defined
+#error  PLATFORM_MINICAN and/or PLATFORM_MICROCAN and/or BOOTLOADER_MCAN not defined
 #endif
 
 static inline const SPIConfig eepromSpiCfg = {

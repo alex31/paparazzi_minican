@@ -14,7 +14,7 @@ MiniCAN is a flexible UAVCAN interface card based on an STM32G491 microcontrolle
 - **Health survey** publishing battery and core temperature measurements
 - Configurable roles and parameters stored in persistent memory
 
-Hardware design files for the MiniCAN v4 board are available under `HARDWARE/MINICAN_V4/`.
+Hardware design files for the MiniCAN and MicroCAN board are available under `HARDWARE/`.
 
 ## Repository layout
 

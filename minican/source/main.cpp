@@ -9,29 +9,9 @@
 #include "MFS.hpp"
 #include "UAVCAN/persistantParam.hpp"
 #include "UAVCAN/persistantStorage.hpp"
-#include "deviceRessource.hpp"
+#include "deviceResource.hpp"
 #include "UAVCanSlave.hpp"
 
-
-/*
-  TODO :
-
-  ° role dshot
-    + paramètres : mapping, nb_canaux, cmd_rate [100 .. 1000], rpm_freq_divider (0 .. 1000 : 0 is disabled)
-    + message UAVCan : equipment/esc/1030.RawCommand
-    
-  
-  ° role proxy Sbus : testé
-  
-  ° role proxy pprz-link
-    + Pour du test -> une devboardH7 joue le role d'AP et de recepteur SBUS
-      * Telemetrie : forger des trames et les balancer sur une liaison série
-      * AP : protocole UAVCAN avec le bon bitrate CAN
-        ¤ abonné à tunnel.telemetry
-	¤ on check qu'on reçoit les bonnes trames, et autant qu'on en a envoyé
-
- 
- */
 
 namespace {
   /*

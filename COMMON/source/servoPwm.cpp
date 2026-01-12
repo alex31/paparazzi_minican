@@ -4,7 +4,7 @@
 
 #include "servoPwm.hpp"
 #include <algorithm>
-#include "ressourceManager.hpp"
+#include "resourceManager.hpp"
 #include "UAVCAN/persistantParam.hpp"
 #include "stdutil++.hpp"
 

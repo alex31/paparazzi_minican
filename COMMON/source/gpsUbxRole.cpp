@@ -7,7 +7,7 @@
 
 #include "gpsUbxRole.hpp"
 #include "hardwareConf.hpp"
-#include "ressourceManager.hpp"
+#include "resourceManager.hpp"
 #include "stdutil++.hpp"
 
 #if PLATFORM_MICROCAN

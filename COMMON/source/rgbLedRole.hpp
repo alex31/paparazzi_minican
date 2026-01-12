@@ -7,7 +7,7 @@
 #include "roleBase.hpp"
 
 /*
-  The role subscribe to uavcan_equipment_indication_SingleLightCommand
+  The role subscribe to uavcan_equipment_indication_LightsCommand
   it manage a led 2812 strip using led2812.hpp module
   it read UAVCan parameter "ROLE.led2812" to enable disable the role
   "role.led2812.led_number" to specify the maximum number of led : 1 .. 8
@@ -25,8 +25,6 @@
 
   In the callback of the message, we just update a state vactor, this vector of values is used by
   the thread to send perodicly the values to the led strip
-
-  the rgbLedRole.cpp should be completed
  */
 
 

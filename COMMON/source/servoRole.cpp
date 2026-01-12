@@ -4,7 +4,7 @@
 
 #include "servoRole.hpp"
 #include <algorithm>
-#include "ressourceManager.hpp"
+#include "resourceManager.hpp"
 #include "UAVCAN/persistantParam.hpp"
 #include "servoPwm.hpp"
 #include "servoSmart.hpp"

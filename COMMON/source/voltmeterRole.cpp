@@ -11,7 +11,7 @@
 #include "adcSurvey.hpp"
 #include "hardwareConf.hpp"
 #include "led2812.hpp"
-#include "ressourceManager.hpp"
+#include "resourceManager.hpp"
 
 #define CONCAT_NX(st1, st2) st1 ## st2
 #define CONCAT3_NX(st1, st2, st3) st1 ## st2 ## st3

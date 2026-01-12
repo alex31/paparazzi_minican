@@ -3,7 +3,7 @@
 #include <cstring>
 #include "etl/vector.h"
 #include "UAVCanSlave.hpp"
-#include "deviceRessource.hpp"
+#include "deviceResource.hpp"
 #include "UAVCAN/persistantParam.hpp"
 #include "UAVCAN/dsdlStringUtils.hpp"
 #include "UAVCAN/pubSub.hpp"

@@ -1,5 +1,9 @@
 #pragma once
 #include "roleConf.h"
+// This header is intentionally a bare initializer list that is #included inside
+// the constexpr params_list definition (see UAVCAN/persistantParam.cpp). Each
+// entry becomes a Persistant::Parameter (name + bounds + default), and the
+// resulting indices/names are the ones exposed via uavcan.protocol.param.GetSet.
 // roles are enabled with boolean setting with ROLE uppercase to make them visible in GUI or TUI
       {"can.terminal_resistor", {.v = true}},
 	

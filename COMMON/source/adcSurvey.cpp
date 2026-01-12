@@ -11,16 +11,8 @@
 /*
    ° continuous conversion @ 1Khz
    ° ADC Watchdog on psBat and core temp
-
  */
 
-/*
-  TODO : 
-
-
-
-
-  */
 namespace {
   constexpr float psBatMin = 6;
   constexpr float psBatMax = 26;
