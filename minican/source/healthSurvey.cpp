@@ -1,7 +1,10 @@
 #include "healthSurvey.hpp"
 #include <ch.h>
+#include <algorithm>
+#include <limits>
 #include "adcSurvey.hpp"
 #include "hardwareConf.hpp"
+#include "UAVCAN/persistantParam.hpp"
 
 namespace  {
   THD_WORKING_AREA(waAdcSampling, 512) __attribute__((section(FAST_SECTION "_clear")));
@@ -23,30 +26,55 @@ namespace  {
   [[noreturn]]
   void adcSampling (void *arg)
   {
-    mppt_Stream msg = {};
+    uavcan_equipment_device_Temperature tempMsg = {};
+    uavcan_equipment_power_CircuitStatus batteryMsg = {};
+    uavcan_equipment_power_CircuitStatus vccMsg = {};
     UAVCAN::Node *node = static_cast<UAVCAN::Node *>(arg);
     chRegSetThreadName("adcSampling");
     
     while (true) {
-      msg.temperature = Adc::getCoreTemp();
-      msg.input_voltage = Adc::getPsBat();
-      msg.output_voltage = Adc::getVcc();
-  
-      msg.fault_flags = 0;
-      if (msg.temperature > maxCoreTemp)
-	msg.fault_flags |= MPPT_STREAM_OT_FAULT;
-      if ((msg.input_voltage > psBatMax) or (msg.output_voltage >  ps3vMax))
-	msg.fault_flags |= MPPT_STREAM_OV_FAULT;
-      if ((msg.input_voltage < psBatMin) or (msg.output_voltage <  ps3vMin))
-	msg.fault_flags |= MPPT_STREAM_UV_FAULT;
+      const float coreTempC = Adc::getCoreTemp();
+      const float batteryVoltage = Adc::getPsBat();
+      const float vcc = Adc::getVcc();
 
-      // if (msg.fault_flags) {
-      // 	DebugTrace("T = %d", msg.temperature);
-      // 	DebugTrace("5V = %.2f", msg.input_voltage);
-      // 	DebugTrace("3V = %.2f", msg.output_voltage);
-      // }
-      
-      node->sendBroadcast(msg, CANARD_TRANSFER_PRIORITY_MEDIUM);
+      const float currentNaN = std::numeric_limits<float>::quiet_NaN();
+      const uint8_t cells = static_cast<uint8_t>(
+        std::clamp<int>(param_cget<"role.voltmeter.cells">(), 2, 6));
+
+      static constexpr float kCellOverVoltage = 4.2f;
+      static constexpr float kCellUnderVoltage = 3.4f;
+      const float batOver = kCellOverVoltage * cells;
+      const float batUnder = kCellUnderVoltage * cells;
+
+      tempMsg.device_id = 0;
+      tempMsg.temperature = coreTempC + 273.15f;
+      tempMsg.error_flags = 0;
+
+      batteryMsg.circuit_id = 0;
+      batteryMsg.voltage = batteryVoltage;
+      batteryMsg.current = currentNaN;
+      batteryMsg.error_flags = 0;
+      if (batteryVoltage > batOver) {
+        batteryMsg.error_flags |= UAVCAN_EQUIPMENT_POWER_CIRCUITSTATUS_ERROR_FLAG_OVERVOLTAGE;
+      }
+      if (batteryVoltage < batUnder) {
+        batteryMsg.error_flags |= UAVCAN_EQUIPMENT_POWER_CIRCUITSTATUS_ERROR_FLAG_UNDERVOLTAGE;
+      }
+
+      vccMsg.circuit_id = 1;
+      vccMsg.voltage = vcc;
+      vccMsg.current = currentNaN;
+      vccMsg.error_flags = 0;
+      if (vcc > ps3vMax) {
+        vccMsg.error_flags |= UAVCAN_EQUIPMENT_POWER_CIRCUITSTATUS_ERROR_FLAG_OVERVOLTAGE;
+      }
+      if (vcc < ps3vMin) {
+        vccMsg.error_flags |= UAVCAN_EQUIPMENT_POWER_CIRCUITSTATUS_ERROR_FLAG_UNDERVOLTAGE;
+      }
+
+      node->sendBroadcast(tempMsg, CANARD_TRANSFER_PRIORITY_MEDIUM);
+      node->sendBroadcast(batteryMsg, CANARD_TRANSFER_PRIORITY_MEDIUM);
+      node->sendBroadcast(vccMsg, CANARD_TRANSFER_PRIORITY_MEDIUM);
       chThdSleepMilliseconds(500);
     }
   }

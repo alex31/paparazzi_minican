@@ -44,7 +44,8 @@ Roles UAVCAN – messages reçus / envoyés
 
 - HealthSurvey (`ROLE.health.survey`)
   - Reçoit : rien.
-  - Envoie : `mppt.Stream` (tension batterie, Vcc, température core) périodiquement.
+  - Envoie : `uavcan.equipment.device.Temperature` (device_id 0, température core en K),
+    `uavcan.equipment.power.CircuitStatus` (circuit_id 0 = batterie, circuit_id 1 = 3.3V).
 
 - Led2812 / RGB strip (`ROLE.led2812`)
   - Reçoit : `uavcan.equipment.indication.LightsCommand` (broadcast) pour piloter une bande WS2812 externe.
