@@ -143,5 +143,5 @@ static constexpr float psBatMin = 6.5;
 static constexpr float psBatMax = 25.2;
 static constexpr float ps3vMax = 3.5;
 static constexpr float ps3vMin = 3.0;
-static constexpr float coreTempMin = -10.0f;
+static constexpr float coreTempMin = -20.0f;
 static constexpr float coreTempMax = 60.0f;

@@ -21,6 +21,7 @@
       {"ROLE.identification", {.v = true}},
 	
       {"ROLE.health.survey", {.v = true}},
+      //      {"role.health.survey.periodms", {.min = 100, .max = 10'000, .v = 1'000}},
 
 #if USE_SERVO_ROLE
       {"ROLE.servo.pwm", {.v = false}},

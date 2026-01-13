@@ -37,14 +37,8 @@ PLATFORM_MICROCAN=1
 HW_VERSION=3
 FW_APP_ID := org.pprz.microcanV$(HW_VERSION)
 endif
-ifndef FW_APP_ID
-FW_APP_ID := $(PLATFORM)_V$(HW_VERSION)
-endif
 
-ifndef CAN_BITRATE
-CAN_BITRATE = 1000
-endif
-
+CAN_BITRATE ?= 1000
 
 ifneq ($(shell [ $(CAN_BITRATE) -gt 1000 -o $(CAN_BITRATE) -lt 0 ] && echo yes),)
 CANARD_ENABLE_CANFD := true
@@ -52,9 +46,7 @@ else
 CANARD_ENABLE_CANFD := false
 endif
 
-ifndef PRECISE_FDCAN_TIMINGS
-PRECISE_FDCAN_TIMINGS = false
-endif
+PRECISE_FDCAN_TIMINGS ?= false
 
 
 DEBUG_0 := 0
@@ -62,11 +54,10 @@ DEBUG_g := g
 OPT_SPEED := fast
 OPT_SIZE := s
 
-ifndef RELEASE
-RELEASE := $(DEBUG_g)
-#RELEASE := $(OPT_SPEED)
-#RELEASE := $(OPT_SIZE)
-endif
+RELEASE ?= $(DEBUG_g)
+#RELEASE ?:= $(OPT_SPEED)
+#RELEASE ?:= $(OPT_SIZE)
+
 
 
 GCCVERSIONGTEQ10 := $(shell expr `arm-none-eabi-gcc -dumpversion | cut -f1 -d.` \>= 10)
@@ -431,8 +422,8 @@ flash: all
 
 firmware: all
 	@echo generate $(BUILDDIR)/fw_$(PROJECT).elf for UAVCan update
-	../prepend_header.pl $(BUILDDIR)/$(PROJECT).bin $(BUILDDIR)/$(PLATFORM)❬HW$(HW_VERSION)❭❬SW$(SW_VERSION_MAJOR).$(SW_VERSION_MINOR)❭❬$(CAN_BITRATE)k❭❬-O$(RELEASE)❭.bin $(FW_APP_ID) $(HW_VERSION)
-	(cd $(BUILDDIR) && rm -f LAST_$(PLATFORM)_FW.bin && ln -s $(PLATFORM)❬HW$(HW_VERSION)❭❬SW$(SW_VERSION_MAJOR).$(SW_VERSION_MINOR)❭❬$(CAN_BITRATE)k❭❬-O$(RELEASE)❭.bin LAST_$(PLATFORM)_FW.bin)
+	../prepend_header.pl $(BUILDDIR)/$(PROJECT).bin $(BUILDDIR)/$(PLATFORM)❬HW$(HW_VERSION)❭❬SW$(SW_VERSION_MAJOR).$(SW_VERSION_MINOR)❭❬$(CAN_BITRATE)k❭❬-O$(RELEASE)❭.uavcan.bin $(FW_APP_ID) $(HW_VERSION)
+	(cd $(BUILDDIR) && rm -f LAST_$(PLATFORM).uavcan.bin && ln -s $(PLATFORM)❬HW$(HW_VERSION)❭❬SW$(SW_VERSION_MAJOR).$(SW_VERSION_MINOR)❭❬$(CAN_BITRATE)k❭❬-O$(RELEASE)❭.uavcan.bin LAST_$(PLATFORM).uavcan.bin)
 	@echo Done
 
 distclean:
