@@ -315,6 +315,8 @@ namespace {
 #else
 	(void) lastOffset;
 #endif
+	// In SOFTWARE_UPDATE mode, specific_code reports progress in KiB.
+	slaveNode->setSpecificCode(currentFileRequest.readReq.offset / 1024U);
 	lastOffset = currentFileRequest.readReq.offset;
 	chVTSet(&vtRequest,
 		TIME_MS2I(300),

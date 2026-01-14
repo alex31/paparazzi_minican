@@ -32,11 +32,6 @@ namespace  {
     batteryMsg.circuit_id = 0;
     vccMsg.circuit_id = 1;
     tempMsg.device_id = 0;
-    auto cells = param_cget<"role.voltmeter.cells">();
-    static constexpr float kCellOverVoltage = 4.2f;
-    static constexpr float kCellUnderVoltage = 3.4f;
-    const float batOver = kCellOverVoltage * cells;
-    const float batUnder = kCellUnderVoltage * cells;
     
     while (true) {
       const float coreTempC = Adc::getCoreTemp();
@@ -53,9 +48,9 @@ namespace  {
       }
       
       batteryMsg.voltage = batteryVoltage;
-      if (batteryVoltage > batOver) {
+      if (batteryVoltage > psBatMax) {
         batteryMsg.error_flags = UAVCAN_EQUIPMENT_POWER_CIRCUITSTATUS_ERROR_FLAG_OVERVOLTAGE;
-      } else if (batteryVoltage < batUnder) {
+      } else if (batteryVoltage < psBatMin) {
         batteryMsg.error_flags = UAVCAN_EQUIPMENT_POWER_CIRCUITSTATUS_ERROR_FLAG_UNDERVOLTAGE;
       } else {
 	batteryMsg.error_flags = 0;

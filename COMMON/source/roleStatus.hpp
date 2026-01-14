@@ -93,3 +93,27 @@ struct DeviceStatus {
 };
 
 static_assert(sizeof(DeviceStatus) == sizeof(int));
+
+// UAVCAN NodeStatus specific_code usage depends on the node status mode:
+// - OPERATIONAL: low nibble = current ADC status; high nibble = latched since boot.
+// - SOFTWARE_UPDATE: progress in KiB (see firmwareUpdate.cpp).
+// - MAINTENANCE: reserved for future/board-specific meaning.
+enum SpecificCodeBits : uint16_t {
+  SPEC_PSBAT_UNDERVOLT_CURRENT = 1u << 0,
+  SPEC_PSBAT_OVERVOLT_CURRENT  = 1u << 1,
+  SPEC_CORETEMP_OVER_CURRENT  = 1u << 2,
+  SPEC_CORETEMP_UNDER_CURRENT = 1u << 3,
+  SPEC_PSBAT_UNDERVOLT_LIFETIME = 1u << 4,
+  SPEC_PSBAT_OVERVOLT_LIFETIME  = 1u << 5,
+  SPEC_CORETEMP_OVER_LIFETIME  = 1u << 6,
+  SPEC_CORETEMP_UNDER_LIFETIME = 1u << 7,
+  SPEC_WATCHDOG_RESET_FIRED = 1u << 8,
+  SPEC_CURRENT_MASK = SPEC_PSBAT_UNDERVOLT_CURRENT
+                     | SPEC_PSBAT_OVERVOLT_CURRENT
+                     | SPEC_CORETEMP_OVER_CURRENT
+                     | SPEC_CORETEMP_UNDER_CURRENT,
+  SPEC_LIFETIME_MASK = SPEC_PSBAT_UNDERVOLT_LIFETIME
+                      | SPEC_PSBAT_OVERVOLT_LIFETIME
+                      | SPEC_CORETEMP_OVER_LIFETIME
+                      | SPEC_CORETEMP_UNDER_LIFETIME,
+};

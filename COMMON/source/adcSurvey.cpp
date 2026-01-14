@@ -122,6 +122,10 @@ namespace Adc {
     startConversion();
   }
   
+  void setErrorCB(Callback_t *cb)
+  {
+    errorCb = cb;
+  }
   
   float getPsBatRaw()
   {
@@ -134,7 +138,7 @@ namespace Adc {
     const float scale = param_cget<"adc.psbat.scale">();
     const float bias = param_cget<"adc.psbat.bias">();
 
-    // before MFS is launched and parameters can be used, retunr raw value
+    // before MFS is launched and parameters can be used, return raw value
     if (scale != 0)
       return (raw * scale) + bias;
     else

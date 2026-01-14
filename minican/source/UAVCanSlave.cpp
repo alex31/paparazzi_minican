@@ -6,7 +6,6 @@
 #include "deviceResource.hpp"
 #include "UAVCAN/persistantParam.hpp"
 #include "UAVCAN/dsdlStringUtils.hpp"
-#include "UAVCAN/pubSub.hpp"
 #include "nodeParametersEnum.hpp"
 
 #if USE_SERVO_ROLE
@@ -299,6 +298,11 @@ namespace CANSlave {
   {
     return slaveNode->getNodeId();
   }
+  
+  UAVCAN::Node& getInstance() {
+    return *slaveNode;
+  }
+
   
   DeviceStatus start(int8_t _nodeId, bool dynamicId_fd)
   {

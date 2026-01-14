@@ -11,6 +11,7 @@
 #include "UAVCAN/persistantStorage.hpp"
 #include "deviceResource.hpp"
 #include "UAVCanSlave.hpp"
+#include "hardwareConf.hpp"
 
 
 namespace {
@@ -75,14 +76,6 @@ int main(void)
     goto end;
   }
 
-  Adc::start([](float psBat, float coreTemp) {
-#ifdef TRACE
-    DebugTrace("psBat = %.2f, coreTemp = %.1f", psBat, coreTemp);
-#else
-    (void) psBat;
-    (void) coreTemp;
-#endif
-  });
 
   if (mfs_error_t status = MFS::start(); status != MFS_NO_ERROR) {
     DebugTrace("MFS::start has failed with code %d", status);
@@ -99,6 +92,9 @@ int main(void)
     goto end;
   }
 
+  // depend on Ressource::storage.start()
+  Adc::start();
+  
   if (param_cget<"ROLE.identification">() == true) {
     // mode identification
     DebugTrace ("passage en mode identification");
@@ -121,9 +117,29 @@ int main(void)
       }
       goto end;
     } 
-    
-    RgbLed::setNodeId(CANSlave::getNodeId());
   }
+   
+  RgbLed::setNodeId(CANSlave::getNodeId());
+  Adc::setErrorCB([](float psBat, float coreTemp) {
+    // four LSB bits of first byte are for the actual status
+    // four MSB bits of first byte keep trace of all event since powered up
+    static uint16_t mask = 0;
+    uint16_t current = 0;
+    if (psBat < psBatMin)
+      current |= SPEC_PSBAT_UNDERVOLT_CURRENT;
+    if (psBat > psBatMax)
+      current |= SPEC_PSBAT_OVERVOLT_CURRENT;
+    if (coreTemp > coreTempMax)
+      current |= SPEC_CORETEMP_OVER_CURRENT;
+    if (coreTemp < coreTempMin)
+      current |= SPEC_CORETEMP_UNDER_CURRENT;
+
+    mask = (mask & SPEC_LIFETIME_MASK) | current;
+    mask |= static_cast<uint16_t>(current << 4);
+    // When node mode is OPERATIONAL, specific_code carries this bitmask.
+    CANSlave::getInstance().setSpecificCode(mask);
+  });
+    
  end:
   chThdSleep(TIME_INFINITE);
 }
