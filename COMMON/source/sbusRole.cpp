@@ -26,6 +26,15 @@ namespace {
     .threadWASize = 1024,
     .externallyInverted = false,
   };
+
+  static constexpr uint32_t SBUS_RANGE_MIN   = 200;
+  static constexpr uint32_t SBUS_RANGE_MAX   = 1800;
+  static constexpr uint32_t SBUS_TARGET_MIN  = 1000;
+  static constexpr uint32_t SBUS_TARGET_MAX  = 2000;
+
+
+  
+  uint32_t scale_to_pwm_microseconds(uint32_t sbus);
 }
 
 
@@ -83,7 +92,7 @@ void RC_Sbus::maj_rc_cb_frame(const SBUSFrame *frame)
   
   for (size_t ch = 0; (ch < max_channels) && (outIdx < maxOut); ++ch) {
     if (enabledChannels[ch]) {
-      rcInput.rcin.data[outIdx++] = frame->channel[ch];
+      rcInput.rcin.data[outIdx++] = scale_to_pwm_microseconds(frame->channel[ch]);
     }
   }
   rcInput.status = DRONECAN_SENSORS_RC_RCINPUT_STATUS_QUALITY_VALID;
@@ -92,6 +101,19 @@ void RC_Sbus::maj_rc_cb_frame(const SBUSFrame *frame)
   
   rcInput.quality = frame->flags & (1 << SBUS_FRAME_LOST_BIT) ? 0 : 255;
   node->sendBroadcast(rcInput, CANARD_TRANSFER_PRIORITY_HIGH);
+}
+
+
+namespace {
+  static constexpr uint32_t SBUS_RANGE_RANGE  = SBUS_RANGE_MAX - SBUS_RANGE_MIN;
+  static constexpr uint32_t SBUS_TARGET_RANGE = SBUS_TARGET_MAX - SBUS_TARGET_MIN;
+
+  uint32_t scale_to_pwm_microseconds(uint32_t sbus_raw) {
+    const uint32_t r = std::clamp(sbus_raw, SBUS_RANGE_MIN, SBUS_RANGE_MAX);
+    const uint32_t num = (r - SBUS_RANGE_MIN) * SBUS_TARGET_RANGE;
+    return num / SBUS_RANGE_RANGE + SBUS_TARGET_MIN;
+  }
+
 }
 
 #endif // USE_RC_SBUS_ROLE
