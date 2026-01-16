@@ -64,7 +64,7 @@ using Value = std::variant<struct uavcan_protocol_param_Empty, int64_t, float, b
 // ces declarations sont necessaires pour remplir le tableau commands[] ci-dessous
 using cmd_func_t =  void  (BaseSequentialStream *lchp, int argc,const char * const argv[]);
 static cmd_func_t cmd_mem, cmd_uid, cmd_restart, cmd_param, cmd_uavparam, cmd_storage, cmd_can;
-static cmd_func_t cmd_adc;
+static cmd_func_t cmd_adc, cmd_panic;
 #if CH_DBG_STATISTICS
 static cmd_func_t cmd_threads;
 #endif
@@ -109,6 +109,7 @@ static const ShellCommand commands[] = {
   {"uavp", cmd_uavparam},	// manage parameters via UAVCan types
   {"can", cmd_can},		// print can speed, hardware/software version
   {"restart", cmd_restart},	// reboot MCU
+  {"panic", cmd_panic},		// panic to force watchdog reset
  {NULL, NULL}			// marqueur de fin de tableau
 };
 
@@ -340,6 +341,12 @@ static void cmd_uavparam(BaseSequentialStream *lchp, int argc,const char* const 
     cmd_uavcan_storage_set(argv[0], concat);
     }
   }
+}
+
+static void cmd_panic(BaseSequentialStream *, int ,const char* const [])
+{
+  // just hang the system to trigger watchdog reset for tuning purpose
+  chSysLock();
 }
 
 /*

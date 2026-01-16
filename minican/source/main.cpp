@@ -136,6 +136,16 @@ int main(void)
 
     mask = (mask & SPEC_LIFETIME_MASK) | current;
     mask |= static_cast<uint16_t>(current << 4);
+
+    // if we reset from a watchdog reset,
+    // we reflect the problem on the nodeInfo specific code
+    // TODO : add a mechanism that detect close watchdog reset events
+    // to disable ROLE to make UAVCAN update of a fixed firmware possible
+    if (RCC->CSR & (RCC_CSR_WWDGRSTF |  RCC_CSR_IWDGRSTF)) {
+	mask |= SPEC_WATCHDOG_RESET_FIRED;
+	RCC->CSR |= RCC_CSR_RMVF;
+    }
+
     // When node mode is OPERATIONAL, specific_code carries this bitmask.
     CANSlave::getInstance().setSpecificCode(mask);
   });
