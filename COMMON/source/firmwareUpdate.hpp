@@ -33,6 +33,11 @@ namespace FirmwareUpdater {
 	     uavcan_protocol_file_BeginFirmwareUpdateResponse& resp);
 
 
+  /**
+   * @brief Send the first read request to begin file transfer.
+   * @param firtReq The initial file read request to transmit.
+   * @param source_node_id Node ID of the file server.
+   */
   void firstRequest(const uavcan_protocol_file_ReadRequest &firtReq, uint8_t source_node_id);
   
 /**

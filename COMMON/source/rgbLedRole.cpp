@@ -1,3 +1,7 @@
+/**
+ * @file rgbLedRole.cpp
+ * @brief WS2812 LED strip role implementation.
+ */
 #include "roleConf.h"
 
 #if USE_LED2812_ROLE
@@ -38,6 +42,7 @@ namespace {
   THD_WORKING_AREA(waLedStrip, 512);
   void ledThread(void *arg);
 
+  /** @brief Convert UAVCAN RGB565 color into 8-bit per channel RGB. */
   RGB convertRgb565(const uavcan_equipment_indication_RGB565 &c)
   {
     // DSDL uses 5/6/5 bits even though the generated fields are uint8_t;
@@ -52,6 +57,7 @@ namespace {
     return {expand5(c.red), expand6(c.green), expand5(c.blue)};
   }
 
+  /** @brief Update a single LED color if the index is in range. */
   void updateColor(uint8_t idx, const uavcan_equipment_indication_RGB565 &color)
   {
     if ((ledCount == 0) || (idx >= ledCount)) {
@@ -62,6 +68,7 @@ namespace {
 }
 
 
+/** @brief Register UAVCAN subscriptions for this role. */
 DeviceStatus RgbLedRole::subscribe(UAVCAN::Node& node)
 {
   m_node = &node;
@@ -71,6 +78,7 @@ DeviceStatus RgbLedRole::subscribe(UAVCAN::Node& node)
 }
 
 
+/** @brief Acquire resources and start the LED strip update thread. */
 DeviceStatus RgbLedRole::start(UAVCAN::Node& /*node*/)
 {
   using HR = HWResource;
@@ -116,6 +124,7 @@ DeviceStatus RgbLedRole::start(UAVCAN::Node& /*node*/)
 }
 
 
+/** @brief Apply incoming LightsCommand values to the desired color buffer. */
 void RgbLedRole::processLightsCommand(CanardRxTransfer *,
 				      const  uavcan_equipment_indication_LightsCommand &msg)
 {
@@ -127,6 +136,7 @@ void RgbLedRole::processLightsCommand(CanardRxTransfer *,
 
 
 namespace {
+  /** @brief Worker thread that emits the LED frame at a fixed period. */
   void ledThread(void *arg)
   {
     (void)arg;

@@ -1,3 +1,7 @@
+/**
+ * @file MFS.cpp
+ * @brief MFS wrapper implementation for external EEPROM.
+ */
 #include "MFS.hpp"
 #include "hal.h"
 #include "hal_xsnor_stm_m95p.h"
@@ -41,7 +45,10 @@ namespace {
 
 
 namespace MFS {
-   mfs_error_t start()
+  /**
+   * @brief Initialize the MFS subsystem.
+   */
+  mfs_error_t start()
   {
     m95pObjectInit(&m95p);
     if (flash_error_t err = xsnorStart(&m95p, &snorcfg_m95p); err != FLASH_NO_ERROR)
@@ -51,12 +58,18 @@ namespace MFS {
     return mfsStart(&mfs1, &mfscfg1);
   }
   
+  /**
+   * @brief Stop the MFS subsystem.
+   */
   void stop()
   {
     mfsStop(&mfs1);
   }
 
-   bool write(size_t recordIndex, const void *data, size_t size)
+  /**
+   * @brief Write a record into MFS.
+   */
+  bool write(size_t recordIndex, const void *data, size_t size)
    {
      recordIndex++;
      const mfs_error_t err = mfsWriteRecord(&mfs1, recordIndex, size,
@@ -64,7 +77,10 @@ namespace MFS {
      return (err == MFS_NO_ERROR);
    }
 
-  bool  read(size_t recordIndex, void *data, size_t& size)
+  /**
+   * @brief Read a record from MFS.
+   */
+  bool read(size_t recordIndex, void *data, size_t& size)
    {
      recordIndex++;
      const mfs_error_t err = mfsReadRecord(&mfs1, recordIndex, &size,
@@ -72,7 +88,10 @@ namespace MFS {
      return (err == MFS_NO_ERROR);
    }
 
-  size_t  getlen()
+  /**
+   * @brief Determine the number of valid records.
+   */
+  size_t getlen()
   {
     uint32_t low = 1;
     uint32_t high = MFS_CFG_MAX_RECORDS;
@@ -99,11 +118,17 @@ namespace MFS {
   }
 
   
-   bool		eraseAll()
+  /**
+   * @brief Erase all records in MFS.
+   */
+  bool eraseAll()
    {
      return mfsErase(&mfs1);
    }
 
+  /**
+   * @brief Return the underlying EEPROM device pointer.
+   */
   Eeprom_M95::Device *getDevice()
   {
     return static_cast<Eeprom_M95::Device *>(m95p.device.device);

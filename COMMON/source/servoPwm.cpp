@@ -1,3 +1,7 @@
+/**
+ * @file servoPwm.cpp
+ * @brief PWM servo output implementation.
+ */
 #include "roleConf.h"
 
 #if USE_SERVO_ROLE
@@ -34,6 +38,7 @@ static constexpr PWMDriver &SERVO_PWMD =  CONCAT(PWMD, F1_b_TIM);
 
 
 namespace  {
+  /** @brief Map an enable mask to a packed list of PWM channels. */
   struct ChannelMap {
     std::array<std::uint8_t, 8> idx{};
     std::uint8_t count{};
@@ -78,7 +83,7 @@ namespace  {
   
 }
 
-
+/** @brief Initialize PWM timers and configure active servo channels. */
 DeviceStatus ServoPWM::start()
 {
   using HR = HWResource;
@@ -134,13 +139,10 @@ DeviceStatus ServoPWM::start()
   return DeviceStatus(DeviceStatus::SERVO_PWM);
 }
 
-/*
-  index : first_index ..  (first_index + num_servos - 1);
-  value : 0 .. 1000
- 
-  2Mhz : 2.000 pour 1ms 4000 pour 2ms sauf si halfpatata
-  index=0    -> channel = 2000 (ou 1000 si half_width)
-  index=1000 -> channel = 4000 (ou 2000 si half_width)
+/**
+ * @brief Set a PWM pulse width in microseconds for a servo index.
+ *
+ * Valid indices are [start_index, start_index + num_servos).
  */
 void ServoPWM::setPwm(uint8_t index, float pulseWidth /*value*/)
 {
@@ -152,13 +154,10 @@ void ServoPWM::setPwm(uint8_t index, float pulseWidth /*value*/)
 		     );
   } 
 }
-/*
-  index : first_index ..  (first_index + num_servos - 1);
-  value : -1.0 : 1.0 
- 
-  2Mhz : 2.000 pour 1ms 4000 pour 2ms sauf si halfpatata
-  index=0    -> channel = 2000 (ou 1000 si half_width)
-  index=1000 -> channel = 4000 (ou 2000 si half_width)
+/**
+ * @brief Set a unitless servo value mapped to PWM timing.
+ *
+ * Valid indices are [start_index, start_index + num_servos).
  */
 void ServoPWM::setUnitless(uint8_t index, float value)
 {

@@ -260,6 +260,7 @@ void SerialStream::uartTransmitThread(void *)
 }
 
 namespace {
+  /// UART RX ISR hook: capture bytes between DMA armings.
   void rxchar_cb(hal_uart_driver *, uint16_t c) {
     chSysLockFromISR();
     iqPutI(&gapCapture->rxq, static_cast<uint8_t>(c));  // drops if full

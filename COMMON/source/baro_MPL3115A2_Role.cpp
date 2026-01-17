@@ -1,3 +1,7 @@
+/**
+ * @file baro_MPL3115A2_Role.cpp
+ * @brief MPL3115A2 barometer role implementation.
+ */
 #include "roleConf.h"
 
 #if USE_BARO_MPL3115A2_ROLE
@@ -18,6 +22,7 @@ namespace {
   static constexpr uint8_t enableEvent[] = {0x13, 0x07};
   static constexpr uint8_t devIdReg[] = {0x0c};
 
+  /** @brief Perform a blocking I2C transfer to the MPL3115A2. */
   msg_t xfer(const uint8_t *tx, size_t txlen, uint8_t *rx, size_t rxlen) {
     i2cAcquireBus(&ExternalI2CD);
     const msg_t ret = i2cMasterTransmitTimeout(&ExternalI2CD, mplAdr, tx, txlen,
@@ -27,12 +32,13 @@ namespace {
   }
 }
 
-
+/** @brief Reset the I2C peripheral in case of bus errors. */
 void Baro_MPL3115A2_Role::resetI2C()
 {
   I2CPeriph::reset();
 }
 
+/** @brief Periodically poll the sensor and publish UAVCAN messages. */
 void Baro_MPL3115A2_Role::periodic ()
 {
   uavcan_equipment_air_data_StaticTemperature msgTemp = {}; 
@@ -45,15 +51,13 @@ void Baro_MPL3115A2_Role::periodic ()
     chThdSleepMilliseconds(100);
   }
 }
-
-
-
+/** @brief No subscriptions required for the barometer role. */
 DeviceStatus Baro_MPL3115A2_Role::subscribe(UAVCAN::Node&)
 {
   return DeviceStatus(DeviceStatus::MPL3115A2);
 }
 
-  
+/** @brief Initialize the sensor and spawn the polling thread. */
 DeviceStatus Baro_MPL3115A2_Role::start(UAVCAN::Node& node)
 {
   msg_t status;
@@ -81,6 +85,7 @@ DeviceStatus Baro_MPL3115A2_Role::start(UAVCAN::Node& node)
   return status == MSG_OK ? DeviceStatus(DeviceStatus::MPL3115A2) : DeviceStatus(DeviceStatus::MPL3115A2, DeviceStatus::I2C_TIMOUT);
 }
 
+/** @brief Print the current pressure value when TRACE is enabled. */
 DeviceStatus Baro_MPL3115A2_Role::printPressure()
 {
 #ifdef TRACE
@@ -94,6 +99,7 @@ DeviceStatus Baro_MPL3115A2_Role::printPressure()
 #endif
 }
 
+/** @brief Read and convert the current pressure measurement. */
 DeviceStatus Baro_MPL3115A2_Role::getPressure(float *pressure)
 {
   uint8_t rxbuf[4];
@@ -129,6 +135,7 @@ DeviceStatus Baro_MPL3115A2_Role::getPressure(float *pressure)
   return status == MSG_OK ? DeviceStatus(DeviceStatus::MPL3115A2) : DeviceStatus(DeviceStatus::MPL3115A2, DeviceStatus::I2C_TIMOUT);
 }
 
+/** @brief Read and convert the current temperature measurement. */
 DeviceStatus Baro_MPL3115A2_Role::getTemperature(float *temperature)
 {
   int16_t mplTemp;
@@ -146,6 +153,7 @@ DeviceStatus Baro_MPL3115A2_Role::getTemperature(float *temperature)
   return status == MSG_OK ? DeviceStatus(DeviceStatus::MPL3115A2) : DeviceStatus(DeviceStatus::MPL3115A2, DeviceStatus::I2C_TIMOUT);
 }
 
+/** @brief Read the device ID register. */
 DeviceStatus Baro_MPL3115A2_Role::getDevId(uint8_t *devId)
 {
   msg_t status = xfer(devIdReg, sizeof(devIdReg), devId, sizeof(*devId));

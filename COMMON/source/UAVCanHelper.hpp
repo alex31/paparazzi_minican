@@ -1,3 +1,7 @@
+/**
+ * @file UAVCanHelper.hpp
+ * @brief Utility helpers for UAVCAN logging.
+ */
 #pragma once
 #include "UAVCAN/pubSub.hpp"
 #include "etl/string.h"
@@ -20,6 +24,7 @@ struct uavcan_protocol_debug_LogMessage {
 
  */
 namespace UAVCAN::Helper {
+  /** @brief Publish a uavcan.protocol.debug.LogMessage. */
   UAVCAN::Node::canStatus_t log(UAVCAN::Node& node, uint8_t level,
 				etl::string_view source, etl::string_view text);
 }

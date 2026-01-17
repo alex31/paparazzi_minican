@@ -1,3 +1,7 @@
+/**
+ * @file gpsUbxDecoder.hpp
+ * @brief Streaming decoder for UBX NAV messages.
+ */
 #pragma once
 
 #include <concepts>
@@ -43,27 +47,42 @@ Offset  Taille    Nom
 */
 
 namespace UBX {
+  /**
+   * @brief Callback set for UBX NAV messages handled by the decoder.
+   */
   struct DecoderConf {
     bool (*navPvtCb)(const NavPvt& msg);
     bool (*navDopCb)(const NavDop& msg);
     bool (*navSatCb)(const NavSat& msg);
   };
   
-  
+  /**
+   * @brief Incremental UBX decoder that validates checksums and dispatches NAV messages.
+   */
   class Decoder {
     enum State {WAIT_FOR_SYNC1, WAIT_FOR_SYNC2, WAIT_FOR_CLASS, WAIT_FOR_ID,
 		WAIT_FOR_LEN1, WAIT_FOR_LEN2,
 		PROCESSING_PAYLOAD, WAIT_FOR_CHECKSUM_1, WAIT_FOR_CHECKSUM_2};
   public:
+    /** @brief UBX sync bytes. */
     static constexpr uint8_t Sync1 = 0xB5;
     static constexpr uint8_t Sync2 = 0x62;
 
+    /**
+     * @brief Construct the decoder with a callback configuration.
+     */
     Decoder(const DecoderConf& _cfg) : cfg(_cfg) {}
-     void feed(etl::span<const uint8_t> data);
+    /**
+     * @brief Feed a span of raw bytes into the state machine.
+     */
+    void feed(etl::span<const uint8_t> data);
     
   private:
+    /** @brief Reset the parser to the initial sync state. */
     void reset();
+    /** @brief Update UBX checksum with a single byte. */
     inline void updateChecksum(uint8_t byte);
+    /** @brief Dispatch a fully decoded payload to its callback. */
     bool dispatch();
 
     etl::vector<uint8_t, 1024> payload;

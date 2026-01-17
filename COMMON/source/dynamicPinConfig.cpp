@@ -1,3 +1,7 @@
+/**
+ * @file dynamicPinConfig.cpp
+ * @brief Dynamic pin configuration helpers for shared pin hardware.
+ */
 #include "dynamicPinConfig.hpp"
 #include "stdutil.h"
 #include "UAVCAN/persistantParam.hpp"
@@ -12,7 +16,7 @@
 #endif
 
 namespace {
-  // RAII port configuration save/restore
+  /// RAII helper to save/restore GPIO port configuration.
   class gpio_config_t {
     using gpio_t = GPIO_TypeDef *;
     const gpio_t gpio_port_a = reinterpret_cast<GPIO_TypeDef *>(GPIOA_BASE);
@@ -36,6 +40,7 @@ namespace {
 }
 
 namespace DynPin {
+  /** @brief Attempt to unhang a stuck I2C bus by toggling SCL. */
   bool i2cUnhangBus(I2CDriver *)
   {
     bool sdaReleased;
@@ -83,6 +88,7 @@ namespace DynPin {
     return sdaReleased; 
   }
 
+  /** @brief Enable or disable I2C pull-up resistors based on parameters. */
   void i2cActivatePullup()
   {
     // activate PULLUP on SDA, SCL depending on eeprom configuration
@@ -102,10 +108,15 @@ namespace DynPin {
 #if PLATFORM_MICROCAN
 
 namespace {
+  /// Configure pins for UART usage.
   void scenario_UART(uint8_t mask); // MSB F4 F3 F2a F0b F0a LSB
+  /// Configure pins for I2C usage.
   void scenario_I2C();
+  /// Configure pins for SPI usage.
   void scenario_SPI();
+  /// Configure pins for PWM usage.
   void scenario_PWM(uint8_t mask);
+  /// Configure pins for DSHOT usage.
   void scenario_DSHOT(uint8_t mask);
 }
 
@@ -113,6 +124,7 @@ namespace {
 
 namespace DynPin {
 
+  /** @brief Drive all shared pins to the inactive state. */
   void inactiveAllSharedPins()
   {
     BOARD_GROUP_DECLFOREACH(pin, DYNAMIC_FUNCTION_PIN) {
@@ -120,6 +132,7 @@ namespace DynPin {
     }
   }
 
+  /** @brief Configure shared pins for the requested scenario. */
   void setScenario(Scenario s, uint8_t mask)
   {
     // verify that we set the scenion only once
@@ -141,6 +154,7 @@ namespace DynPin {
   }
 
 
+  /** @brief Verify that firmware configuration matches the hardware wiring. */
   bool isFirmwareMatchHardware()
   {
     bool testFailed = false;
@@ -167,6 +181,7 @@ namespace DynPin {
 
 
 namespace {
+  /** @brief Set pin alternate functions for UART signals. */
   void scenario_UART(uint8_t mask) //  MSB F4 F3 F2a F0b F0a LSB
   {
     if (mask & (1<<0))
@@ -181,6 +196,7 @@ namespace {
        palSetLineMode(LINE_F4, PAL_MODE_ALTERNATE(F4_USART_AF));
   }
   
+  /** @brief Set pin alternate functions for I2C. */
   void scenario_I2C()
   {
     // pullup should be activated before by commun code
@@ -194,6 +210,7 @@ namespace {
   }
 
   // Chip Select is GPIO Output managed by the driver : better managed by peripheral ?
+  /** @brief Set pin alternate functions for SPI. */
   void scenario_SPI()
   {
     palSetLineMode(LINE_F2_b, PAL_MODE_ALTERNATE(F2_b_SPI_AF) | PAL_STM32_OSPEED_HIGHEST);
@@ -202,6 +219,7 @@ namespace {
     palSetLineMode(LINE_F1_b, PAL_MODE_OUTPUT_PUSHPULL | PAL_STM32_OSPEED_HIGHEST);
   }
   
+  /** @brief Set pin alternate functions for PWM channels. */
   void scenario_PWM(uint8_t mask)
   {
     if (mask & 0b1)
@@ -214,6 +232,7 @@ namespace {
       palSetLineMode(LINE_F4, PAL_MODE_ALTERNATE(F4_TIM_AF) | PAL_STM32_OSPEED_MID1);
   }
   
+  /** @brief Set pin alternate functions for DSHOT with UART telemetry. */
   void scenario_DSHOT(uint8_t mask)
   {
     palSetLineMode(LINE_F3, PAL_MODE_ALTERNATE(F3_USART_AF));
@@ -229,6 +248,7 @@ namespace {
 
 
 namespace DynPin {
+  /** @brief Verify that firmware configuration matches the hardware wiring. */
   bool isFirmwareMatchHardware()
   {
     gpio_config_t context; // RAII save and restore

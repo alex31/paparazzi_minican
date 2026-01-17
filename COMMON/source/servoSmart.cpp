@@ -1,3 +1,7 @@
+/**
+ * @file servoSmart.cpp
+ * @brief Smart servo role implementation for STS3032 devices.
+ */
 #include "roleConf.h"
 
 #if USE_SERVO_ROLE
@@ -26,6 +30,7 @@ namespace  {
 }
 
 
+/** @brief Initialize the smart servo bus and optional status reporting. */
 DeviceStatus ServoSmart::start(UAVCAN::Node& node)
 {
   using HR = HWResource;
@@ -83,10 +88,10 @@ DeviceStatus ServoSmart::start(UAVCAN::Node& node)
   return DeviceStatus(DeviceStatus::SERVO_SMART);
 }
 
-/*
-  index : first_index ..  (first_index + num_servos - 1);
-  value IN  : -1.0 : 1.0 
-  value OUT : 0 .. 4095 
+/**
+ * @brief Command a servo position using a unitless [-1; 1] input.
+ *
+ * The value is mapped to the internal 0..4095 position range.
  */
 void ServoSmart::setUnitless(uint8_t index, float value)
 {
@@ -96,6 +101,7 @@ void ServoSmart::setUnitless(uint8_t index, float value)
   } 
 }
 
+/** @brief Command a servo torque limit using a normalized input. */
 void ServoSmart::setTorque(uint8_t index, float value)
 {
   if ((startIndex <= index) and (index < (startIndex + numServos))) {
@@ -105,6 +111,7 @@ void ServoSmart::setTorque(uint8_t index, float value)
   } 
 }
 
+/** @brief Command a servo speed limit using radians per second. */
 void ServoSmart::setSpeed(uint8_t index, float value)
 {
   // value in Rad/second
@@ -116,7 +123,7 @@ void ServoSmart::setSpeed(uint8_t index, float value)
 }
 
 namespace {
-  
+  /** @brief Periodically poll servo states and publish UAVCAN status messages. */
   void periodic(void *)
   {
      while (true) {
@@ -133,7 +140,7 @@ namespace {
       }
   }
 
-
+  /** @brief Convert a servo state vector into a UAVCAN status message. */
   void copy(const STS3032::StateVector& sv, uavcan_equipment_actuator_Status &msg,
 	    uint8_t id)
   {

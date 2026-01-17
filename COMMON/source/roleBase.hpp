@@ -1,3 +1,7 @@
+/**
+ * @file roleBase.hpp
+ * @brief Base classes and trampolines for role management.
+ */
 #pragma once
 
 #include <ch.h>

@@ -1,3 +1,7 @@
+/**
+ * @file rgbLeds.cpp
+ * @brief Onboard WS2812 status LED implementation.
+ */
 #include <ch.h>
 #include <hal.h>
 #include "rgbLeds.hpp"
@@ -38,46 +42,55 @@ namespace {
   
 }
 
+/** @brief Start the full LED animation thread. */
 void RgbLed::start()
 {
   chThdCreateStatic(waLedsAnim, sizeof(waLedsAnim), NORMALPRIO, &ledsAnim, NULL);
 }
 
+/** @brief Start the minimal LED animation thread. */
 void RgbLed::startMinimal()
 {
   chThdCreateStatic(waLedsAnim, sizeof(waLedsAnim), NORMALPRIO, &ledsAnimMinimal, NULL);
 }
 
+/** @brief Set the LED color using RGB input. */
 void RgbLed::setColor(const RGB &_rgb)
 {
   rgb = _rgb;
 }
 
+/** @brief Set the LED color using HSV input. */
 void RgbLed::setColor(const HSV &hsv)
 {
   rgb = hsv2rgb(hsv);
 }
 
+/** @brief Turn the LED off. */
 void RgbLed::lightOff()
 {
   off = true;
 }
 
+/** @brief Turn the LED on. */
 void RgbLed::lightOn()
 {
   off = false;
 }
 
+/** @brief Toggle the LED on/off state. */
 void RgbLed::lightToggle()
 {
   off = not off;
 }
 
+/** @brief Enable the "wheel of death" animation. */
 void RgbLed::setWheelOfDeath()
 {
   wheelOfDeathMode = true;
 }
 
+/** @brief Store the node ID digits for display. */
 void RgbLed::setNodeId(uint8_t id)
 {
   id = std::min(id, static_cast<uint8_t>(124U));
@@ -86,6 +99,7 @@ void RgbLed::setNodeId(uint8_t id)
   nodeId.digits[2] = id % 5U;
 }
  
+/** @brief Configure the motif period and bitmask. */
 void RgbLed::setMotif(uint16_t _periodMs, uint16_t _motif)
 {
   periodI = TIME_MS2I(_periodMs);
@@ -93,6 +107,7 @@ void RgbLed::setMotif(uint16_t _periodMs, uint16_t _motif)
 }
 
 namespace {
+  /** @brief Full animation loop handling wheel, node ID, and motif display. */
   void  ledsAnim (void *arg)	
   {
     (void)arg;					
@@ -122,6 +137,7 @@ namespace {
     }
   }
 
+  /** @brief Minimal animation loop used when float operations are avoided. */
   void  ledsAnimMinimal (void *arg)	
   {
     (void)arg;					
@@ -160,6 +176,7 @@ namespace {
     id = digitA*25 + digitB*5 + digitC
     
    */
+  /** @brief Display the node ID digits using colored blinks. */
   void  displayId()
   {
     static constexpr float value = 0.10;

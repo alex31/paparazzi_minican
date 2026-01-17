@@ -1,3 +1,7 @@
+/**
+ * @file gpsUbxRole.cpp
+ * @brief UBX-backed GPS role implementation.
+ */
 #include "roleConf.h"
 
 #if USE_GPS_UBX_ROLE
@@ -18,6 +22,10 @@
 #endif
 
 namespace {
+  /**
+   * @brief Convert UBX UTC date/time to Unix epoch microseconds.
+   * @return True when the date/time fields are valid.
+   */
   bool utcToUnixUsec(const UBX::NavPvt& msg, uint64_t& out);
 
 #if PLATFORM_MINICAN
@@ -45,50 +53,6 @@ namespace {
   constexpr uint32_t ubxCfgUart1OutProtNmea = 0x10740002;
   constexpr uint32_t ubxCfgRateMeas = 0x30210001;
   constexpr uint32_t ubxCfgNavspgDynModel = 0x20110021;
-
-  /**
-   * @brief UBX-CFG-PRT payload for UART port configuration.
-   */
-  struct UbxCfgPrt {
-    uint8_t portId;
-    uint8_t reserved0;
-    uint16_t txReady;
-    uint32_t mode;
-    uint32_t baudRate;
-    uint16_t inProtoMask;
-    uint16_t outProtoMask;
-    uint16_t flags;
-    uint16_t reserved5;
-  } __attribute__((packed));
-
-  /**
-   * @brief UBX-CFG-RATE payload for navigation rate.
-   */
-  struct UbxCfgRate {
-    uint16_t measRateMs;
-    uint16_t navRate;
-    uint16_t timeRef;
-  } __attribute__((packed));
-
-  /**
-   * @brief UBX-CFG-MSG payload (legacy per-message rate).
-   */
-  struct UbxCfgMsgRate {
-    uint8_t msgClass;
-    uint8_t msgId;
-    uint8_t rate;
-  } __attribute__((packed));
-
-  /**
-   * @brief UBX-CFG-VALSET header, followed by key/value pairs.
-   */
-  struct UbxCfgValset {
-    uint8_t version;
-    uint8_t layers;
-    uint8_t transaction;
-    uint8_t reserved;
-    uint32_t key;
-  } __attribute__((packed));
 
   /**
    * @brief Return the value size encoded in a VALSET key.
@@ -162,7 +126,7 @@ namespace {
    */
   void ubxSendCfgPrt(UARTDriver &uart, uint32_t baudrate)
   {
-    UbxCfgPrt msg{};
+    UBX::CfgPrt msg{};
     msg.portId = 1; // UART1
     msg.mode = 0x000008D0; // 8N1
     msg.baudRate = baudrate;
@@ -177,7 +141,7 @@ namespace {
    */
   void ubxSendCfgRate(UARTDriver &uart, uint16_t measRateMs)
   {
-    UbxCfgRate msg{};
+    UBX::CfgRate msg{};
     msg.measRateMs = measRateMs;
     msg.navRate = 1;
     msg.timeRef = 1; // GPS time
@@ -190,7 +154,7 @@ namespace {
    */
   void ubxSendCfgMsgRate(UARTDriver &uart, uint8_t msgClass, uint8_t msgId, uint8_t rate)
   {
-    UbxCfgMsgRate msg{};
+    UBX::CfgMsgRate msg{};
     msg.msgClass = msgClass;
     msg.msgId = msgId;
     msg.rate = rate;
@@ -206,7 +170,7 @@ namespace {
     if (valueLen == 0) {
       return;
     }
-    UbxCfgValset msg{};
+    UBX::CfgValset msg{};
     msg.version = 1;
     msg.layers = ubxValsetLayerRam | ubxValsetLayerBbr;
     msg.key = key;
@@ -351,6 +315,9 @@ namespace {
 #endif // PLATFORM_MINICAN
 }
 
+/**
+ * @brief Handle UBX NAV-PVT and publish Fix2 + ardupilot.gnss.Status.
+ */
 bool GpsUBX::navPvtCb(const UBX::NavPvt& msg)
 {
   auto* self = RoleCrtp<GpsUBX>::singleton;
@@ -455,6 +422,9 @@ bool GpsUBX::navPvtCb(const UBX::NavPvt& msg)
   return fixSent;
 }
 
+/**
+ * @brief Handle UBX NAV-DOP and publish Auxiliary.
+ */
 bool GpsUBX::navDopCb(const UBX::NavDop& msg)
 {
   auto* self = RoleCrtp<GpsUBX>::singleton;
@@ -487,6 +457,9 @@ bool GpsUBX::navDopCb(const UBX::NavDop& msg)
   return self->m_node->sendBroadcast(aux) == UAVCAN::Node::CAN_OK;
 }
 
+/**
+ * @brief Handle UBX NAV-SAT and publish Auxiliary with satellite counts.
+ */
 bool GpsUBX::navSatCb(const UBX::NavSat& msg)
 {
   auto* self = RoleCrtp<GpsUBX>::singleton;
@@ -519,6 +492,9 @@ bool GpsUBX::navSatCb(const UBX::NavSat& msg)
   return self->m_node->sendBroadcast(aux) == UAVCAN::Node::CAN_OK;
 }
 
+/**
+ * @brief Construct the UBX role and bind decoder callbacks.
+ */
 GpsUBX::GpsUBX()
   : decoder(config)
 {
@@ -528,12 +504,18 @@ GpsUBX::GpsUBX()
 
 
 namespace {
+  /**
+   * @brief Check if a year is a leap year.
+   */
   constexpr bool isLeapYear(uint16_t year)
   {
     return (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
   }
 
-  // Convert UBX UTC date/time to Unix epoch usec. Return false if invalid.
+  /**
+   * @brief Convert UBX UTC date/time to Unix epoch microseconds.
+   * @return False if the date/time is invalid.
+   */
   bool utcToUnixUsec(const UBX::NavPvt& msg, uint64_t& out)
   {
     if (!msg.valid.validDate || !msg.valid.validTime) {
@@ -610,12 +592,18 @@ namespace {
 // released
 // Dans le subscribe : rien à faire : on ne reçoit pas de messages UAVCan
 
+/**
+ * @brief GPS role requires no subscriptions; return role status.
+ */
 DeviceStatus GpsUBX::subscribe(UAVCAN::Node&)
 {
   return DeviceStatus(DeviceStatus::GPS_ROLE);
 }
 
 
+/**
+ * @brief Start UART reception and the UBX decoder thread.
+ */
 DeviceStatus GpsUBX::start(UAVCAN::Node& node)
 {
   using HR = HWResource;
@@ -661,6 +649,9 @@ DeviceStatus GpsUBX::start(UAVCAN::Node& node)
   return status;
 }
 
+/**
+ * @brief Thread loop that reads UART frames and feeds the decoder.
+ */
 void GpsUBX::periodic(void *)
 {
   size_t size;

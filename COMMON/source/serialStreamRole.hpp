@@ -1,3 +1,7 @@
+/**
+ * @file serialStreamRole.hpp
+ * @brief UART <-> UAVCAN tunnel bridge role definition.
+ */
 #pragma once
 
 #include <ch.h>
@@ -25,12 +29,14 @@ public:
 private:
   static constexpr size_t chunkSize = sizeof(uavcan_tunnel_Broadcast{}.buffer.data);
 
+  /** @brief FIFO element for UART-to-UAVCAN buffering. */
   struct Uart2uavcan_t : etl::vector<uint8_t, chunkSize * 5>
   {
     Uart2uavcan_t() = default;
     Uart2uavcan_t(const Uart2uavcan_t&) = delete;
   };
 
+  /** @brief FIFO element for UAVCAN-to-UART buffering. */
   struct Uavcan2uart_t : uavcan_tunnel_Broadcast
   {
     Uavcan2uart_t() = default;
@@ -38,7 +44,7 @@ private:
     uint8_t _pad = 0;
   };
 
-
+  /** @brief Handle incoming tunnel messages destined for the UART. */
   void processUavcanToSerial(CanardRxTransfer *,
 			     const uavcan_tunnel_Broadcast &msg);
   /// Drain bytes received between DMA armings into a FIFO object.

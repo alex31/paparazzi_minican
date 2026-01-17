@@ -1,11 +1,17 @@
+/**
+ * @file ttyConsole.hpp
+ * @brief Bootloader console initialization helpers.
+ */
 #pragma once
 
 
 
-// fonctions exportées par le module
+// fonctions exportees par le module
 
 #ifdef CONSOLE_DEV_SD
+/** @brief Initialize the bootloader console. */
 void consoleInit (void);
+/** @brief Launch the bootloader console thread. */
 void consoleLaunch (void);
 
 #if defined TRACE 

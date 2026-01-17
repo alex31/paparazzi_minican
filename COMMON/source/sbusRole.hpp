@@ -1,3 +1,7 @@
+/**
+ * @file sbusRole.hpp
+ * @brief SBUS receiver role definition.
+ */
 #pragma once
 
 #include <ch.h>
@@ -9,10 +13,16 @@
 #include "UAVCAN/persistantParam.hpp"
 #include "futabaSbusUart.h"
 
+/**
+ * @brief Role for receiving SBUS frames and publishing RC input over UAVCAN.
+ */
 class RC_Sbus : public RoleBase, public RoleCrtp<RC_Sbus> {
 public:
+  /** @brief Subscribe to UAVCAN messages used by this role. */
   DeviceStatus subscribe(UAVCAN::Node& node) override;
+  /** @brief Initialize the SBUS driver and start processing. */
   DeviceStatus start(UAVCAN::Node& node) override;
+  /** @brief Process a decoded SBUS frame. */
   void maj_rc_cb_frame(const SBUSFrame *frame);
 
 private:

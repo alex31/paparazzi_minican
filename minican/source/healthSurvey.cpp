@@ -1,3 +1,7 @@
+/**
+ * @file healthSurvey.cpp
+ * @brief Periodic health survey publishing for temperature and voltages.
+ */
 #include "healthSurvey.hpp"
 #include <ch.h>
 #include <algorithm>
@@ -8,11 +12,13 @@
 
 namespace  {
   [[noreturn]]
+  /** @brief Thread function that samples ADC data and publishes UAVCAN messages. */
   void adcSampling (void *arg);
 }
 
 
 namespace HealthSurvey {
+  /** @brief Start the health survey thread. */
   void start(UAVCAN::Node& node) {
     chThdCreateFromHeap(NULL, THD_WORKING_AREA_SIZE(512), "health survey", NORMALPRIO, 
 			&adcSampling, &node);
@@ -22,6 +28,7 @@ namespace HealthSurvey {
 
 namespace  {
   [[noreturn]]
+  /** @brief ADC sampling loop with UAVCAN publication. */
   void adcSampling (void *arg)
   {
     uavcan_equipment_device_Temperature tempMsg = {};

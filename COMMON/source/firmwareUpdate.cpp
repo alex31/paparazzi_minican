@@ -56,12 +56,15 @@ namespace  {
   systime_t timestamp = 0;
   // it it goes 10 seconds withoud fileread response, current update is canceled
   static constexpr sysinterval_t firmwareUpdateTimout = TIME_S2I(10);
+  /// Flush the sector buffer to EEPROM, optionally finalizing the header.
   bool storeSectorBufferInEeprom(bool final = false);
   Firmware::FirmwareHeader_t  IN_DMA_SECTION(firmwareHeader);
   Firmware::ToolchainHeader_t toolChainHeader;
   static_assert(sizeof(firmwareHeader) <= 512);
 
+  /// Check that the incoming firmware header matches this hardware.
   bool fwIsCompatible(const Firmware::ToolchainHeader_t& toolChainHeader);
+  /// Validate firmware length and CRC after download completes.
   Firmware::Flash fwValidity(const Firmware::ToolchainHeader_t& hdr);
   virtual_timer_t vtRequest;
   struct {
@@ -71,7 +74,9 @@ namespace  {
     binary_semaphore_t reqSem;
   } currentFileRequest = {};
 
+  /// Worker thread that issues read requests and retries on timeout.
   void requestWorker(void *);
+  /// Release the current download buffer and reset state.
   void releaseSectorBuffer();
 }
 
@@ -132,6 +137,7 @@ bool FirmwareUpdater::start(UAVCAN::Node *node, const uavcan_protocol_file_Path 
   return true;
 }
 
+/** @brief Queue the first file read request for the firmware download. */
 void FirmwareUpdater::firstRequest(const uavcan_protocol_file_ReadRequest &firtReq,
 				   uint8_t source_node_id)
 {
@@ -253,6 +259,7 @@ namespace {
   }
 
 
+  /** @brief Validate toolchain header against hardware identity. */
   bool fwIsCompatible(const Firmware::ToolchainHeader_t& hdr)
   {
     if (hdr.magicNumber != Firmware::magicNumberCheck)
@@ -269,6 +276,7 @@ namespace {
   }
 
 
+  /** @brief Determine whether the downloaded firmware image is valid. */
   Firmware::Flash fwValidity(const Firmware::ToolchainHeader_t& hdr)
   {
     if (const size_t binarySize = currentFileIndex - sizeof toolChainHeader;
@@ -289,6 +297,7 @@ namespace {
 
 
 
+  /** @brief Free the active sector buffer and reset tracking. */
   void releaseSectorBuffer() {
     chSysLock();
     auto& todel = FirmwareUpdater::sectorBuffer;
@@ -299,6 +308,7 @@ namespace {
   }
 
 
+  /** @brief Thread function issuing read requests with retry timer. */
   void requestWorker(void *) {
     while(true) {
       chBSemWait(&currentFileRequest.reqSem);

@@ -1,3 +1,7 @@
+/**
+ * @file sbusRole.cpp
+ * @brief SBUS receiver role implementation.
+ */
 #include "roleConf.h"
 
 #if USE_RC_SBUS_ROLE
@@ -34,16 +38,17 @@ namespace {
 
 
   
+  /** @brief Map an SBUS channel value to PWM microseconds. */
   uint32_t scale_to_pwm_microseconds(uint32_t sbus);
 }
 
-
+/** @brief No subscriptions required for SBUS input. */
 DeviceStatus RC_Sbus::subscribe(UAVCAN::Node&)
 {
   return DeviceStatus(DeviceStatus::RC_SBUS);
 }
 
-
+/** @brief Initialize the SBUS driver and configure channel mapping. */
 DeviceStatus RC_Sbus::start(UAVCAN::Node& _node)
 {
   using HR = HWResource;
@@ -85,6 +90,7 @@ DeviceStatus RC_Sbus::start(UAVCAN::Node& _node)
   return status;
 }
 
+/** @brief Convert an SBUS frame into a UAVCAN RCInput message. */
 void RC_Sbus::maj_rc_cb_frame(const SBUSFrame *frame)
 {
   size_t outIdx = 0;
@@ -108,6 +114,7 @@ namespace {
   static constexpr uint32_t SBUS_RANGE_RANGE  = SBUS_RANGE_MAX - SBUS_RANGE_MIN;
   static constexpr uint32_t SBUS_TARGET_RANGE = SBUS_TARGET_MAX - SBUS_TARGET_MIN;
 
+  /** @brief Convert raw SBUS value to PWM pulse width in microseconds. */
   uint32_t scale_to_pwm_microseconds(uint32_t sbus_raw) {
     const uint32_t r = std::clamp(sbus_raw, SBUS_RANGE_MIN, SBUS_RANGE_MAX);
     const uint32_t num = (r - SBUS_RANGE_MIN) * SBUS_TARGET_RANGE;

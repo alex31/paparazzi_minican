@@ -1,6 +1,11 @@
+/**
+ * @file UAVCanHelper.cpp
+ * @brief UAVCAN logging helper implementation.
+ */
 #include "UAVCanHelper.hpp"
 #include "UAVCAN/dsdlStringUtils.hpp"
 
+/** @brief Publish a debug log message over UAVCAN. */
 UAVCAN::Node::canStatus_t UAVCAN::Helper::log(UAVCAN::Node& node, uint8_t level,
 					      etl::string_view source, etl::string_view text)
 {

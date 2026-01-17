@@ -1,3 +1,7 @@
+/**
+ * @file roleStatus.hpp
+ * @brief Device status and error reporting helpers.
+ */
 #pragma once
 #include "frozen/map.h"
 #include "frozen/string.h"
@@ -5,7 +9,7 @@
 #include <etl/to_string.h>
 #include <array>
 
-// C++23: constexpr std::to_array permet de déduire la taille à partir d'une liste
+/// Helper to build a frozen::map from a std::array.
 template <typename K, typename V, std::size_t N>
 constexpr frozen::map<K, V, N> make_frozen_map(std::array<std::pair<K, V>, N> arr) {
     return frozen::map<K, V, N>(arr);
@@ -14,6 +18,9 @@ constexpr frozen::map<K, V, N> make_frozen_map(std::array<std::pair<K, V>, N> ar
 
 #define MKP(e)  std::pair{e, #e}
 
+/**
+ * @brief Status object describing a device role and potential error.
+ */
 struct DeviceStatus {
   enum Source : uint8_t {
     ALL, MFS, RESOURCE, SERVO_ROLE, SERVO_PWM, SERVO_SMART,
@@ -79,6 +86,7 @@ struct DeviceStatus {
   static_assert(srcName.size() == NUM_SOURCES);
   static_assert(errName.size() == NUM_ERRORS);
   
+  /** @brief Format the status as a short human-readable string. */
   etl::string<64> describe() const {
     etl::string<64> out;
     out = "SRC=";
@@ -94,10 +102,14 @@ struct DeviceStatus {
 
 static_assert(sizeof(DeviceStatus) == sizeof(int));
 
-// UAVCAN NodeStatus specific_code usage depends on the node status mode:
-// - OPERATIONAL: low nibble = current ADC status; high nibble = latched since boot.
-// - SOFTWARE_UPDATE: progress in KiB (see firmwareUpdate.cpp).
-// - MAINTENANCE: reserved for future/board-specific meaning.
+/**
+ * @brief Bit flags for NodeStatus specific_code reporting.
+ *
+ * Usage depends on the node status mode:
+ * - OPERATIONAL: low nibble = current ADC status; high nibble = latched since boot.
+ * - SOFTWARE_UPDATE: progress in KiB (see firmwareUpdate.cpp).
+ * - MAINTENANCE: reserved for future/board-specific meaning.
+ */
 enum SpecificCodeBits : uint16_t {
   SPEC_PSBAT_UNDERVOLT_CURRENT = 1u << 0,
   SPEC_PSBAT_OVERVOLT_CURRENT  = 1u << 1,

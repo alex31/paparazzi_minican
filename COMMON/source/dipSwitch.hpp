@@ -1,17 +1,23 @@
+/**
+ * @file dipSwitch.hpp
+ * @brief Template wrapper for reading a DIP switch connected to GPIO lines.
+ */
 #pragma once
 #include <ch.h>
 #include <hal.h>
 #include "stdutil.h"
 #include <array>
 
-/*
-  abstraction of dip switch using random pins
-  unfortunately cannot be constexpr because of reinterpret_cast<stm32_gpio_t*>' is not a constant expression
+/**
+ * @brief Read a DIP switch wired to arbitrary GPIO lines.
+ *
+ * The line list is stored at runtime because the platform GPIO pointer
+ * values cannot be constexpr.
  */
-
 template<size_t SZ>
 class DipSwitch {
 public:
+  /** @brief Construct from an array of GPIO lines. */
   uint32_t read() const;
   DipSwitch(const std::array<ioline_t, SZ> _lines) : lines(_lines) {};
 private:
@@ -19,6 +25,7 @@ private:
 };
 
 template<size_t SZ>
+/** @brief Read the switch state as a bitmask. */
 uint32_t DipSwitch<SZ>::read() const
 {
   uint32_t mask = 0;

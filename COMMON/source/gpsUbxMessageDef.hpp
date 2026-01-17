@@ -1,162 +1,134 @@
+/**
+ * @file gpsUbxMessageDef.hpp
+ * @brief UBX message identifiers and payload layouts.
+ */
 #pragma once
-
 
 #include <cstdint>
 
-
 namespace UBX {
 
-  // Classes UBX (référence u-blox M10)
+  /** @brief UBX message classes (u-blox M10 reference). */
   enum class MessageClass : std::uint8_t {
-    NAV = 0x01,
-    RXM = 0x02,
-    INF = 0x04,
-    ACK = 0x05,
-    CFG = 0x06,
-    UPD = 0x09,
-    MON = 0x0A,
-    TIM = 0x0D,
-    ESF = 0x10,
-    MGA = 0x13,
-    LOG = 0x21,
-    SEC = 0x27,
+    NAV = 0x01, RXM = 0x02, INF = 0x04, ACK = 0x05,
+    CFG = 0x06, UPD = 0x09, MON = 0x0A, TIM = 0x0D,
+    ESF = 0x10, MGA = 0x13, LOG = 0x21, SEC = 0x27,
     HNR = 0x28,
   };
 
-  // Identifiants NAV (messages émis par un récepteur M10)
+  /** @brief NAV message IDs (M10 output). */
   enum class NavId : std::uint8_t {
-    POSECEF   = 0x01,
-    POSLLH    = 0x02,
-    STATUS    = 0x03,
-    DOP       = 0x04,
-    ATT       = 0x05,
-    SOL       = 0x06,
-    PVT       = 0x07,
-    ODO       = 0x09,
-    VELECEF   = 0x11,
-    VELNED    = 0x12,
-    HPPOSECEF = 0x13,
-    HPPOSLLH  = 0x14,
-    TIMEGPS   = 0x20,
-    TIMEUTC   = 0x21,
-    CLOCK     = 0x22,
-    TIMEGLO   = 0x23,
-    TIMEBDS   = 0x24,
-    TIMEGAL   = 0x25,
-    TIMELS    = 0x26,
-    ORB       = 0x34,
-    SAT       = 0x35,
-    COV       = 0x36,
-    RELPOSNED = 0x3C,
-    SIG       = 0x43,
-    EOE       = 0x61,
+    POSECEF = 0x01, POSLLH = 0x02, STATUS = 0x03, DOP = 0x04,
+    ATT = 0x05, SOL = 0x06, PVT = 0x07, ODO = 0x09,
+    VELECEF = 0x11, VELNED = 0x12, HPPOSECEF = 0x13, HPPOSLLH = 0x14,
+    TIMEGPS = 0x20, TIMEUTC = 0x21, CLOCK = 0x22, TIMEGLO = 0x23,
+    TIMEBDS = 0x24, TIMEGAL = 0x25, TIMELS = 0x26,
+    ORB = 0x34, SAT = 0x35, COV = 0x36, RELPOSNED = 0x3C,
+    SIG = 0x43, EOE = 0x61,
   };
 
-  // Identifiants RXM
+  /** @brief RXM message IDs. */
   enum class RxmId : std::uint8_t {
-    SFRBX  = 0x13,
-    MEASX  = 0x14,
-    RAWX   = 0x15,
-    RLM    = 0x59,
-    PMREQ  = 0x41,
+    SFRBX = 0x13, MEASX = 0x14, RAWX = 0x15,
+    RLM = 0x59, PMREQ = 0x41,
   };
 
-  // Identifiants MON
+  /** @brief MON message IDs. */
   enum class MonId : std::uint8_t {
-    IO     = 0x02,
-    VER    = 0x04,
-    MSGPP  = 0x06,
-    RXBUF  = 0x07,
-    TXBUF  = 0x08,
-    HW     = 0x09,
-    HW2    = 0x0B,
-    PATCH  = 0x27,
-    GNSS   = 0x28,
-    RF     = 0x38,
+    IO = 0x02, VER = 0x04, MSGPP = 0x06, RXBUF = 0x07,
+    TXBUF = 0x08, HW = 0x09, HW2 = 0x0B, PATCH = 0x27,
+    GNSS = 0x28, RF = 0x38,
   };
 
-  // Identifiants TIM
+  /** @brief TIM message IDs. */
   enum class TimId : std::uint8_t {
-    TP      = 0x01,
-    TM2     = 0x03,
-    SVIN    = 0x04,
-    VCOCAL  = 0x0A,
-    FCHG    = 0x10,
-    HOC     = 0x17,
+    TP = 0x01, TM2 = 0x03, SVIN = 0x04,
+    VCOCAL = 0x0A, FCHG = 0x10, HOC = 0x17,
   };
 
-  // Identifiants ESF (External Sensor Fusion)
+  /** @brief ESF (external sensor fusion) message IDs. */
   enum class EsfId : std::uint8_t {
-    MEAS   = 0x02,
-    RAW    = 0x03,
-    STATUS = 0x10,
-    INS    = 0x15,
+    MEAS = 0x02, RAW = 0x03, STATUS = 0x10, INS = 0x15,
   };
 
-  // Identifiants INF (messages texte)
+  /** @brief INF (text) message IDs. */
   enum class InfId : std::uint8_t {
-    ERROR   = 0x00,
-    WARNING = 0x01,
-    NOTICE  = 0x02,
-    TEST    = 0x03,
-    DEBUG   = 0x04,
-    USER    = 0x08,
+    ERROR = 0x00, WARNING = 0x01, NOTICE = 0x02,
+    TEST = 0x03, DEBUG = 0x04, USER = 0x08,
   };
 
-  // Identifiants ACK
+  /** @brief ACK message IDs. */
   enum class AckId : std::uint8_t {
-    NAK = 0x00,
-    ACK = 0x01,
+    NAK = 0x00, ACK = 0x01,
   };
 
-  // Identifiants MGA (Assistance GNSS)
+  /** @brief MGA (GNSS assistance) message IDs. */
   enum class MgaId : std::uint8_t {
-    ANO   = 0x20,
-    BCH   = 0x28,
-    BDS   = 0x03,
-    GAL   = 0x02,
-    GLO   = 0x06,
-    GPS   = 0x00,
-    QZSS  = 0x05,
-    TIM   = 0x10,
+    ANO = 0x20, BCH = 0x28, BDS = 0x03, GAL = 0x02,
+    GLO = 0x06, GPS = 0x00, QZSS = 0x05, TIM = 0x10,
     MFLASH = 0x21,
   };
 
-  // Identifiants LOG
+  /** @brief LOG message IDs. */
   enum class LogId : std::uint8_t {
-    ERASELOG       = 0x00,
-    STRING         = 0x04,
-    INFO           = 0x08,
-    CREATE         = 0x07,
-    RETRIEVEPOS    = 0x0B,
-    RETRIEVESTRING = 0x0D,
-    FINDTIME       = 0x0E,
-    RETRIEVEBATCH  = 0x10,
+    ERASELOG = 0x00, STRING = 0x04, INFO = 0x08, CREATE = 0x07,
+    RETRIEVEPOS = 0x0B, RETRIEVESTRING = 0x0D, FINDTIME = 0x0E,
+    RETRIEVEBATCH = 0x10,
   };
 
-  // Identifiants SEC
+  /** @brief SEC message IDs. */
   enum class SecId : std::uint8_t {
-    SIGN   = 0x01,
-    UNIQID = 0x03,
-    VER    = 0x09,
+    SIGN = 0x01, UNIQID = 0x03, VER = 0x09,
   };
 
-  // Identifiants HNR (High Navigation Rate)
+  /** @brief HNR (high navigation rate) message IDs. */
   enum class HnrId : std::uint8_t {
     PVT = 0x00,
   };
 
-  // NAV-PVT fixType (UBX-13003221)
+  /** @brief NAV-PVT fix type (UBX-13003221). */
   enum class NavFixType : std::uint8_t {
-    NO_FIX = 0,
-    DEAD_RECKONING_ONLY = 1,
-    TWO_D = 2,
-    THREE_D = 3,
-    GNSS_AND_DR = 4,
-    TIME_ONLY = 5
+    NO_FIX = 0, DEAD_RECKONING_ONLY = 1, TWO_D = 2,
+    THREE_D = 3, GNSS_AND_DR = 4, TIME_ONLY = 5
   };
 
-  // Byte 11 : X1 valid
+  /** @brief UBX-CFG-PRT payload for UART port configuration. */
+  struct CfgPrt {
+    std::uint8_t portId;
+    std::uint8_t reserved0;
+    std::uint16_t txReady;
+    std::uint32_t mode;
+    std::uint32_t baudRate;
+    std::uint16_t inProtoMask;
+    std::uint16_t outProtoMask;
+    std::uint16_t flags;
+    std::uint16_t reserved5;
+  } __attribute__((packed));
+
+  /** @brief UBX-CFG-RATE payload for navigation rate. */
+  struct CfgRate {
+    std::uint16_t measRateMs;
+    std::uint16_t navRate;
+    std::uint16_t timeRef;
+  } __attribute__((packed));
+
+  /** @brief UBX-CFG-MSG payload (legacy per-message rate). */
+  struct CfgMsgRate {
+    std::uint8_t msgClass;
+    std::uint8_t msgId;
+    std::uint8_t rate;
+  } __attribute__((packed));
+
+  /** @brief UBX-CFG-VALSET header, followed by key/value pairs. */
+  struct CfgValset {
+    std::uint8_t version;
+    std::uint8_t layers;
+    std::uint8_t transaction;
+    std::uint8_t reserved;
+    std::uint32_t key;
+  } __attribute__((packed));
+
+  /** @brief NAV-PVT valid flags (byte 11). */
   struct NavPvtValid {
     std::uint8_t validDate     : 1; // bit0 : 1 = date UTC valide
     std::uint8_t validTime     : 1; // bit1 : 1 = heure UTC valide
@@ -165,8 +137,7 @@ namespace UBX {
     std::uint8_t reserved      : 4;
   };
   static_assert(sizeof(NavPvtValid) == 1);
-  // Byte 21 : X1 flags
-  // d’après la doc u-blox 8/9 (UBX-13003221 / UBX-18010854) :contentReference[oaicite:2]{index=2}
+  /** @brief NAV-PVT flags (byte 21). */
   struct NavPvtFlags {
     std::uint8_t gnssFixOK   : 1; // bit0 : fix valide (dans les masques DOP/ACC)
     std::uint8_t diffSoln    : 1; // bit1 : corrections différentielles appliquées
@@ -177,8 +148,7 @@ namespace UBX {
                                   //   0=pas de solution, 1=FLT, 2=FIX
   };
   static_assert(sizeof(NavPvtFlags) == 1);
-  // Byte 22 : X1 flags2
-  // Bits définis dans les versions récentes du protocole : confirmedAvai/Date/Time. :contentReference[oaicite:3]{index=3}
+  /** @brief NAV-PVT flags2 (byte 22). */
   struct NavPvtFlags2 {
     std::uint8_t reserved0      : 5;
     std::uint8_t confirmedAvai  : 1; // info de confirmation disponible
@@ -186,14 +156,13 @@ namespace UBX {
     std::uint8_t confirmedTime  : 1; // heure UTC confirmée
   };
   static_assert(sizeof(NavPvtFlags2) == 1);
-  // Byte 78 : X1 flags3
-  // Doc : bit0 = invalidLlh, le reste réservé. :contentReference[oaicite:4]{index=4}
+  /** @brief NAV-PVT flags3 (byte 78). */
   struct NavPvtFlags3 {
     std::uint8_t invalidLlh : 1; // 1 = lon/lat/height/hMSL invalides
     std::uint8_t reserved   : 7;
   };
 
-  // Payload complet UBX-NAV-PVT (0x01 0x07), longueur = 92
+  /** @brief UBX-NAV-PVT payload (0x01 0x07), length 92 bytes. */
   struct NavPvt {
     std::uint32_t iTOW;     // 0  U4   ms
     std::uint16_t year;     // 4  U2
@@ -238,7 +207,7 @@ namespace UBX {
 
   static_assert(sizeof(NavPvt) == 92, "UBX NAV-PVT size mismatch");
 
-  // Payload UBX-NAV-DOP (0x01 0x04), longueur = 18
+  /** @brief UBX-NAV-DOP payload (0x01 0x04), length 18 bytes. */
   struct NavDop {
     std::uint32_t iTOW;  // 0  U4   ms
     std::uint16_t gDOP;  // 4  U2   0.01
@@ -252,7 +221,7 @@ namespace UBX {
 
   static_assert(sizeof(NavDop) == 18, "UBX NAV-DOP size mismatch");
 
-  // Flags d’un bloc satellite NAV-SAT (0x01 0x35)
+  /** @brief NAV-SAT satellite block flags. */
   struct NavSatFlags {
     std::uint32_t qualityInd : 3;  // bits0..2 : 0=no signal, 1=searching, 2=acquired, 3=unusable, 4=code lock, 5=code+carrier
     std::uint32_t svUsed     : 1;  // bit3      : satellite utilisé dans la solution nav
@@ -277,7 +246,7 @@ namespace UBX {
 
   static_assert(sizeof(NavSatFlags) == 4);
 
-  // Bloc satellite (12 octets). Longueur totale = 8 + numSvs * sizeof(NavSatSv)
+  /** @brief NAV-SAT satellite block (12 bytes). */
   struct NavSatSv {
     std::uint8_t  gnssId; // 0  U1
     std::uint8_t  svId;   // 1  U1
@@ -290,7 +259,7 @@ namespace UBX {
 
   static_assert(sizeof(NavSatSv) == 12, "UBX NAV-SAT SV size mismatch");
 
-  // En-tête du message NAV-SAT (0x01 0x35)
+  /** @brief NAV-SAT header (0x01 0x35). */
   struct NavSat {
     std::uint32_t iTOW;      // 0 U4 ms
     std::uint8_t  version;   // 4 U1

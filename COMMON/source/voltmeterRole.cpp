@@ -1,3 +1,7 @@
+/**
+ * @file voltmeterRole.cpp
+ * @brief Battery voltage LED gauge role implementation.
+ */
 #include "roleConf.h"
 
 #if USE_VOLTMETER_ROLE
@@ -36,23 +40,27 @@ namespace {
 
   THD_WORKING_AREA(waMinican, 512);
 
+  /** @brief Clamp the configured cell count to a valid range. */
   uint8_t getCells()
   {
     const auto cells = static_cast<int>(param_cget<"role.voltmeter.cells">());
     return static_cast<uint8_t>(std::clamp(cells, 2, 6));
   }
 
+  /** @brief Clamp the configured brightness level. */
   float getBrightness()
   {
     return std::clamp(param_cget<"role.voltmeter.brightness">(), 0.0f, 1.0f);
   }
 
+  /** @brief Retrieve the GPS speed threshold used to blank LEDs. */
   float getSpeedOffThresholdMps()
   {
     const float v = param_cget<"role.voltmeter.gps_speed_off_mps">();
     return std::clamp(v, 0.0f, 100.0f);
   }
 
+  /** @brief Approximate LiPo state-of-charge from open-circuit voltage. */
   float lipoSocFromCellVoltage(float cellV)
   {
     struct Point {
@@ -98,6 +106,7 @@ namespace {
     return 0.0f;
   }
 
+  /** @brief Select a gauge color based on state-of-charge percentage. */
   HSV pickColor(float pct, float brightness)
   {
     constexpr float kHueRed = 0.0f;
@@ -113,6 +122,7 @@ namespace {
     return HSV{hue, 1.0f, brightness};
   }
 
+  /** @brief Set all LEDs to a single RGB color. */
   void setAll(const RGB &rgb)
   {
     for (size_t i = 0; i < kLedCount; ++i) {
@@ -120,6 +130,7 @@ namespace {
     }
   }
 
+  /** @brief Display a bar gauge with the given number of lit LEDs. */
   void setGauge(size_t litCount, const RGB &rgb)
   {
     litCount = std::min(litCount, kLedCount);
@@ -129,6 +140,7 @@ namespace {
   }
 }
 
+/** @brief Track ground speed for optional LED blanking. */
 void VoltmeterRole::processFix2(CanardRxTransfer*, const uavcan_equipment_gnss_Fix2& msg)
 {
   if (msg.status == UAVCAN_EQUIPMENT_GNSS_FIX2_STATUS_NO_FIX) {
@@ -152,6 +164,7 @@ void VoltmeterRole::processFix2(CanardRxTransfer*, const uavcan_equipment_gnss_F
   chSysUnlock();
 }
 
+/** @brief Subscribe to GNSS Fix2 messages for GPS-based blanking. */
 DeviceStatus VoltmeterRole::subscribe(UAVCAN::Node& node)
 {
   m_node = &node;
@@ -159,6 +172,7 @@ DeviceStatus VoltmeterRole::subscribe(UAVCAN::Node& node)
   return DeviceStatus(DeviceStatus::VOLTMETER_ROLE);
 }
 
+/** @brief Acquire LED resources and spawn the voltmeter thread. */
 DeviceStatus VoltmeterRole::start(UAVCAN::Node& /*node*/)
 {
   using HR = HWResource;
@@ -201,6 +215,7 @@ DeviceStatus VoltmeterRole::start(UAVCAN::Node& /*node*/)
   return status;
 }
 
+/** @brief Worker thread that updates the LED battery gauge. */
 void VoltmeterRole::voltmeterThread(void* arg)
 {
   auto* self = static_cast<VoltmeterRole*>(arg);

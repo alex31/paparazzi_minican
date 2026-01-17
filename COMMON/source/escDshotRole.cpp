@@ -1,3 +1,7 @@
+/**
+ * @file escDshotRole.cpp
+ * @brief DShot ESC role implementation.
+ */
 #include "roleConf.h"
 
 #if USE_ESC_DSHOT_ROLE
@@ -17,11 +21,13 @@
 #define CONCAT(st1, st2) CONCAT_NX(st1, st2)
 
 namespace {
+  /// PWM driver used for DShot output.
   static constexpr PWMDriver &DSHOT_PWMD = CONCAT(PWMD, SRV1_TIM);
 }
 
 
 
+/** @brief Register UAVCAN subscriptions for ESC command handling. */
 DeviceStatus EscDshot::subscribe(UAVCAN::Node& node)
 {
   m_node = &node;
@@ -29,6 +35,7 @@ DeviceStatus EscDshot::subscribe(UAVCAN::Node& node)
   return DeviceStatus::ESC_DSHOT;
 }
 
+/** @brief Configure DShot hardware resources and start the worker thread. */
 DeviceStatus EscDshot::start(UAVCAN::Node& /*node*/)
 {
   using HR = HWResource;
@@ -100,11 +107,7 @@ DeviceStatus EscDshot::start(UAVCAN::Node& /*node*/)
 
   return status;
 }
-
-
-
-
-
+/** @brief Decode and normalize raw ESC commands into DShot throttle values. */
 void EscDshot::processEscRawCommand(CanardRxTransfer* /*transfer*/,
 					  const  uavcan_equipment_esc_RawCommand &msg)
 {
@@ -118,6 +121,7 @@ void EscDshot::processEscRawCommand(CanardRxTransfer* /*transfer*/,
 	}
 }
 
+/** @brief DShot output loop with optional bidirectional telemetry. */
 void  EscDshot::periodic(void *)	
 {
 #if  DSHOT_BIDIR

@@ -1,3 +1,7 @@
+/**
+ * @file servoRole.cpp
+ * @brief Actuator command routing for servo backends.
+ */
 #include "roleConf.h"
 
 #if USE_SERVO_ROLE
@@ -10,8 +14,7 @@
 #include "servoSmart.hpp"
 #include "stdutil++.hpp"
 
-
-
+/** @brief Dispatch actuator commands to PWM and smart servo backends. */
 void ServoRole::processActuatorArrayCommand(CanardRxTransfer *,
 					    const  uavcan_equipment_actuator_ArrayCommand &msg)
 {
@@ -46,6 +49,7 @@ void ServoRole::processActuatorArrayCommand(CanardRxTransfer *,
   }
 }
 
+/** @brief Subscribe to actuator array command messages. */
 DeviceStatus ServoRole::subscribe(UAVCAN::Node& node)
 {
   m_node = &node;
@@ -53,6 +57,7 @@ DeviceStatus ServoRole::subscribe(UAVCAN::Node& node)
   return DeviceStatus::SERVO_ROLE;
 }
 
+/** @brief Start configured servo backends. */
 DeviceStatus ServoRole::start(UAVCAN::Node& node)
 {
   DeviceStatus status(DeviceStatus::SERVO_ROLE);

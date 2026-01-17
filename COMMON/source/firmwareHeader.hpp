@@ -72,8 +72,12 @@ namespace Firmware {
   };
 
 #ifdef CAN_BITRATE
+  /**
+   * @brief Header prepended by the toolchain when uploading firmware.
+   */
   struct ToolchainHeader_t {
     ToolchainHeader_t() {};
+    /** @brief Assign from a UAVCAN file read response chunk. */
     const ToolchainHeader_t& operator=(const uavcan_protocol_file_ReadResponse &firmwareChunk) {
       memcpy(this, firmwareChunk.data.data, sizeof(ToolchainHeader_t));
       return *this;

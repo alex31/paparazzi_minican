@@ -1,3 +1,7 @@
+/**
+ * @file ttyConsole.cpp
+ * @brief Console command handlers and parameter utilities.
+ */
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -69,12 +73,19 @@ static cmd_func_t cmd_adc, cmd_panic;
 static cmd_func_t cmd_threads;
 #endif
 namespace {
+  /** @brief Parse a string into a UAVCAN parameter value variant. */
   Value parse_value(etl::string_view input);
+  /** @brief Parse an optional integer from a string view. */
   std::optional<int> parse_value_int(etl::string_view input = {});
+  /** @brief Append a numeric parameter value to the console string. */
   FixedString &  appendFixed(FixedString &str, const uavcan_protocol_param_NumericValue &val);
+  /** @brief Append a parameter value to the console string. */
   FixedString &  appendFixed(FixedString &str, const uavcan_protocol_param_Value &val);
+  /** @brief Append a C string to the console string. */
   FixedString &  appendFixed(FixedString &str, const char *val);
+  /** @brief Append a GetSet response payload to the console string. */
   FixedString &  appendFixed(FixedString &str, const uavcan_protocol_param_GetSetResponse &val);
+  /** @brief Append a raw byte buffer to the console string. */
   FixedString &  appendFixed(FixedString &str, const uint8_t *ptr, size_t len);
 
   template <typename U>
@@ -85,10 +96,15 @@ namespace {
     return appendFixed(lhs, rhs);
   }
   
+  /** @brief List stored parameters, optionally filtered by prefix. */
   void  cmd_storage_list(etl::string_view = {}); 
+  /** @brief Display a stored parameter by key. */
   void  cmd_storage_display(const char* key);
+  /** @brief Set a stored parameter by key and value strings. */
   void  cmd_storage_set(const char* key, const char* value);
+  /** @brief Display a parameter using UAVCAN GetSet semantics. */
   void  cmd_uavcan_storage_display(etl::string_view key);
+  /** @brief Set a parameter using UAVCAN GetSet semantics. */
   void  cmd_uavcan_storage_set(etl::string_view key, etl::string_view value);
 }
 
@@ -122,6 +138,7 @@ static const ShellCommand commands[] = {
   param toto 10 10.5 0x10
   dans le terminal d'eclipse pour voir le résultat 
  */
+/** @brief Console command: print and parse parameters. */
 static void cmd_param(BaseSequentialStream *lchp, int argc,const char* const argv[])
 {
   if (argc == 0) {  // si aucun paramètre n'a été passé à la commande param 
@@ -151,6 +168,7 @@ namespace {
   std::optional<AdcCalPoint> adcCalFirstPoint;
 }
 
+/** @brief Console command: read/calibrate ADC battery voltage. */
 static void cmd_adc(BaseSequentialStream *lchp, int argc, const char * const argv[])
 {
   if (argc == 0) {
@@ -276,6 +294,7 @@ consteval auto make_bitrate_array() {
 
 #define STR_(x) #x
 #define STR(x)  STR_(x)
+/** @brief Console command: display CAN node information. */
 static void cmd_can(BaseSequentialStream *lchp, int ,const char* const [])
 {
   // lambda constexpr évaluée immédiatement -> produit le buffer
@@ -299,6 +318,7 @@ using pGetFunc_t = uint32_t (*) (void);
 using pSetFunc_t  = void (*) (uint32_t);
 
 
+/** @brief Console command: reboot the MCU. */
 static void cmd_restart(BaseSequentialStream *lchp, int argc,const char* const argv[])
 {
   (void) lchp;
@@ -307,6 +327,7 @@ static void cmd_restart(BaseSequentialStream *lchp, int argc,const char* const a
   systemReset();
 }
 
+/** @brief Console command: manage persistent storage entries. */
 static void cmd_storage(BaseSequentialStream *lchp, int argc,const char* const argv[])
 {
   (void) lchp;
@@ -325,6 +346,7 @@ static void cmd_storage(BaseSequentialStream *lchp, int argc,const char* const a
   }
 }
 
+/** @brief Console command: manage UAVCAN parameters. */
 static void cmd_uavparam(BaseSequentialStream *lchp, int argc,const char* const argv[])
 {
   (void) lchp;
@@ -343,6 +365,7 @@ static void cmd_uavparam(BaseSequentialStream *lchp, int argc,const char* const 
   }
 }
 
+/** @brief Console command: trigger a panic for watchdog reset. */
 static void cmd_panic(BaseSequentialStream *, int ,const char* const [])
 {
   // just hang the system to trigger watchdog reset for tuning purpose
@@ -400,11 +423,13 @@ typedef struct _ThreadCpuInfo {
 } ThreadCpuInfo ;
   
 #if CH_DBG_STATISTICS
+/** @brief Gather per-thread CPU usage data. */
 static void stampThreadCpuInfo (ThreadCpuInfo *ti);
 static float stampThreadGetCpuPercent (const ThreadCpuInfo *ti, const uint32_t idx);
 static float stampISRGetCpuPercent (const ThreadCpuInfo *ti);
 #endif
 
+/** @brief Console command: print unique device ID. */
 static void cmd_uid(BaseSequentialStream *lchp, int argc,const char* const argv[]) {
   (void)argv;
   if (argc > 0) {
@@ -418,6 +443,7 @@ static void cmd_uid(BaseSequentialStream *lchp, int argc,const char* const argv[
 }
 
 
+/** @brief Console command: print memory usage statistics. */
 static void cmd_mem(BaseSequentialStream *lchp, int argc,const char* const argv[]) {
   (void)argv;
   if (argc > 0) {
@@ -448,6 +474,7 @@ static void cmd_mem(BaseSequentialStream *lchp, int argc,const char* const argv[
 
 
 #if  CH_DBG_STATISTICS
+/** @brief Console command: print thread stack/CPU usage. */
 static void cmd_threads(BaseSequentialStream *lchp, int argc,const char * const argv[]) {
   static const char *states[] = {CH_STATE_NAMES};
   thread_t *tp = chRegFirstThread();
@@ -509,6 +536,7 @@ static const ShellConfig shell_cfg1 = {
 
 
 
+/** @brief Initialize the console subsystem and shell. */
 void consoleInit (void)
 {
   /*
@@ -530,6 +558,7 @@ void consoleInit (void)
 }
 
 
+/** @brief Launch the console worker thread. */
 void consoleLaunch (void)
 {
   thread_t *shelltp = NULL;
@@ -595,6 +624,7 @@ namespace {
     }
   };
 
+  /** @brief Match a parameter name against a simple pattern. */
   bool match(const frozen::string&  s, etl::string_view pat) {
     // frozen::string lacks starts_with/ends_with/contains, so adapt via views.
     const etl::string_view haystack{s.data(), s.size()};
@@ -613,6 +643,7 @@ namespace {
     return haystack.find(pat) != etl::string_view::npos;
   }
 
+  /** @brief List parameters, optionally filtered by a pattern. */
   void cmd_storage_list(etl::string_view partial)
   {
     bool matchOnce = false;
@@ -634,6 +665,7 @@ namespace {
     DebugTrace("\n");
   }
   
+  /** @brief Display a parameter by name or index string. */
   void cmd_storage_display(const char* key)
   {
     ssize_t index;
@@ -667,6 +699,7 @@ namespace {
     }
   }
 
+  /** @brief Display a parameter by index. */
   void cmd_storage_display(ssize_t index)
   {
     if (index <= 0) {
@@ -679,6 +712,7 @@ namespace {
     }
   }
   
+  /** @brief Set a parameter by name or index string. */
   void cmd_storage_set(const char* key, const char* value)
   {
     ssize_t index;
@@ -755,6 +789,7 @@ enum uavcan_protocol_param_Value_type_t {
 
   */
   
+  /** @brief Display a parameter using UAVCAN GetSet response formatting. */
   void cmd_uavcan_storage_display(etl::string_view key)
   {
     int index = -1;
@@ -785,6 +820,7 @@ enum uavcan_protocol_param_Value_type_t {
   }
 
   
+  /** @brief Set a parameter using UAVCAN GetSet request formatting. */
   void cmd_uavcan_storage_set(etl::string_view key, etl::string_view valuestr)
   {
     uint16_t index = 0;
@@ -838,6 +874,7 @@ enum uavcan_protocol_param_Value_type_t {
   }
 
 
+  /** @brief Parse a string into a typed parameter value. */
   Value parse_value(etl::string_view input) {
     // 1. Trim left/right
     while (!input.empty() && std::isspace(input.front())) input.remove_prefix(1);
@@ -864,6 +901,7 @@ enum uavcan_protocol_param_Value_type_t {
   }
 
 
+  /** @brief Parse an integer value if possible. */
   std::optional<int> parse_value_int(etl::string_view input)
   {
     const Value v = parse_value(input);
@@ -875,6 +913,7 @@ enum uavcan_protocol_param_Value_type_t {
   }
 
 
+  /** @brief Append a numeric parameter value to the output string. */
   FixedString &  appendFixed(FixedString &str, const uavcan_protocol_param_NumericValue &val)
   {
     FixedString added;
@@ -894,6 +933,7 @@ enum uavcan_protocol_param_Value_type_t {
     return str;
   }
   
+  /** @brief Append a parameter value to the output string. */
   FixedString &  appendFixed(FixedString &str, const uavcan_protocol_param_Value &val)
   {
     FixedString added;
@@ -920,18 +960,21 @@ enum uavcan_protocol_param_Value_type_t {
     return str;
   }
 
+  /** @brief Append a C string to the output string. */
   FixedString &  appendFixed(FixedString &str, const char *val)
   {
     str += val;
     return str;
   }
 
+  /** @brief Append a raw byte buffer to the output string. */
   FixedString &  appendFixed(FixedString &str, const uint8_t *ptr, size_t len)
   {
     str += FixedString(reinterpret_cast<const char*>(ptr), len);
     return str;
   }
 
+  /** @brief Append a GetSet response summary to the output string. */
   FixedString &  appendFixed(FixedString &str, const uavcan_protocol_param_GetSetResponse &resp)
   {
     appendFixed(str, resp.name.data,  resp.name.len);
@@ -946,6 +989,7 @@ enum uavcan_protocol_param_Value_type_t {
 }
 
 #if CH_DBG_STATISTICS
+/** @brief Sample per-thread and ISR CPU usage counters. */
 static void stampThreadCpuInfo (ThreadCpuInfo *ti)
 {
   const thread_t *tp =  chRegFirstThread();
@@ -969,6 +1013,7 @@ static void stampThreadCpuInfo (ThreadCpuInfo *ti)
   } while ((tp != NULL) && (idx < MAX_CPU_INFO_ENTRIES));
 }
 
+/** @brief Return CPU usage percentage for a thread index. */
 static float stampThreadGetCpuPercent (const ThreadCpuInfo *ti, const uint32_t idx)
 {
   if (idx >= MAX_CPU_INFO_ENTRIES) 
@@ -977,6 +1022,7 @@ static float stampThreadGetCpuPercent (const ThreadCpuInfo *ti, const uint32_t i
   return ti->cpu[idx];
 }
 
+/** @brief Return CPU usage percentage attributed to ISRs. */
 static float stampISRGetCpuPercent (const ThreadCpuInfo *ti)
 {
   return ti->totalISRTicks * 100.0f / ti->totalTicks;

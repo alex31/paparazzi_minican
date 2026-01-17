@@ -1,3 +1,7 @@
+/**
+ * @file UAVCanSlave.cpp
+ * @brief UAVCAN node initialization and role orchestration.
+ */
 #include <algorithm>
 #include <ch.h>
 #include <cstring>
@@ -92,6 +96,7 @@ namespace {
   uavcan_protocol_file_ReadRequest readReq;
 
   
+  /** @brief Handle incoming NodeStatus broadcasts (debug only). */
   void processNodeStatus(CanardRxTransfer *transfer,
 			 const uavcan_protocol_NodeStatus &nodeStatus)
   {
@@ -111,6 +116,7 @@ namespace {
 #endif
   }
 
+  /** @brief Respond to GetNodeInfo requests. */
   void processNodeInfoRequest(CanardRxTransfer *transfer,
 			      const uavcan_protocol_GetNodeInfoRequest &)
   {
@@ -124,6 +130,7 @@ namespace {
 #endif
   }
 
+  /** @brief Start a firmware update session when requested. */
   void processFirmwareUpdateRequest(CanardRxTransfer *transfer,
 			     const uavcan_protocol_file_BeginFirmwareUpdateRequest &msg)
   {
@@ -146,12 +153,14 @@ namespace {
     }
   }
 
+  /** @brief Forward file read responses to the firmware updater. */
   void processFileReadResponse(CanardRxTransfer *transfer,
 			       const uavcan_protocol_file_ReadResponse &firmwareChunk)
   {
     FirmwareUpdater::newChunk(transfer, firmwareChunk, readReq);
   }
 
+  /** @brief Debug handler for GetNodeInfo responses. */
   void processNodeInfoResponse(CanardRxTransfer *transfer,
 			       const uavcan_protocol_GetNodeInfoResponse &nodeInfoResp)
   {
@@ -175,6 +184,7 @@ namespace {
   }
 
 
+  /** @brief Handle parameter GetSet requests. */
   void processGetSetRequest(CanardRxTransfer *transfer,
 		     const uavcan_protocol_param_GetSetRequest &req)
   {
@@ -213,6 +223,7 @@ namespace {
     }
   }
 
+  /** @brief Handle RestartNode requests and reboot if authorized. */
   void processRestartNodeRequest(CanardRxTransfer *transfer,
 		     const uavcan_protocol_RestartNodeRequest &req)
   {
@@ -229,6 +240,7 @@ namespace {
     systemReset();
   }
 
+  /** @brief Handle ExecuteOpcode parameter requests (save/erase). */
   void processExecuteOpcodeRequest(CanardRxTransfer *transfer,
 		     const uavcan_protocol_param_ExecuteOpcodeRequest &req)
   {
@@ -251,6 +263,7 @@ namespace {
 
   etl::vector<RoleBase *, 16> roles;
 
+  /** @brief Fixed-size string wrapper for constexpr parameter names. */
   template <size_t N>
   struct FixedString {
     char value[N];
@@ -264,6 +277,12 @@ namespace {
 
   // add an object of type RoleClass if any of the Params is found
   // in the frozen parameter list
+  /**
+   * @brief Add a role when any of its activation parameters is enabled.
+   *
+   * @tparam RoleClass The role type to instantiate.
+   * @tparam roleNames Parameter names used to decide activation.
+   */
   template <typename RoleClass, FixedString... roleNames>
   bool addRole()
   {
@@ -294,16 +313,19 @@ namespace {
 
  
 namespace CANSlave {
+  /** @brief Return the current UAVCAN node ID. */
   uint8_t	getNodeId()
   {
     return slaveNode->getNodeId();
   }
   
+  /** @brief Return the singleton UAVCAN node instance. */
   UAVCAN::Node& getInstance() {
     return *slaveNode;
   }
 
   
+  /** @brief Initialize and start the UAVCAN node and all enabled roles. */
   DeviceStatus start(int8_t _nodeId, bool dynamicId_fd)
   {
     static int8_t nodeId = _nodeId;
@@ -419,6 +441,7 @@ namespace CANSlave {
 
 namespace {
 #ifdef TRACE
+ /** @brief Throttle repeated debug prints to avoid log spam. */
  void printOnceInATime(const etl::string_view sv)
  {
    static etl::string<120> lastMsg = "";

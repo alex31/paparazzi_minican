@@ -1,10 +1,16 @@
 #pragma once
 #include "roleConf.h"
-// This header is intentionally a bare initializer list that is #included inside
-// the constexpr params_list definition (see UAVCAN/persistantParam.cpp). Each
-// entry becomes a Persistant::Parameter (name + bounds + default), and the
-// resulting indices/names are the ones exposed via uavcan.protocol.param.GetSet.
-// roles are enabled with boolean setting with ROLE uppercase to make them visible in GUI or TUI
+/**
+ * @file nodeParameters.hpp
+ * @brief Parameter definition list used by the persistent parameter system.
+ *
+ * This header is intentionally a bare initializer list that is #included inside
+ * the constexpr params_list definition (see UAVCAN/persistantParam.cpp). Each
+ * entry becomes a Persistant::Parameter (name + bounds + default), and the
+ * resulting indices/names are the ones exposed via uavcan.protocol.param.GetSet.
+ * Roles are enabled with boolean settings using uppercase ROLE to make them
+ * visible in GUI or TUI.
+ */
       {"can.terminal_resistor", {.v = true}},
 	
       {"uavcan.node_id", {.min = -124, .max = 124, .v = 0}}, // 0 is dynamic, negative is prefered dynamic

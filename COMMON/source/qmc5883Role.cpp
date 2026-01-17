@@ -58,6 +58,7 @@ namespace {
   constexpr float countsPerGauss2G = 12000.0f;
   constexpr float countsPerGauss8G = 3000.0f;
 
+  /** @brief Perform a blocking I2C transfer to the QMC5883. */
   msg_t xfer(const uint8_t *tx, size_t txlen, uint8_t *rx, size_t rxlen) {
     i2cAcquireBus(&ExternalI2CD);
     const msg_t ret = i2cMasterTransmitTimeout(&ExternalI2CD, qmcAddr, tx, txlen,
@@ -67,13 +68,13 @@ namespace {
   }
 }
 
-
+/** @brief No subscriptions required for the magnetometer role. */
 DeviceStatus Qmc5883Role::subscribe(UAVCAN::Node&)
 {
   return DeviceStatus(DeviceStatus::MAG_QMC5883);
 }
 
-
+/** @brief Initialize the sensor and start the polling thread. */
 DeviceStatus Qmc5883Role::start(UAVCAN::Node& node)
 {
   m_node = &node;
@@ -134,7 +135,7 @@ DeviceStatus Qmc5883Role::start(UAVCAN::Node& node)
   return DeviceStatus(DeviceStatus::MAG_QMC5883);
 }
 
-
+/** @brief Periodically read the magnetometer and publish UAVCAN data. */
 void Qmc5883Role::periodic(void *)
 {
   uavcan_equipment_ahrs_MagneticFieldStrength2 msg = {};

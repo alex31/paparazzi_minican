@@ -1,3 +1,7 @@
+/**
+ * @file ttyConsole.cpp
+ * @brief Bootloader console command implementation.
+ */
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -71,6 +75,7 @@ static const ShellCommand commands[] = {
   param toto 10 10.5 0x10
   dans le terminal d'eclipse pour voir le résultat 
  */
+/** @brief Console command: print and parse parameters. */
 static void cmd_param(BaseSequentialStream *lchp, int argc,const char* const argv[])
 {
   if (argc == 0) {  // si aucun paramètre n'a été passé à la commande param 
@@ -94,6 +99,7 @@ using pGetFunc_t = uint32_t (*) (void);
 using pSetFunc_t  = void (*) (uint32_t);
 
 
+/** @brief Console command: reboot the MCU. */
 static void cmd_restart(BaseSequentialStream *lchp, int argc,const char* const argv[])
 {
   (void) lchp;
@@ -138,6 +144,7 @@ static const SerialConfig ftdiConfig =  {
 
 #define MAX_CPU_INFO_ENTRIES 20
 
+/** @brief Thread CPU usage snapshot data. */
 typedef struct _ThreadCpuInfo {
   float    ticks[MAX_CPU_INFO_ENTRIES];
   float    cpu[MAX_CPU_INFO_ENTRIES];
@@ -154,11 +161,15 @@ typedef struct _ThreadCpuInfo {
 } ThreadCpuInfo ;
   
 #if CH_DBG_STATISTICS
+/** @brief Sample per-thread and ISR CPU usage counters. */
 static void stampThreadCpuInfo (ThreadCpuInfo *ti);
+/** @brief Return CPU usage percentage for a thread index. */
 static float stampThreadGetCpuPercent (const ThreadCpuInfo *ti, const uint32_t idx);
+/** @brief Return CPU usage percentage attributed to ISRs. */
 static float stampISRGetCpuPercent (const ThreadCpuInfo *ti);
 #endif
 
+/** @brief Console command: print unique device ID. */
 static void cmd_uid(BaseSequentialStream *lchp, int argc,const char* const argv[]) {
   (void)argv;
   if (argc > 0) {
@@ -172,6 +183,7 @@ static void cmd_uid(BaseSequentialStream *lchp, int argc,const char* const argv[
 }
 
 
+/** @brief Console command: print memory usage statistics. */
 static void cmd_mem(BaseSequentialStream *lchp, int argc,const char* const argv[]) {
   (void)argv;
   if (argc > 0) {
@@ -202,6 +214,7 @@ static void cmd_mem(BaseSequentialStream *lchp, int argc,const char* const argv[
 
 
 #if  CH_DBG_STATISTICS
+/** @brief Console command: print thread stack/CPU usage. */
 static void cmd_threads(BaseSequentialStream *lchp, int argc,const char * const argv[]) {
   static const char *states[] = {CH_STATE_NAMES};
   thread_t *tp = chRegFirstThread();
@@ -263,6 +276,7 @@ static const ShellConfig shell_cfg1 = {
 
 
 
+/** @brief Initialize the console subsystem and shell. */
 void consoleInit (void)
 {
   /*
@@ -284,6 +298,7 @@ void consoleInit (void)
 }
 
 
+/** @brief Launch the console worker thread. */
 void consoleLaunch (void)
 {
   thread_t *shelltp = NULL;
@@ -322,6 +337,7 @@ void consoleLaunch (void)
 }
 
 #if CH_DBG_STATISTICS
+/** @brief Sample per-thread and ISR CPU usage counters. */
 static void stampThreadCpuInfo (ThreadCpuInfo *ti)
 {
   const thread_t *tp =  chRegFirstThread();
@@ -345,6 +361,7 @@ static void stampThreadCpuInfo (ThreadCpuInfo *ti)
   } while ((tp != NULL) && (idx < MAX_CPU_INFO_ENTRIES));
 }
 
+/** @brief Return CPU usage percentage for a thread index. */
 static float stampThreadGetCpuPercent (const ThreadCpuInfo *ti, const uint32_t idx)
 {
   if (idx >= MAX_CPU_INFO_ENTRIES) 
@@ -353,6 +370,7 @@ static float stampThreadGetCpuPercent (const ThreadCpuInfo *ti, const uint32_t i
   return ti->cpu[idx];
 }
 
+/** @brief Return CPU usage percentage attributed to ISRs. */
 static float stampISRGetCpuPercent (const ThreadCpuInfo *ti)
 {
   return ti->totalISRTicks * 100.0f / ti->totalTicks;

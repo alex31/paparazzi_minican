@@ -1,3 +1,7 @@
+/**
+ * @file main.cpp
+ * @brief Application entry point and system initialization.
+ */
 #include <ch.h>
 #include <hal.h>
 #include "stdutil.h"
@@ -29,6 +33,7 @@ namespace {
   };
   
   THD_WORKING_AREA(waWatchdogReset, 256) __attribute__((section(FAST_SECTION "_clear")));
+  /** @brief Periodically reset the watchdog to detect system stalls. */
   void  watchdogReset (void *) {
     wdgStart(&WDGD1, &wdgcfg);
     while(true) {
@@ -39,6 +44,7 @@ namespace {
 #endif
 }
 
+/** @brief Early initializer to set up ChibiOS and the heap. */
 void _init_chibios() __attribute__ ((constructor(101)));
 void _init_chibios() {
   halInit();
@@ -47,6 +53,7 @@ void _init_chibios() {
 }
 
 
+/** @brief Main application entry point. */
 int main(void)
 {
   /*

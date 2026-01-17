@@ -1,3 +1,7 @@
+/**
+ * @file hardwareConf.hpp
+ * @brief Hardware configuration constants and aliases.
+ */
 #pragma once
 #include <stdint.h>
 #include <array>
@@ -40,22 +44,27 @@ static constexpr uint32_t operator""_hz (unsigned long long int freq)
 {
   return freq;
 }
+/** @brief Frequency literal in kHz. */
 static constexpr uint32_t operator""_khz (unsigned long long int freq)
 {
   return freq * 1000UL;
 }
+/** @brief Frequency literal in MHz. */
 static constexpr uint32_t operator""_mhz (unsigned long long int freq)
 {
   return freq * 1000_khz;
 }
+/** @brief Resistance literal in ohms. */
 static constexpr long double operator""_ohm (long double resistance)
 {
   return resistance;
 }
+/** @brief Resistance literal in kilo-ohms. */
 static constexpr long double operator""_kohm (long double resistance)
 {
   return resistance * 1000UL;
 }
+/** @brief Percentage literal as an integer scaled by 100. */
 static constexpr uint32_t operator""_percent (unsigned long long int freq)
 {
   return freq * 100UL;
@@ -114,6 +123,7 @@ static constexpr PWMDriver& LedStripPWMD  = CONCAT(PWMD, LED2812_TIM);
 #error  PLATFORM_MINICAN and/or PLATFORM_MICROCAN and/or BOOTLOADER_MCAN not defined
 #endif
 
+/** @brief SPI configuration for the EEPROM device. */
 static inline const SPIConfig eepromSpiCfg = {
     .circular       = false,
     .slave          = false,

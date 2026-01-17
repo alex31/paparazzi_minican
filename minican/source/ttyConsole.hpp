@@ -1,11 +1,17 @@
+/**
+ * @file ttyConsole.hpp
+ * @brief TTY console initialization helpers.
+ */
 #pragma once
 
 
 
-// fonctions exportées par le module
+// fonctions exportees par le module
 
 #ifdef CONSOLE_DEV_SD
+/** @brief Initialize the console subsystem. */
 void consoleInit (void);
+/** @brief Launch the console thread. */
 void consoleLaunch (void);
 
 #if defined TRACE 

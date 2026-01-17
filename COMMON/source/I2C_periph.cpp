@@ -1,3 +1,7 @@
+/**
+ * @file I2C_periph.cpp
+ * @brief Shared I2C initialization and recovery logic.
+ */
 #include <ch.h>
 #include <hal.h>
 
@@ -9,6 +13,7 @@
 #include "stdutil.h"
 
 namespace {
+  /// Encode the I2C digital noise filter value into CR1.
   constexpr uint32_t  STM32_CR1_DNF(uint32_t n) {
     return (n << I2C_CR1_DNF_Pos) & I2C_CR1_DNF_Msk;
   }
@@ -31,12 +36,14 @@ namespace {
     .cr2 = 0, // Only the ADD10 bit can eventually be specified here (10-bit addressing mode)
   };
 
+  /// Track whether the I2C peripheral has already been started.
   bool started = false;
 }
 
 
 namespace I2CPeriph
 {
+  /** @brief Start the shared I2C peripheral with configured timing. */
   DeviceStatus start()
   {
     // already started : nothing to do
@@ -74,6 +81,7 @@ namespace I2CPeriph
     return DeviceStatus(DeviceStatus::I2C);
   }
   
+  /** @brief Stop and reinitialize the I2C peripheral to recover from errors. */
   void reset()
   {
     const auto config = ExternalI2CD.config;
@@ -85,7 +93,6 @@ namespace I2CPeriph
     i2cStart(&ExternalI2CD, config);
   }
 };
-
 
 
 

@@ -1,3 +1,7 @@
+/**
+ * @file adcSurvey.cpp
+ * @brief ADC sampling, conversion, and threshold monitoring implementation.
+ */
 #include <ch.h>
 #include <hal.h>
 #include <utility>
@@ -7,6 +11,7 @@
 #include "adcSamples.hpp"
 #include "jobQueue.hpp"
 #include "UAVCAN/persistantParam.hpp"
+#include "hardwareConf.hpp"
 
 /*
    ° continuous conversion @ 1Khz
@@ -14,26 +19,25 @@
  */
 
 namespace {
-  constexpr float psBatMin = 6;
-  constexpr float psBatMax = 26;
-  constexpr float coreTempMin = -10.0f;
-  constexpr float coreTempMax = 60.0f;
+  /** @brief ADC divider resistors that scale battery voltage down. */
+   constexpr float resistor_r1 = 2200;
+   constexpr float resistor_r2 = 18000;
 
+/** @brief ADC calibration value from Ref Manuel */
   constexpr float ts_cal1_temp = 30;
   constexpr float ts_cal2_temp = 130;
   constexpr float calib_vref = 3.0;
-  constexpr float resistor_r1 = 2200;
-  constexpr float resistor_r2 = 18000;
-
-  const uint16_t * const ts_cal1_ptr = (uint16_t *)  0x1FFF75A8;
+ const uint16_t * const ts_cal1_ptr = (uint16_t *)  0x1FFF75A8;
   const uint16_t * const ts_cal2_ptr = (uint16_t *)  0x1FFF75CA;
   const uint16_t * const vref_int_cal_ptr = (uint16_t *)  0x1FFF75AA;
   const uint16_t&  ts_cal1 = *ts_cal1_ptr;
   const uint16_t&  ts_cal2 = *ts_cal2_ptr;
   const uint16_t&  vref_int_cal = *vref_int_cal_ptr;
 
+  /** jobqueue subsystem that help to pass data from ISR to Thread */
   auto& jq = JobQueue<1, adcerror_t>::instance<512>();
 
+  /** @brief ADC channel indices within the sample buffer. */
   enum class AdcChannel{
     psBat,
     coreTemp, vref, nbChannels};
@@ -41,11 +45,17 @@ namespace {
   AdcSamples<adcsample_t, std::to_underlying(AdcChannel::nbChannels), 8>
 			  IN_DMA_SECTION(adcSamples);
 
+  /** @brief Convert a temperature to ADC sample value. */
   uint16_t calculate_tsval(float temp) ;
+  /** @brief Convert a voltage to ADC sample value. */
   adcsample_t volts2adc(float v);
+  /** @brief Convert ADC sample value to voltage. */
   float adc2volts(adcsample_t sample);
+  /** @brief Perform a one-shot ADC conversion. */
   void convert();
+  /** @brief Start continuous ADC conversion with thresholds. */
   void startConversion();
+  /** @brief Handle ADC watchdog errors in thread context. */
   void adcErrorCb(adcerror_t err);
   Adc::Callback_t *errorCb;
 
@@ -78,6 +88,7 @@ namespace {
 
 
 namespace Adc {
+  /** @brief Start ADC sampling and optional error callback reporting. */
   void start(Callback_t *cb)
   {
     errorCb = cb;
@@ -122,16 +133,19 @@ namespace Adc {
     startConversion();
   }
   
+  /** @brief Register an error callback for ADC watchdog events. */
   void setErrorCB(Callback_t *cb)
   {
     errorCb = cb;
   }
   
+  /** @brief Return raw battery voltage before calibration. */
   float getPsBatRaw()
   {
     return adc2volts(adcSamples[std::to_underlying(AdcChannel::psBat)]);
   }
 
+  /** @brief Return calibrated battery voltage. */
   float getPsBat()
   {
     const float raw = getPsBatRaw();
@@ -145,6 +159,7 @@ namespace Adc {
       return raw;
   }
 
+  /** @brief Compute the VCC supply voltage. */
   float getVcc()
   {
     //V REF+ = VREF+_Charac × VREFINT_CAL ⁄ VREFINT_DATA
@@ -152,6 +167,7 @@ namespace Adc {
       adcSamples[std::to_underlying(AdcChannel::vref)];
   }
 
+  /** @brief Convert the temperature sensor sample to degrees Celsius. */
   float getCoreTemp()
   {
     // TS_CALx calibration constants are measured at VREF+ = calib_vref.
@@ -169,6 +185,7 @@ namespace Adc {
 
 
 namespace {
+  /** @brief Compute the temperature sensor ADC value for a target temperature. */
   uint16_t calculate_tsval(float temp) 
   {
     const float rawv =  ((temp - ts_cal1_temp) / (ts_cal2_temp - ts_cal1_temp))
@@ -176,6 +193,7 @@ namespace {
     return rawv * calib_vref / Adc::getVcc();
   }
 
+  /** @brief Convert a voltage to a raw ADC sample using the divider ratio. */
   adcsample_t volts2adc(float v)
   {
     const adcsample_t sampleMax = (1U << 12) - 1U;
@@ -184,6 +202,7 @@ namespace {
     return adcv * ratio;
   }
 
+  /** @brief Convert a raw ADC sample to a voltage using the divider ratio. */
   float adc2volts(adcsample_t sample)
   {
     const adcsample_t sampleMax = (1U << 12) - 1U;
@@ -192,12 +211,14 @@ namespace {
     return adcv * ratio;
   }
 
+  /** @brief Perform a blocking ADC conversion. */
   void convert()
   {
     adcConvert(&ADCD1, &adcgrpcfgNoThreshold,
 	       adcSamples.data(), adcSamples.depth());
   }
 
+  /** @brief Start continuous ADC conversion with thresholds enabled. */
   void startConversion()
   {
     adcStartConversion(&ADCD1, &adcgrpcfgWithThreshold,
@@ -206,6 +227,7 @@ namespace {
 
 
   // this callback is called in thread context via jobqueue module
+  /** @brief Handle ADC watchdog events in a job queue context. */
   void adcErrorCb(adcerror_t err)
   {
     if (err & (ADC_ERR_AWD1 | ADC_ERR_AWD2)) {

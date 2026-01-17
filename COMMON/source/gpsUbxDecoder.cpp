@@ -1,3 +1,7 @@
+/**
+ * @file gpsUbxDecoder.cpp
+ * @brief Implementation of the UBX stream decoder.
+ */
 #include "roleConf.h"
 
 #if USE_GPS_UBX_ROLE
@@ -9,6 +13,9 @@
 using namespace UBX;
 
 
+/**
+ * @brief Reset the decoder state and clear the payload buffer.
+ */
 void Decoder::reset()
 {
   payload.clear();
@@ -22,12 +29,19 @@ void Decoder::reset()
   state = WAIT_FOR_SYNC1;
 }
 
+/**
+ * @brief Update UBX checksum with a single byte.
+ */
 inline void Decoder::updateChecksum(uint8_t byte)
 {
   ckA = ckA + byte;
   ckB = ckB + ckA;
 }
 
+/**
+ * @brief Dispatch a complete UBX payload to the configured callback.
+ * @return True when a message callback accepts the payload.
+ */
 bool Decoder::dispatch()
 {
   if (cls != static_cast<uint8_t>(MessageClass::NAV)) {
@@ -73,6 +87,9 @@ bool Decoder::dispatch()
   return false;
 }
 
+/**
+ * @brief Feed raw bytes into the decoder state machine.
+ */
 void UBX::Decoder::feed(etl::span<const uint8_t> data)
 {
   std::size_t idx = 0;
