@@ -319,12 +319,19 @@ from using the same pins/timers.
 
 ## How to add a new role
 
+The recommended starting point is the built-in template role:
+`COMMON/source/templateRole.hpp` and `COMMON/source/templateRole.cpp`.
+Copy these files, rename the class and files, then adapt subscriptions,
+resources, and parameters to your new role.
+
 1) Create role files
-   - Add `COMMON/source/MyRole.hpp` and `COMMON/source/MyRole.cpp`.
-   - Inherit from `RoleBase` and optionally `RoleCrtp<MyRole>`.
+   - Copy `COMMON/source/templateRole.hpp` and `COMMON/source/templateRole.cpp`.
+   - Rename to `COMMON/source/MyRole.hpp` and `COMMON/source/MyRole.cpp`.
+   - Rename the class (`TemplateRole` -> `MyRole`) and update comments.
 
 2) Add role parameter(s)
    - Add `ROLE.my_role` to `COMMON/source/nodeParameters.hpp`.
+   - Add any runtime parameters (example in template: `role.template.log_every`).
 
 3) Add compile-time toggle
    - Add `#define USE_MY_ROLE true` in `COMMON/source/roleConf.h`.
@@ -355,7 +362,8 @@ Recommended workflow:
    - Parameter names, limits, defaults
 
 2) Ask the LLM to:
-   - Create role files (`*.hpp` / `*.cpp`)
+   - Start from `COMMON/source/templateRole.hpp/.cpp`
+   - Copy/rename the files and class
    - Add parameters to `nodeParameters.hpp`
    - Add compile-time toggle in `roleConf.h`
    - Register in `UAVCanSlave.cpp`
