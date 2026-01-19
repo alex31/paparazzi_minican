@@ -34,6 +34,9 @@
 #if USE_VOLTMETER_ROLE
 #include "voltmeterRole.hpp"
 #endif
+#if USE_TEMPLATE_ROLE
+#include "templateRole.hpp"
+#endif
 #if USE_GPS_UBX_ROLE
 #include "gpsUbxRole.hpp"
 #endif
@@ -405,6 +408,9 @@ namespace CANSlave {
 #endif
 #if USE_VOLTMETER_ROLE
     rolesOk = rolesOk && addRole<VoltmeterRole, FixedString("ROLE.voltmeter")>();
+#endif
+#if USE_TEMPLATE_ROLE
+    rolesOk = rolesOk && addRole<TemplateRole, FixedString("ROLE.template")>();
 #endif
 
     if (not rolesOk) {

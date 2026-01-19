@@ -60,19 +60,8 @@ namespace {
   uint8_t ubxKeySize(uint32_t key)
   {
     const uint8_t keySize = (key >> 28) & 0x07;
-    switch (keySize) {
-    case 0x1:
-    case 0x2:
-      return 1;
-    case 0x3:
-      return 2;
-    case 0x4:
-      return 4;
-    case 0x5:
-      return 8;
-    default:
-      return 0;
-    }
+    static constexpr uint8_t kKeySizeLut[8] = {0, 1, 1, 2, 4, 8, 0, 0};
+    return kKeySizeLut[keySize];
   }
 
   /**

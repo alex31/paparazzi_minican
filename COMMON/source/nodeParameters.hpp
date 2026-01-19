@@ -90,6 +90,11 @@
       {"role.led2812.led_number", {.min = 1, .max = 8, .v = 8}},	
 #endif
 
+#if USE_TEMPLATE_ROLE
+      {"ROLE.template", {.v = false}},
+      {"role.template.log_every", {.min = 0, .max = 1000, .v = 0}},
+#endif
+
 #if USE_VOLTMETER_ROLE
       {"ROLE.voltmeter", {.v = false}},
       {"role.voltmeter.cells", {.min = 2, .max = 6, .v = 4}},

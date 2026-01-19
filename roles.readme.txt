@@ -68,6 +68,12 @@ Roles UAVCAN – messages reçus / envoyés
       dépasse `role.voltmeter.gps_speed_off_mps`, les LEDs sont éteintes.
     - Matériel partagé avec `ROLE.led2812` : mutualisation TIM3/PB07 et, sur MicroCAN, le connecteur `F0`.
 
+- TemplateRole (`ROLE.template`)
+  - Reçoit : `uavcan.protocol.NodeStatus` (broadcast) pour exemple pédagogique.
+  - Envoie : rien par défaut (optionnellement log via `node.infoCb`).
+  - Paramètres : `role.template.log_every` (0 = pas de log, sinon log 1/N messages).
+  - Notes : rôle squelette pour copier/coller et remplacer le message UAVCAN, les ressources et les paramètres.
+
 Services/protocoles gérés par le nœud (pubSub/UAVCanSlave)
 -----------------------------------------------------------
 - Diffusion périodique : `uavcan.protocol.NodeStatus`.

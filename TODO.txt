@@ -1,0 +1,147 @@
+A COURT TERME:
+
+
+  ° tester l'entrée bootloader serial du root makefile sur minican qui a un pad boot0 accessible
+  ° utiliser le vendor specific code pour envoyer des log d'erreur/warning
+
+PLAN de l'Iron Bird
+ ° id, role et config de chaque mini/microcan -> fichier : dump des configs
+---
+
+CODÉ MAIS PAS TESTÉ :
+  ° smart servo : retour via le message uavcan.equipment.actuator.Status.
+  
+  ° roleUbxGps en mode configuration
+
+
+  °  Utiliser le specific code application pour remonter des infos :
+    - n° de blocs transféré pendant un firmware update 
+    - code si il y a des pb d'alim ou autre
+    - tester si on boote après un watchdog reset en provoquant un panic avec la commande panic du shell
+---
+
+A DEBUGGER:
+
+
+
+TUNNEL SERIAL :
+  -> configuration uart similaire à tunnel sbus ? (RTOEN et RTOIE) ? -> tester le DNF ?
+  -> a tester avec pprz
+  -> version qui gere la comm/config xbee et qui decapsule encapsule le header xbee ?
+
+
+---
+
+DOXYGEN :
+  -> reprendre la doc de tous les fichiers
+---
+
+
+GITHUB :
+° projet autonome avec sous-modules pour chibios, COMMON, DSDL, ETL, frozen, etc
+° binaire de gcc15.2 pour ubuntu telechargeable en binaire
+---
+
+Un jour faudra faire une DOC :
+
+° architecture logicielle
+° doc : comment ajouter un role
+  + aide en fournissant un prompt pour LLM ?
+ DOCUMENTATION
+   -> description globale du projet
+   -> description du hardware
+   -> howto: build
+   -> description des roles existants
+      ° enable disable des roles via les paramètres
+      ° enable disable des roles à la compilation
+      ° manuel d'utilisation des roles existants : configuration branchements
+-> description de l'architecture
+   -> howto: ajouter un role
+      ° ajouter un role avec un LLM
+---
+
+ROLES à ajouter :
+  ° role IO_expender
+  ° IMU avec notch filtering
+  ° full AHRS ?
+  ° motor stepper ?
+
+AHRS / notch filtering notes:
+  - ArduPilot applies harmonic notch filters in software (biquad on CPU).
+  - FFT is only used to estimate notch center frequencies; the filter itself is still biquad.
+  - Invensense IMU driver configures AAF/LPF; internal IMU notch is left at default.
+  - ArduPilot uses CMSIS-DSP mainly for FFT (GyroFFT), not for notch filters.
+  - CMSIS-DSP in ArduPilot is shipped as prebuilt DSP libs + headers.
+  - Minican plan (recent Invensense 6-axis IMU):
+    * Use gyro notch from bidir DShot RPM (4 motors + harmonics).
+    * Update notch coefficients at low rate (e.g., 50-200 Hz).
+    * Optional FFT-based tracking for non-motor resonances if CPU budget allows.
+    * Keep IMU AAF/LPF enabled as the first stage.
+
+  Core Sensor Roles
+
+  - Airspeed sensor publishing uavcan.equipment.air_data.RawAirData — Tools/AP_Periph/airspeed.cpp
+  - Rangefinder + proximity publishing uavcan.equipment.range_sensor.Measurement / proximity grids
+  — Tools/AP_Periph/rangefinder.cpp and Tools/AP_Periph/proximity.cpp
+  - IMU (accel/gyro) publishing uavcan.equipment.ahrs.* — Tools/AP_Periph/imu.cpp
+  - Battery monitor + BMS/cell telemetry — Tools/AP_Periph/battery.cpp, Tools/AP_Periph/battery_bms.cpp,
+    Tools/AP_Periph/battery_tag.cpp, Tools/AP_Periph/batt_balance.cpp
+  - RPM sensor telemetry — Tools/AP_Periph/rpm.cpp
+  - Temperature sensor telemetry — Tools/AP_Periph/temperature.cpp
+
+  Optional/Specialized Roles
+
+  - GNSS extras: RTCM stream pass‑through + moving‑baseline/heading — Tools/AP_Periph/gps.cpp
+  - ADS‑B receiver bridge — Tools/AP_Periph/adsb.cpp
+  - Relay/Hardpoint outputs — Tools/AP_Periph/relay.cpp and Tools/AP_Periph/hardpoint.cpp
+  - Buzzer/notify output — Tools/AP_Periph/buzzer.cpp
+  - Actuator telemetry for PWM/ESC status — Tools/AP_Periph/actuator_telem.cpp
+  - EFI/engine telemetry — Tools/AP_Periph/efi.cpp
+
+---
+
+IO-EXPENDER : suggestion ->
+- pprz.gpio.Configure (broadcast):
+      - Pin[<=N] pins
+      - Pin:
+          - uint8 index       # absolute pin index
+          - uint8 mode        # 0=in, 1=out
+          - uint8 pull        # 0=float, 1=pullup, 2=pulldown
+          - uint8 drive       # 0=push-pull, 1=open-drain
+          - uint8 slewrate    # 0=low, 1=high
+          - uint8 value       # optional initial output state (for outputs)
+  - pprz.gpio.SetValue (broadcast):
+      - Value[<=N] pins
+      - Value: uint8 index, uint8 value
+  - pprz.gpio.SetPolling (broadcast):
+      - Poll[<=N] pins
+      - Poll: uint8 index, uint8 enable (1 = poll)
+      - uint16 period_ms (common period for this message)
+  - pprz.gpio.State (broadcast):
+      - State[<=N] pins
+      - State: uint8 index, uint8 mode, uint8 pull, uint8 drive, uint8 slewrate, uint8 value, optional uint8 fault
+---
+
+Problematique sur FDCanV1 (G4) :
+fifo hardware profondeur 3 : 3x64 en fdcan mais seulement 3x8 en CAN 2.0
+
+---
+
+  ┌─────────────────┬───────────────┬────────────────
+  │ Component       │ Size (Approx) │ Notes                                       │
+  ├─────────────────┼───────────────┼────────────────
+  │ OS and utility  │ 120 KB        │ Chibios, HAL, drivers, utilities            │
+  │ + Console/Shell │ + 40 KB       │ Unexpectedly large due to formatting logic. │
+  │ + Param System  │ + 42 KB       │ C++ Templates + Float parsing.              │
+  │ + UAVCAN C++    │ + 35 KB       │ pubSub.o templates are expensive.           │
+  │ + C Runtime     │ + 20 KB       │ printf, startup, math.                      │
+  │ TOTAL           │ ~ 257 KB      │ Matches observed size.                      │
+  └─────────────────┴───────────────┴───────────────
+
+
+
+====
+
+
+
+ 
