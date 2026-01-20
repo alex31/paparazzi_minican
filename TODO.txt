@@ -42,12 +42,9 @@ GITHUB :
 ° binaire de gcc15.2 pour ubuntu telechargeable en binaire
 ---
 
-Un jour faudra faire une DOC :
 
-° architecture logicielle
-° doc : comment ajouter un role
-  + aide en fournissant un prompt pour LLM ?
- DOCUMENTATION
+
+ Rédiger une DOCUMENTATION
    -> description globale du projet
    -> description du hardware
    -> howto: build
@@ -55,7 +52,7 @@ Un jour faudra faire une DOC :
       ° enable disable des roles via les paramètres
       ° enable disable des roles à la compilation
       ° manuel d'utilisation des roles existants : configuration branchements
--> description de l'architecture
+   -> description de l'architecture
    -> howto: ajouter un role
       ° ajouter un role avec un LLM
 ---

@@ -27,9 +27,12 @@ messages through a modular role system.
 
 Key properties:
 - UAVCAN slave node with CAN FD support
-- Bootloader in external SPI EEPROM (M95P), with CRC and safe update process
-- Modular roles (servo control, ESC, GPS, sensors, serial tunnel, LED strip, voltmeter, etc.)
+- battery power supply (2 to 6 cells) -> generate 3.3V/0.5A and 5V/2A on connectors (max 10W for the total of 3.3V and 5V)
+- Bootloader with CRC and safe update process over UAVCan 
 - Persistent parameter storage and UAVCAN param GetSet support
+- Modular roles (servo control, ESC, GPS, sensors, serial tunnel, LED strip, voltmeter, etc.)
+  selectable via the persistent parameters
+- resource manager prevent resource acquisition conflicts from concurrent roles
 
 Repository layout:
 - `bootloader/` : Bootloader application
@@ -43,33 +46,24 @@ Repository layout:
 Board: MiniCAN v5 (STM32G491K, 170 MHz, single-precision FPU).
 
 Core peripherals:
-- CAN FD on FDCAN2 (PB05/PB06)
-- UART: USART2 (PB03 TX, PB04 RX) used for GPS/serial tunnel/smart servo, etc.
-- I2C: I2C1 (PA15 SCL, PB07 SDA)
-- SPI1 for external M95P EEPROM (PA05/PA06/PA07 + PB00 CS)
-- PWM: TIM1 channels on PA08..PA11 for servo/ESC DShot
-- WS2812 LED strip output on TIM3_CH4 (PB07)
-- Debug UART on LPUART1 (PA02/PA03)
-
-Notable pins (MiniCAN):
-- PB08: RGBLED (TIM8_CH2), also BOOT0
-- PF01: CAN termination enable
-- PA00: Battery sense ADC input (PS_5V)
+- CANFD: software selectable CAN terminal resistor 
+- UART: for GPS/serial tunnel/smart servo, etc.
+- I2C: for external peripherals, software selectable pullup resistors 
+- SPI shared between internal M95P EEPROM and external peripherals
+- TIMER/PWM: 4 channels for servo/ESC DShot/ RGB ledstrip / etc
+- On PCB RGB led to indicate nodeId, status, failures
+- Debug pads with SWD and UART
+- ADC monitoring : Battery and 5V
 
 Key board files:
 - `minican/cfg/MINICAN.cfg` (pin map)
 - `HARDWARE/MINICAN/*.pdf` (schematics)
 
-Shared resources:
-- TIM3_CH4 is used by both `ROLE.led2812` and `ROLE.voltmeter` (mutually exclusive).
-- USART2 is used by GPS, serial tunnel, smart servos (roles must not conflict).
-
-
 ## Firmware architecture
 
 The system is split into two firmware images:
-- Bootloader (in internal flash) controls firmware update from external M95P EEPROM.
-- Application (main firmware) runs the UAVCAN node and role system.
+- Bootloader controls firmware update second stage from external M95P EEPROM.
+- Application (main firmware) runs the UAVCAN node, role system and  firmware update first stage from UAVCan messages.
 
 Core components:
 - `UAVCanSlave` (minican/source/UAVCanSlave.cpp):
@@ -132,11 +126,15 @@ make uartflashmicro DEV=/dev/ttyUSB1
 ```
 
 Bootloader size is set in top-level `Makefile` (see `BOOTLOADER_SIZE`).
+*.uavcan.bin are firmware images suitable for UAVCan software update
 
 
 ## Role system overview
 
-Roles are modular features enabled by parameters and compiled in/out by macros.
+Roles are modular features enabled by parameters.
+For now, all roles are compiled; but if in a distant future 512Kb is not enough to stand all roles,
+roles can be compiled in/out by macros
+
 Each role:
 - Inherits from `RoleBase`
 - Implements `subscribe()` and `start()`
@@ -268,6 +266,50 @@ Wiring:
 
 ### Onboard RGB LED (internal)
 Used for node status/identification. Implemented in `COMMON/source/rgbLeds.*`.
+
+#### Pattern encoding
+- The LED uses a 16-bit motif. Each step lasts `period_ms` from `RgbLed::setMotif()`.
+- Bit order: step 0 = bit0 (LSB), step 15 = bit15 (MSB).
+- If the current bit is 1, the LED shows the current color; if 0, the LED is off.
+- Priority order: wheel-of-death animation > node ID display > motif > off.
+
+#### Node ID display (base-5 colors)
+The node ID is encoded as three base-5 digits:
+`id = d0 * 25 + d1 * 5 + d2`, with digits in the range 0..4.
+
+Digit colors:
+- 0 = white
+- 1 = red
+- 2 = yellow
+- 3 = green
+- 4 = blue
+
+Timing:
+- Each digit: 0.5 s on, 0.3 s off
+- After all 3 digits: 1 s off
+- Node ID 0 is not displayed (digits are all zero, raw value = 0)
+- During dynamic ID allocation, the startup (green) motif remains active until an ID is assigned, then the node ID display takes over
+
+#### Application (minican) LED codes
+These patterns are set in `minican/source/main.cpp`.
+
+- Boot/startup (before checks): greenish, motif `0b1010101010101010`, period 500 ms
+- Firmware/hardware mismatch: wheel-of-death (continuous rainbow sweep)
+- MFS init failure: blue, motif `0b10101010`, period 200 ms
+- Persistent storage init failure: purple (dim), motif `0b10101010`, period 200 ms
+- Identification mode (`ROLE.identification=true`): purple (bright), motif `0b1010100000000000`, period 150 ms
+- CAN start failure (resource conflict): red, motif `0b110011000`, period 100 ms
+- CAN start failure (other): orange, motif `0b10101010`, period 200 ms
+- Normal operation: node ID display takes over once CAN starts
+
+#### Bootloader LED codes
+These patterns are set in `bootloader/source/main.cpp` and use `RgbLed::startMinimal()`.
+
+- Bootloader active (including firmware update): blue, motif `0b1010100000000000`, period 100 ms
+- Application corrupted (post-flash CRC error): red, motif `0b1010101010101010`, period 100 ms, infinite halt
+- Header/protocol/size/address errors: yellow, motif `0b1010101010101010`, period 100 ms, then sleep
+  - `MAGIC_ERROR_AGAIN`: 2 s, then boot attempt
+  - Other errors: 10 s, then boot attempt
 
 
 ## Parameter system
