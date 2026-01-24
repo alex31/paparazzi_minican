@@ -128,7 +128,7 @@ DeviceStatus Baro_MPL3115A2_Role::getPressure(float *pressure)
 
   if (status == MSG_OK) {
     // pressure in rawB is on 24 bits, so it is safe to right shift these 24 bits
-    const uint32_t swapVal = (SWAP_ENDIAN32(rawB<<8)) ;
+    const uint32_t swapVal = (BSWAP32(rawB<<8)) ;
     *pressure = swapVal / 6400.0f;
   }
 
@@ -145,7 +145,7 @@ DeviceStatus Baro_MPL3115A2_Role::getTemperature(float *temperature)
     status = xfer(tempReg, sizeof(tempReg),
                   reinterpret_cast<uint8_t*>(&mplTemp), sizeof(mplTemp));
   if (status == MSG_OK) {
-    *temperature = SWAP_ENDIAN16(mplTemp) / 256.0f;
+    *temperature = BSWAP16(mplTemp) / 256.0f;
   } else {
     DebugTrace("i2cMasterTransmitTimeout error");
     resetI2C();
