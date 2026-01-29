@@ -71,8 +71,9 @@ void SerialStream::processUavcanToSerial(CanardRxTransfer *,
   if (msg.protocol.protocol != protocol) {
     return;
   }
-  auto [status, msg_buffer] = fifoObjectUav2Serial->takeObject(TIME_IMMEDIATE);
-  if (status == MSG_OK) {
+  auto msg_opt = fifoObjectUav2Serial->takeObject(TIME_IMMEDIATE);
+  if (msg_opt) {
+    auto &msg_buffer = msg_opt->get();
     memcpy((void *) &msg_buffer, &msg, sizeof(msg));
     using MsgT = std::remove_cvref_t<decltype(msg)>;
     using BufT = std::remove_cvref_t<decltype(msg_buffer)>;
@@ -181,8 +182,9 @@ void SerialStream::gatherLostBytes()
   if (not interDmaBytes.empty()) {
     // best effort, if we have exhausted fifo object, nothing can be done
     // to save private ryan
-    auto [status, msg_buffer] = fifoObjectSerial2Uav->takeObject(TIME_IMMEDIATE);
-    if (status == MSG_OK) {
+    auto msg_opt = fifoObjectSerial2Uav->takeObject(TIME_IMMEDIATE);
+    if (msg_opt) {
+      auto &msg_buffer = msg_opt->get();
       memcpy(msg_buffer.data(), interDmaBytes.data(), interDmaBytes.size());
       msg_buffer.uninitialized_resize(interDmaBytes.size());
       fifoObjectSerial2Uav->sendObject(msg_buffer);
@@ -197,8 +199,9 @@ void SerialStream::uartReceiveThread(void *)
 {
   while (true) {
     gatherLostBytes();
-    auto [status, msg_buffer] = fifoObjectSerial2Uav->takeObject(TIME_INFINITE);
-    if (status == MSG_OK) {
+    auto msg_opt = fifoObjectSerial2Uav->takeObject(TIME_INFINITE);
+    if (msg_opt) {
+      auto &msg_buffer = msg_opt->get();
       size_t size = Uart2uavcan_t::MAX_SIZE;
       uartReceiveTimeout(&ExternalUARTD, &size, msg_buffer.data(), TIME_INFINITE);
       if (size) {
@@ -225,8 +228,9 @@ void SerialStream::uavcanTransmitThread(void *)
   };
 
   while (true) {
-    auto [status, msg_buffer] = fifoObjectSerial2Uav->receiveObject(TIME_INFINITE);
-    if (status == MSG_OK) {
+    auto msg_opt = fifoObjectSerial2Uav->receiveObject(TIME_INFINITE);
+    if (msg_opt) {
+      auto &msg_buffer = msg_opt->get();
       uint8_t *start = msg_buffer.data();
       size_t len = msg_buffer.size();
       while (len != 0) {
@@ -250,8 +254,9 @@ void SerialStream::uavcanTransmitThread(void *)
 void SerialStream::uartTransmitThread(void *)
 {
   while (true) {
-    auto [status, msg_buffer] = fifoObjectUav2Serial->receiveObject(TIME_INFINITE);
-    if (status == MSG_OK) {
+    auto msg_opt = fifoObjectUav2Serial->receiveObject(TIME_INFINITE);
+    if (msg_opt) {
+      auto &msg_buffer = msg_opt->get();
       size_t toSend = msg_buffer.buffer.len;
       uartSendTimeout(&ExternalUARTD, &toSend, msg_buffer.buffer.data, TIME_INFINITE);
       fifoObjectUav2Serial->returnObject(msg_buffer);
