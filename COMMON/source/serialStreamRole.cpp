@@ -223,7 +223,7 @@ void SerialStream::uavcanTransmitThread(void *)
 {
   uavcan_tunnel_Broadcast msg = {
     .protocol = {.protocol = protocol},
-    .channel_id = PLATFORM_MINICAN ? 2 : 1,
+    .channel_id = static_cast<uint8_t>(param_cget<"role.tunnel.serial.channel_id">()),
     .buffer = {}
   };
 

@@ -70,6 +70,7 @@
 #if USE_SERIAL_STREAM_ROLE
       {"ROLE.tunnel.serial", {.v = false}},
       {"role.tunnel.serial.protocol", {.min = 0, .max = 255, .v = 0}},
+      {"role.tunnel.serial.channel_id", {.min = 0, .max = 255, .v = 0}},
 #endif
 
 #if USE_BARO_MPL3115A2_ROLE

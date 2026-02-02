@@ -23,10 +23,15 @@ CODÉ MAIS PAS TESTÉ :
 A DEBUGGER:
 
 
+USART -> SIO + DMA double buffer
+  - ROLE.tunnel.serial (SerialStream): uses ExternalUARTD + uartStart/Receive/Send and acquires USART resources. (COMMON/source/serialStreamRole.cpp)
+  - ROLE.gnss.ubx (GpsUBX): configures/reads the GPS over UART (ExternalUARTD, uartStart, uartReceiveTimeout). (COMMON/source/gpsUbxRole.cpp)
+  - ROLE.sbus (SBUS RC): SBUS driver is wired to ExternalUARTD and acquires USART resources. (COMMON/source/sbusRole.cpp)
+  - ROLE.servo.smart (Smart servos): STS3032 bus runs on ExternalUARTD and acquires USART resources. (COMMON/source/servoSmart.cpp)
+
+
 
 TUNNEL SERIAL :
-  -> configuration uart similaire à tunnel sbus ? (RTOEN et RTOIE) ? -> tester le DNF ?
-  -> a tester avec pprz
   -> version qui gere la comm/config xbee et qui decapsule encapsule le header xbee ?
 
 
