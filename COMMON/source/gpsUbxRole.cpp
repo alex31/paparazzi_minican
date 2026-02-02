@@ -10,12 +10,14 @@
 #include <array>
 #include <cstdint>
 #include <cstring>
+#include <new>
 
 #include "gpsUbxRole.hpp"
 #include "hardwareConf.hpp"
 #include "resourceManager.hpp"
 #include "stdutil++.hpp"
 #include "etl/span.h"
+#include "hal_stm32_dma.h"
 
 #if PLATFORM_MICROCAN
 #include "dynamicPinConfig.hpp"
@@ -27,6 +29,8 @@ namespace {
    * @return True when the date/time fields are valid.
    */
   bool utcToUnixUsec(const UBX::NavPvt& msg, uint64_t& out);
+
+  using GpsCfgSio = SIO::Buffered<256U>;
 
 #if PLATFORM_MINICAN
   /**
@@ -78,7 +82,7 @@ namespace {
   /**
    * @brief Send a raw UBX message (header + payload + checksum).
    */
-  void ubxSend(UARTDriver &uart, uint8_t cls, uint8_t id, etl::span<const uint8_t> payload)
+  void ubxSend(GpsCfgSio &sio, uint8_t cls, uint8_t id, etl::span<const uint8_t> payload)
   {
     const size_t payloadLen = payload.size();
     uint8_t header[6] = {
@@ -97,15 +101,12 @@ namespace {
       ubxUpdateChecksum(payload, ckA, ckB);
     }
 
-    size_t toSend = sizeof(header);
-    uartSendTimeout(&uart, &toSend, header, TIME_INFINITE);
+    (void)sio.writeTimeout(header, sizeof(header), TIME_INFINITE);
     if (payloadLen != 0) {
-      toSend = payloadLen;
-      uartSendTimeout(&uart, &toSend, payload.data(), TIME_INFINITE);
+      (void)sio.writeTimeout(payload.data(), payloadLen, TIME_INFINITE);
     }
     uint8_t ck[2] = {ckA, ckB};
-    toSend = sizeof(ck);
-    uartSendTimeout(&uart, &toSend, ck, TIME_INFINITE);
+    (void)sio.writeTimeout(ck, sizeof(ck), TIME_INFINITE);
   }
 
   /**
@@ -113,7 +114,7 @@ namespace {
    *
    * @note Uses UBX-only protocol with 8N1 framing.
    */
-  void ubxSendCfgPrt(UARTDriver &uart, uint32_t baudrate)
+  void ubxSendCfgPrt(GpsCfgSio &sio, uint32_t baudrate)
   {
     UBX::CfgPrt msg{};
     msg.portId = 1; // UART1
@@ -121,40 +122,40 @@ namespace {
     msg.baudRate = baudrate;
     msg.inProtoMask = 0x0001; // UBX only
     msg.outProtoMask = 0x0001; // UBX only
-    ubxSend(uart, ubxClassCfg, ubxIdCfgPrt,
+    ubxSend(sio, ubxClassCfg, ubxIdCfgPrt,
             etl::span<const uint8_t>(reinterpret_cast<const uint8_t *>(&msg), sizeof(msg)));
   }
 
   /**
    * @brief Configure measurement rate (CFG-RATE).
    */
-  void ubxSendCfgRate(UARTDriver &uart, uint16_t measRateMs)
+  void ubxSendCfgRate(GpsCfgSio &sio, uint16_t measRateMs)
   {
     UBX::CfgRate msg{};
     msg.measRateMs = measRateMs;
     msg.navRate = 1;
     msg.timeRef = 1; // GPS time
-    ubxSend(uart, ubxClassCfg, ubxIdCfgRate,
+    ubxSend(sio, ubxClassCfg, ubxIdCfgRate,
             etl::span<const uint8_t>(reinterpret_cast<const uint8_t *>(&msg), sizeof(msg)));
   }
 
   /**
    * @brief Configure output rate of a NAV message (legacy CFG-MSG).
    */
-  void ubxSendCfgMsgRate(UARTDriver &uart, uint8_t msgClass, uint8_t msgId, uint8_t rate)
+  void ubxSendCfgMsgRate(GpsCfgSio &sio, uint8_t msgClass, uint8_t msgId, uint8_t rate)
   {
     UBX::CfgMsgRate msg{};
     msg.msgClass = msgClass;
     msg.msgId = msgId;
     msg.rate = rate;
-    ubxSend(uart, ubxClassCfg, ubxIdCfgMsg,
+    ubxSend(sio, ubxClassCfg, ubxIdCfgMsg,
             etl::span<const uint8_t>(reinterpret_cast<const uint8_t *>(&msg), sizeof(msg)));
   }
 
   /**
    * @brief Send a single VALSET key/value pair.
    */
-  void ubxSendValset(UARTDriver &uart, uint32_t key, const void *value, uint8_t valueLen)
+  void ubxSendValset(GpsCfgSio &sio, uint32_t key, const void *value, uint8_t valueLen)
   {
     if (valueLen == 0) {
       return;
@@ -167,7 +168,7 @@ namespace {
     uint8_t buffer[sizeof(msg) + 8] = {};
     std::memcpy(buffer, &msg, sizeof(msg));
     std::memcpy(buffer + sizeof(msg), value, valueLen);
-    ubxSend(uart, ubxClassCfg, ubxIdCfgValset,
+    ubxSend(sio, ubxClassCfg, ubxIdCfgValset,
             etl::span<const uint8_t>(buffer, sizeof(msg) + valueLen));
   }
 
@@ -176,17 +177,17 @@ namespace {
    *
    * @note This is the fallback when VALSET is not supported.
    */
-  void ubxSendConfigLegacy(UARTDriver &uart, uint32_t baudrate, uint16_t measRateMs)
+  void ubxSendConfigLegacy(GpsCfgSio &sio, uint32_t baudrate, uint16_t measRateMs)
   {
-    ubxSendCfgRate(uart, measRateMs);
-    ubxSendCfgMsgRate(uart, static_cast<uint8_t>(UBX::MessageClass::NAV),
+    ubxSendCfgRate(sio, measRateMs);
+    ubxSendCfgMsgRate(sio, static_cast<uint8_t>(UBX::MessageClass::NAV),
                       static_cast<uint8_t>(UBX::NavId::PVT), 1);
-    ubxSendCfgMsgRate(uart, static_cast<uint8_t>(UBX::MessageClass::NAV),
+    ubxSendCfgMsgRate(sio, static_cast<uint8_t>(UBX::MessageClass::NAV),
                       static_cast<uint8_t>(UBX::NavId::DOP), 1);
-    ubxSendCfgMsgRate(uart, static_cast<uint8_t>(UBX::MessageClass::NAV),
+    ubxSendCfgMsgRate(sio, static_cast<uint8_t>(UBX::MessageClass::NAV),
                       static_cast<uint8_t>(UBX::NavId::SAT), 1);
 
-    ubxSendCfgPrt(uart, baudrate);
+    ubxSendCfgPrt(sio, baudrate);
   }
 
   /**
@@ -194,14 +195,14 @@ namespace {
    *
    * @note Forces UBX protocol, disables NMEA, and selects a 10 Hz rate.
    */
-  void ubxSendConfigValset(UARTDriver &uart, uint32_t baudrate, uint16_t measRateMs)
+  void ubxSendConfigValset(GpsCfgSio &sio, uint32_t baudrate, uint16_t measRateMs)
   {
-    ubxSendCfgRate(uart, measRateMs);
-    ubxSendCfgMsgRate(uart, static_cast<uint8_t>(UBX::MessageClass::NAV),
+    ubxSendCfgRate(sio, measRateMs);
+    ubxSendCfgMsgRate(sio, static_cast<uint8_t>(UBX::MessageClass::NAV),
                       static_cast<uint8_t>(UBX::NavId::PVT), 1);
-    ubxSendCfgMsgRate(uart, static_cast<uint8_t>(UBX::MessageClass::NAV),
+    ubxSendCfgMsgRate(sio, static_cast<uint8_t>(UBX::MessageClass::NAV),
                       static_cast<uint8_t>(UBX::NavId::DOP), 1);
-    ubxSendCfgMsgRate(uart, static_cast<uint8_t>(UBX::MessageClass::NAV),
+    ubxSendCfgMsgRate(sio, static_cast<uint8_t>(UBX::MessageClass::NAV),
                       static_cast<uint8_t>(UBX::NavId::SAT), 1);
 
     const uint8_t ubxOn = 1;
@@ -211,32 +212,31 @@ namespace {
     const uint8_t rateSize = ubxKeySize(ubxCfgRateMeas);
     const uint8_t baudSize = ubxKeySize(ubxCfgUart1Baudrate);
     if (baudSize == sizeof(uint32_t)) {
-      ubxSendValset(uart, ubxCfgUart1Baudrate, &baudrate, baudSize);
+      ubxSendValset(sio, ubxCfgUart1Baudrate, &baudrate, baudSize);
     }
-    ubxSendValset(uart, ubxCfgUart1Enabled, &uartEnabled, ubxKeySize(ubxCfgUart1Enabled));
-    ubxSendValset(uart, ubxCfgUart1InProtUbx, &ubxOn, ubxKeySize(ubxCfgUart1InProtUbx));
-    ubxSendValset(uart, ubxCfgUart1InProtNmea, &nmeaOff, ubxKeySize(ubxCfgUart1InProtNmea));
-    ubxSendValset(uart, ubxCfgUart1OutProtUbx, &ubxOn, ubxKeySize(ubxCfgUart1OutProtUbx));
-    ubxSendValset(uart, ubxCfgUart1OutProtNmea, &nmeaOff, ubxKeySize(ubxCfgUart1OutProtNmea));
+    ubxSendValset(sio, ubxCfgUart1Enabled, &uartEnabled, ubxKeySize(ubxCfgUart1Enabled));
+    ubxSendValset(sio, ubxCfgUart1InProtUbx, &ubxOn, ubxKeySize(ubxCfgUart1InProtUbx));
+    ubxSendValset(sio, ubxCfgUart1InProtNmea, &nmeaOff, ubxKeySize(ubxCfgUart1InProtNmea));
+    ubxSendValset(sio, ubxCfgUart1OutProtUbx, &ubxOn, ubxKeySize(ubxCfgUart1OutProtUbx));
+    ubxSendValset(sio, ubxCfgUart1OutProtNmea, &nmeaOff, ubxKeySize(ubxCfgUart1OutProtNmea));
     if (rateSize == sizeof(uint16_t)) {
-      ubxSendValset(uart, ubxCfgRateMeas, &measRateMs, rateSize);
+      ubxSendValset(sio, ubxCfgRateMeas, &measRateMs, rateSize);
     }
-    ubxSendValset(uart, ubxCfgNavspgDynModel, &dynModelAirborne,
+    ubxSendValset(sio, ubxCfgNavspgDynModel, &dynModelAirborne,
                   ubxKeySize(ubxCfgNavspgDynModel));
   }
 
   /**
    * @brief Scan for UBX sync bytes to confirm the link is alive.
    */
-  bool waitForUbxSync(UARTDriver &uart, systime_t timeout)
+  bool waitForUbxSync(GpsCfgSio &sio, systime_t timeout)
   {
     systime_t start = chVTGetSystemTimeX();
     uint8_t prev = 0;
     uint8_t buffer[64];
 
     while (chTimeDiffX(start, chVTGetSystemTimeX()) < timeout) {
-      size_t size = sizeof(buffer);
-      uartReceiveTimeout(&uart, &size, buffer, TIME_MS2I(50));
+      const size_t size = sio.readTimeout(buffer, sizeof(buffer), TIME_MS2I(50));
       for (size_t i = 0; i < size; ++i) {
         const uint8_t byte = buffer[i];
         if (prev == ubxSync1 && byte == ubxSync2) {
@@ -254,7 +254,7 @@ namespace {
    * @details Tries the target baud first, then common fallbacks. Attempts
    *          VALSET configuration first (M10), then legacy CFG-*.
    */
-  void configureGpsUbx(UARTDriver &uart, UARTConfig &cfg, uint32_t targetBaud)
+  void configureGpsUbx(GpsCfgSio &sio, SIOConfig &cfg, uint32_t targetBaud)
   {
     static constexpr uint16_t measRateMs = 100;
     static constexpr std::array<uint32_t, 6> baudList = {
@@ -262,31 +262,35 @@ namespace {
     };
 
     auto tryConfig = [&](uint32_t baud) -> bool {
-      cfg.speed = baud;
-      uartStop(&uart);
-      uartStart(&uart, &cfg);
-      ubxSendConfigValset(uart, targetBaud, measRateMs);
+      cfg.baud = baud;
+      sio.stop();
+      sio.setConfig(cfg);
+      (void)sio.start();
+      ubxSendConfigValset(sio, targetBaud, measRateMs);
       if (baud != targetBaud) {
-        cfg.speed = targetBaud;
-        uartStop(&uart);
-        uartStart(&uart, &cfg);
+        cfg.baud = targetBaud;
+        sio.stop();
+        sio.setConfig(cfg);
+        (void)sio.start();
         chThdSleepMilliseconds(50);
       }
-      if (waitForUbxSync(uart, TIME_MS2I(300))) {
+      if (waitForUbxSync(sio, TIME_MS2I(300))) {
         return true;
       }
 
-      cfg.speed = baud;
-      uartStop(&uart);
-      uartStart(&uart, &cfg);
-      ubxSendConfigLegacy(uart, targetBaud, measRateMs);
+      cfg.baud = baud;
+      sio.stop();
+      sio.setConfig(cfg);
+      (void)sio.start();
+      ubxSendConfigLegacy(sio, targetBaud, measRateMs);
       if (baud != targetBaud) {
-        cfg.speed = targetBaud;
-        uartStop(&uart);
-        uartStart(&uart, &cfg);
+        cfg.baud = targetBaud;
+        sio.stop();
+        sio.setConfig(cfg);
+        (void)sio.start();
         chThdSleepMilliseconds(50);
       }
-      return waitForUbxSync(uart, TIME_MS2I(300));
+      return waitForUbxSync(sio, TIME_MS2I(300));
     };
 
     if (tryConfig(targetBaud)) {
@@ -302,6 +306,7 @@ namespace {
     }
   }
 #endif // PLATFORM_MINICAN
+
 }
 
 /**
@@ -550,25 +555,35 @@ namespace {
     return true;
   }
 
- UARTConfig gpscfg =
-  {
-    .txend1_cb =nullptr,
-    .txend2_cb = nullptr,
-    .rxend_cb = nullptr,
-    .rxchar_cb = nullptr,
-    .rxerr_cb = nullptr,
-    // .timeout_cb = [](hal_uart_driver *) {
-    //   palSetLine(LINE_DBG_TIMOUT_CB);
-    //   chSysPolledDelayX(1);
-    //   palClearLine(LINE_DBG_TIMOUT_CB);
-    // },
-    .timeout_cb = nullptr,
-    .timeout = 6,
-    .speed = 0, // will be be at init
-    .cr1 = USART_CR1_RTOIE, 
+  SIOConfig gpscfg = {
+    .baud = 0, // will be set at init
+    .presc = USART_PRESC1,
+    .cr1 = USART_CR1_RTOIE,
     .cr2 = USART_CR2_STOP1_BITS | USART_CR2_RTOEN,
     .cr3 = 0
   };
+
+#if PLATFORM_MINICAN
+  constexpr SIO::DmaUserConfig gps_rx_dma_cfg{
+      .stream = STM32_DMA_STREAM_ID_ANY,
+      .dmamux = STM32_DMAMUX1_USART2_RX,
+  };
+  constexpr SIO::DmaUserConfig gps_tx_dma_cfg{
+      .stream = STM32_DMA_STREAM_ID_ANY,
+      .dmamux = STM32_DMAMUX1_USART2_TX,
+  };
+#endif
+
+#if PLATFORM_MICROCAN
+  constexpr SIO::DmaUserConfig gps_rx_dma_cfg{
+      .stream = STM32_DMA_STREAM_ID_ANY,
+      .dmamux = STM32_DMAMUX1_USART1_RX,
+  };
+  constexpr SIO::DmaUserConfig gps_tx_dma_cfg{
+      .stream = STM32_DMA_STREAM_ID_ANY,
+      .dmamux = STM32_DMAMUX1_USART1_TX,
+  };
+#endif
 
 
 
@@ -591,7 +606,7 @@ DeviceStatus GpsUBX::subscribe(UAVCAN::Node&)
 
 
 /**
- * @brief Start UART reception and the UBX decoder thread.
+ * @brief Start SIO reception and the UBX decoder.
  */
 DeviceStatus GpsUBX::start(UAVCAN::Node& node)
 {
@@ -615,54 +630,59 @@ DeviceStatus GpsUBX::start(UAVCAN::Node& node)
   DynPin::setScenario(DynPin::Scenario::UART, 0b01000);
 #endif
 
-  frame = (uint8_t *) malloc_dma(maxUbxFrameSize);
-  if (!frame) {
-    status = DeviceStatus(DeviceStatus::MEMORY, DeviceStatus::DMA_HEAP_FULL);
-    return status;
-  }
-
-  gpscfg.speed =  param_cget<"bus.serial.baudrate">();
+  gpscfg.baud =  param_cget<"bus.serial.baudrate">();
 #if PLATFORM_MINICAN
   // minican is full duplex for the GPS and can configure it
   // using ublox protocol
-  configureGpsUbx(ExternalUARTD, gpscfg, gpscfg.speed);
+  static GpsCfgSio *cfg_sio = nullptr;
+  if (cfg_sio == nullptr) {
+    void *cfg_mem = malloc_m(sizeof(GpsCfgSio));
+    if (!cfg_mem) {
+      return DeviceStatus(DeviceStatus::GPS_ROLE, DeviceStatus::HEAP_FULL);
+    }
+    GpsCfgSio::Config cfg = {ExternalSIOD, &gpscfg};
+    cfg_sio = new (cfg_mem) GpsCfgSio(cfg);
+  } else {
+    cfg_sio->setConfig(gpscfg);
+  }
+  (void)cfg_sio->start();
+  configureGpsUbx(*cfg_sio, gpscfg, gpscfg.baud);
+  cfg_sio->stop();
 #else
   // microcan is RX only due to smaller connector and expect an already
   // configured gps via u‑center (newer version: u‑center2 for M10+)
-  uartStart(&ExternalUARTD, &gpscfg);
+  // no configuration required
 #endif
-
-  chThdCreateFromHeap(NULL, THD_WORKING_AREA_SIZE(1536), "gps", NORMALPRIO, 
-		      &Trampoline<&GpsUBX::periodic>::fn, this);
+  if (sio_ == nullptr) {
+    void *sio_mem = malloc_m(sizeof(GpsSIO));
+    if (!sio_mem) {
+      return DeviceStatus(DeviceStatus::GPS_ROLE, DeviceStatus::HEAP_FULL);
+    }
+    const SIO::ContinuousConfig cfg = {
+      ExternalSIOD,
+      gps_rx_dma_cfg,
+      gps_tx_dma_cfg,
+      &gpscfg,
+      &GpsUBX::sioRxCb,
+      this,
+      "gps rx",
+      NORMALPRIO,
+      THD_WORKING_AREA_SIZE(1536),
+    };
+    sio_ = new (sio_mem) GpsSIO(cfg);
+  }
+  (void)sio_->start();
   
   return status;
 }
 
-/**
- * @brief Thread loop that reads UART frames and feeds the decoder.
- */
-void GpsUBX::periodic(void *)
+void GpsUBX::sioRxCb(const SIO::ByteSpan &slice, void *user)
 {
-  size_t size;
-
-  while (true) {
-    size = maxUbxFrameSize;
-    uartReceiveTimeout(&ExternalUARTD, &size, frame, TIME_INFINITE);
-    if (size) {
-      decoder.feed({frame, size});
-    }
+  auto *self = static_cast<GpsUBX *>(user);
+  if ((self == nullptr) || slice.empty()) {
+    return;
   }
+  self->decoder.feed(etl::span<const uint8_t>(slice.data(), slice.size()));
 }
-
-
-/*
-  en statique :
-  p &frame
-  $2 = (uint8_t (*)[1024]) 0x20008c58 <GpsUBX::frame>
-  en dynamique : 
-  p frame
-  $2 = (uint8_t *) 0x200004a0 'U' <repeats 200 times>...
-*/
-//IN_DMA_SECTION(uint8_t GpsUBX::frame[maxUbxFrameSize]);
 
 #endif // USE_GPS_UBX_ROLE

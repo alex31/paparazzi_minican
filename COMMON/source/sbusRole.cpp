@@ -12,6 +12,7 @@
 #include "resourceManager.hpp"
 #include "stdutil++.hpp"
 #include <cmath>
+#include "hal_stm32_dma.h"
 
 #if PLATFORM_MICROCAN
 #include "dynamicPinConfig.hpp"
@@ -19,8 +20,32 @@
 
 
 namespace {
+  #if PLATFORM_MINICAN
+  constexpr SIO::DmaUserConfig sbus_rx_dma_cfg{
+      .stream = STM32_DMA_STREAM_ID_ANY,
+      .dmamux = STM32_DMAMUX1_USART2_RX,
+  };
+  constexpr SIO::DmaUserConfig sbus_tx_dma_cfg{
+      .stream = STM32_DMA_STREAM_ID_ANY,
+      .dmamux = STM32_DMAMUX1_USART2_TX,
+  };
+  #endif
+
+  #if PLATFORM_MICROCAN
+  constexpr SIO::DmaUserConfig sbus_rx_dma_cfg{
+      .stream = STM32_DMA_STREAM_ID_ANY,
+      .dmamux = STM32_DMAMUX1_USART1_RX,
+  };
+  constexpr SIO::DmaUserConfig sbus_tx_dma_cfg{
+      .stream = STM32_DMA_STREAM_ID_ANY,
+      .dmamux = STM32_DMAMUX1_USART1_TX,
+  };
+  #endif
+
   SBUSConfig sbuscfg = {	//Config du sbus de la RC
-    .uartd = &ExternalUARTD,
+    .siop = &ExternalSIOD,
+    .rx_dma_cfg = sbus_rx_dma_cfg,
+    .tx_dma_cfg = sbus_tx_dma_cfg,
 #ifdef TRACE
     .errorCb = [](SBUSError err) {DebugTrace("Sbus Err %u", err)},
 #else

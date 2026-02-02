@@ -12,6 +12,8 @@
 #include "smart_servos/STS3032.h"
 #include "stdutil++.hpp"
 #include "hardwareConf.hpp"
+#include "sioWrapper.hpp"
+#include "hal_stm32_dma.h"
 
 
 #if PLATFORM_MICROCAN
@@ -19,7 +21,40 @@
 #endif
 
 namespace  {
-  STS3032 servoBus(&ExternalUARTD);
+  SIOConfig servoSioCfg = {
+    .baud = 250'000,
+    .presc = USART_PRESC1,
+    .cr1 = 0,
+    .cr2 = USART_CR2_STOP1_BITS,
+    .cr3 = USART_CR3_HDSEL
+  };
+
+#if PLATFORM_MINICAN
+  constexpr SIO::DmaUserConfig servo_rx_dma_cfg{
+      .stream = STM32_DMA_STREAM_ID_ANY,
+      .dmamux = STM32_DMAMUX1_USART2_RX,
+  };
+  constexpr SIO::DmaUserConfig servo_tx_dma_cfg{
+      .stream = STM32_DMA_STREAM_ID_ANY,
+      .dmamux = STM32_DMAMUX1_USART2_TX,
+  };
+#endif
+
+#if PLATFORM_MICROCAN
+  constexpr SIO::DmaUserConfig servo_rx_dma_cfg{
+      .stream = STM32_DMA_STREAM_ID_ANY,
+      .dmamux = STM32_DMAMUX1_USART1_RX,
+  };
+  constexpr SIO::DmaUserConfig servo_tx_dma_cfg{
+      .stream = STM32_DMA_STREAM_ID_ANY,
+      .dmamux = STM32_DMAMUX1_USART1_TX,
+  };
+#endif
+
+  alignas(SIO::Datagram) static uint8_t servo_sio_storage[sizeof(SIO::Datagram)];
+  SIO::Datagram *servoSio = nullptr;
+  alignas(STS3032) static uint8_t servo_bus_storage[sizeof(STS3032)];
+  STS3032 *servoBus = nullptr;
   uint32_t	     startIndex = std::numeric_limits<uint32_t>::max();
   uint32_t	     numServos = 0;
   uint32_t	     reportPeriod = 0;
@@ -61,10 +96,23 @@ DeviceStatus ServoSmart::start(UAVCAN::Node& node)
 #endif
 
   
-  servoBus.init();
-  if (auto status = servoBus.detectBaudrate({1'000'000U, 500'000U, 250'000U}); status == SmartServo::OK) {
+  if (servoSio == nullptr) {
+    const SIO::DatagramConfig cfg = {
+      ExternalSIOD,
+      servo_rx_dma_cfg,
+      servo_tx_dma_cfg,
+      &servoSioCfg
+    };
+    servoSio = new (servo_sio_storage) SIO::Datagram(cfg);
+  }
+  if (servoBus == nullptr) {
+    servoBus = new (servo_bus_storage) STS3032(servoSio, &servoSioCfg);
+  }
+
+  servoBus->init();
+  if (auto status = servoBus->detectBaudrate({1'000'000U, 500'000U, 250'000U}); status == SmartServo::OK) {
     DebugTrace("detectBaudrate OK -> Kbaud = %lu",
-	       servoBus.getSerialBaudrate() / 1000U);
+	       servoBus->getSerialBaudrate() / 1000U);
   } else {
     DebugTrace("detectBaudrate failed with status 0x%x: aborting", status);
     return DeviceStatus(DeviceStatus::SERVO_SMART, DeviceStatus::HETEROGENEOUS_BAUDS);
@@ -72,7 +120,7 @@ DeviceStatus ServoSmart::start(UAVCAN::Node& node)
   
     
   for(uint8_t id = 1U; id <= numServos; id++) {
-    if (servoBus.ping(id) == SmartServo::OK) {
+    if (servoBus->ping(id) == SmartServo::OK) {
       DebugTrace("ping ok return id = %u", id);
       setUnitless(id, 0);
     } else {
@@ -97,7 +145,7 @@ void ServoSmart::setUnitless(uint8_t index, float value)
 {
   if ((startIndex <= index) and (index < (startIndex + numServos))) {
     uint16_t pos = remap<-1.0f, 1.0f, 0.0f, 4095.0f>(value);
-    servoBus.move(index, pos);
+    servoBus->move(index, pos);
   } 
 }
 
@@ -106,8 +154,8 @@ void ServoSmart::setTorque(uint8_t index, float value)
 {
   if ((startIndex <= index) and (index < (startIndex + numServos))) {
     uint16_t torque = remap<0.0f, 1.0f, 0.0f, 1e4f>(value);
-    servoBus.setTorque(index, torque);
-    servoBus.torqueEnable(index, torque != 0U);
+    servoBus->setTorque(index, torque);
+    servoBus->torqueEnable(index, torque != 0U);
   } 
 }
 
@@ -118,7 +166,7 @@ void ServoSmart::setSpeed(uint8_t index, float value)
   // speedLimit in : Nb of steps/second. 50 steps / second = 0.732 RPM
   if ((startIndex <= index) and (index < (startIndex + numServos))) {
     uint16_t speed = std::min(65535.0f, value * 652.7f);   
-    servoBus.speedLimit(index, speed);
+    servoBus->speedLimit(index, speed);
   } 
 }
 
@@ -129,7 +177,7 @@ namespace {
      while (true) {
        systime_t ts = chVTGetSystemTimeX();
        for(uint8_t id = startIndex; id < startIndex + numServos; id++) {
-	 STS3032::StateVector sv = servoBus.readStates(id);
+	 STS3032::StateVector sv = servoBus->readStates(id);
 	 if (sv.status != SmartServo::STATUS_TIMEOUT) {
 	   uavcan_equipment_actuator_Status msg;
 	   copy(sv, msg, id);

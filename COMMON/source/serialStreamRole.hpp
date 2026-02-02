@@ -11,6 +11,7 @@
 #include "roleBase.hpp"
 #include "fifoObject.hpp"
 #include "etl/vector.h"
+#include "sioWrapper.hpp"
 
 
 /**
@@ -47,16 +48,19 @@ private:
   /** @brief Handle incoming tunnel messages destined for the UART. */
   void processUavcanToSerial(CanardRxTransfer *,
 			     const uavcan_tunnel_Broadcast &msg);
-  /// Drain bytes received between DMA armings into a FIFO object.
-  void uartReceiveThread(void *);
   /// Dequeue UART frames and publish them as tunnel chunks.
   void uavcanTransmitThread(void *);
   /// Dequeue tunnel frames and send them over UART.
   void uartTransmitThread(void *);
-  /// Harvest inter-DMA bytes captured by rxchar_cb.
-  void gatherLostBytes();
+  /// SIO RX callback: enqueue UART bytes for CAN publishing.
+  static void sioRxCb(const SIO::ByteSpan &slice, void *user);
   uint8_t protocol = 0;
   // 6Ko of dma allocated memory
   ObjectFifo<Uart2uavcan_t, 10> *fifoObjectSerial2Uav = nullptr;
   ObjectFifo<Uavcan2uart_t, 50> *fifoObjectUav2Serial = nullptr;
+  static constexpr size_t dmaRxSize = chunkSize * 10U;
+  static constexpr size_t dmaRxFifoDepth = 8U;
+  static_assert((dmaRxSize % 2U) == 0U, "SIO DMA RX buffer must be even sized");
+  using SerialSIO = SIO::Continuous<dmaRxSize, dmaRxFifoDepth>;
+  SerialSIO *sio_ = nullptr;
 };

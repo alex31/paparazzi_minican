@@ -11,6 +11,7 @@
 #include "roleBase.hpp"
 #include "gpsUbxDecoder.hpp"
 #include "etl/span.h"
+#include "sioWrapper.hpp"
 #include <cstddef>
 
 
@@ -24,7 +25,7 @@ public:
    */
   DeviceStatus subscribe(UAVCAN::Node& node) override;
   /**
-   * @brief Acquire resources, start UART, and spawn decoder thread.
+   * @brief Acquire resources and start SIO reception.
    */
   DeviceStatus start(UAVCAN::Node& node) override;
   /**
@@ -35,6 +36,12 @@ public:
 private:
   /** @brief Max UBX frame size supported by the decoder. */
   static constexpr size_t maxUbxFrameSize = 1024U;
+  static constexpr size_t dmaRxSize = maxUbxFrameSize;
+  static constexpr size_t dmaRxFifoDepth = 4U;
+  static_assert((dmaRxSize % 2U) == 0U, "SIO DMA RX buffer must be even sized");
+  using GpsSIO = SIO::Continuous<dmaRxSize, dmaRxFifoDepth>;
+  /** @brief SIO RX callback for the UBX decoder. */
+  static void sioRxCb(const SIO::ByteSpan &slice, void *user);
   /** @brief UBX NAV-PVT handler (Fix2 + status publishing). */
   static bool navPvtCb(const UBX::NavPvt& msg);
   /** @brief UBX NAV-DOP handler (Auxiliary publication). */
@@ -62,10 +69,6 @@ private:
   uint8_t satsUsed = 0;
   /** @brief Last NAV-SAT iTOW seen (used to reset visibility count). */
   uint32_t lastNavSatITOW = 0;
-  /** @brief DMA buffer used for UART reception. */
-  uint8_t *frame;
-  /**
-   * @brief UART RX thread body, feeds the UBX decoder.
-   */
-  void periodic(void *);
+  /** @brief Continuous SIO driver instance. */
+  GpsSIO *sio_ = nullptr;
 };

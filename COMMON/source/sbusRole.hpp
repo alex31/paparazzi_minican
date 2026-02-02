@@ -11,7 +11,7 @@
 #include "roleStatus.hpp"
 #include "roleBase.hpp"
 #include "UAVCAN/persistantParam.hpp"
-#include "futabaSbusUart.h"
+#include "futabaSbusUart.hpp"
 
 /**
  * @brief Role for receiving SBUS frames and publishing RC input over UAVCAN.
