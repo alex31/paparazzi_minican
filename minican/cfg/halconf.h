@@ -45,7 +45,7 @@
 #endif
 
 #if !defined(STM32_DMA_USE_ASYNC_TIMOUT) || defined(__DOXYGEN__)
-#define STM32_DMA_USE_ASYNC_TIMOUT FALSE
+#define STM32_DMA_USE_ASYNC_TIMOUT TRUE
 #endif
 
 #if !defined(STM32_DMA_DRIVER_USER_DATA_FIELD) || defined(__DOXYGEN__)

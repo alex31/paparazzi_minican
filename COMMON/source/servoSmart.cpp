@@ -101,7 +101,7 @@ DeviceStatus ServoSmart::start(UAVCAN::Node& node)
       ExternalSIOD,
       servo_rx_dma_cfg,
       servo_tx_dma_cfg,
-      &servoSioCfg
+      servoSioCfg
     };
     servoSio = new (servo_sio_storage) SIO::Datagram(cfg);
   }

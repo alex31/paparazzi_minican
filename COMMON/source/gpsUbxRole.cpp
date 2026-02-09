@@ -10,14 +10,12 @@
 #include <array>
 #include <cstdint>
 #include <cstring>
-#include <new>
 
 #include "gpsUbxRole.hpp"
 #include "hardwareConf.hpp"
 #include "resourceManager.hpp"
 #include "stdutil++.hpp"
 #include "etl/span.h"
-#include "hal_stm32_dma.h"
 
 #if PLATFORM_MICROCAN
 #include "dynamicPinConfig.hpp"
@@ -101,12 +99,12 @@ namespace {
       ubxUpdateChecksum(payload, ckA, ckB);
     }
 
-    (void)sio.writeTimeout(header, sizeof(header), TIME_INFINITE);
+    sio.writeTimeout(header, sizeof(header), TIME_INFINITE);
     if (payloadLen != 0) {
-      (void)sio.writeTimeout(payload.data(), payloadLen, TIME_INFINITE);
+      sio.writeTimeout(payload.data(), payloadLen, TIME_INFINITE);
     }
     uint8_t ck[2] = {ckA, ckB};
-    (void)sio.writeTimeout(ck, sizeof(ck), TIME_INFINITE);
+    sio.writeTimeout(ck, sizeof(ck), TIME_INFINITE);
   }
 
   /**
@@ -640,7 +638,7 @@ DeviceStatus GpsUBX::start(UAVCAN::Node& node)
     if (!cfg_mem) {
       return DeviceStatus(DeviceStatus::GPS_ROLE, DeviceStatus::HEAP_FULL);
     }
-    GpsCfgSio::Config cfg = {ExternalSIOD, &gpscfg};
+    GpsCfgSio::Config cfg = {ExternalSIOD, gpscfg};
     cfg_sio = new (cfg_mem) GpsCfgSio(cfg);
   } else {
     cfg_sio->setConfig(gpscfg);
@@ -662,7 +660,7 @@ DeviceStatus GpsUBX::start(UAVCAN::Node& node)
       ExternalSIOD,
       gps_rx_dma_cfg,
       gps_tx_dma_cfg,
-      &gpscfg,
+      gpscfg,
       &GpsUBX::sioRxCb,
       this,
       "gps rx",

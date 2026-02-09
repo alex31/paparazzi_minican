@@ -151,7 +151,7 @@ DeviceStatus SerialStream::subscribe(UAVCAN::Node& node)
       ExternalSIOD,
       serial_rx_dma_cfg,
       serial_tx_dma_cfg,
-      &serialStreamcfg,
+      serialStreamcfg,
       &SerialStream::sioRxCb,
       this,
       "serial rx",
