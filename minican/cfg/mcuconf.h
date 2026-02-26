@@ -409,6 +409,11 @@
 #define STM32_WSPI_QUADSPI1_PRESCALER_VALUE 1
 
 // local defs
+#define STD_SECTION ".ram1"
+#define FAST_SECTION ".ram4"
+#define DMA_SECTION ".ram1"
+
+
 #define CH_HEAP_SIZE  (20*1024)
 #define DMA_HEAP_SIZE (12*1024)
 #define CH_HEAP_USE_TLSF 0 // if 0 or undef, chAlloc will be used
