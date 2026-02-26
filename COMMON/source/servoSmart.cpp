@@ -8,12 +8,8 @@
 
 #include "servoSmart.hpp"
 #include "resourceManager.hpp"
-#include "UAVCAN/persistantParam.hpp"
 #include "smart_servos/STS3032.h"
-#include "stdutil++.hpp"
 #include "hardwareConf.hpp"
-#include "sioWrapper.hpp"
-#include "hal_stm32_dma.h"
 
 
 #if PLATFORM_MICROCAN
@@ -29,27 +25,14 @@ namespace  {
     .cr3 = USART_CR3_HDSEL
   };
 
-#if PLATFORM_MINICAN
   constexpr SIO::DmaUserConfig servo_rx_dma_cfg{
       .stream = STM32_DMA_STREAM_ID_ANY,
-      .dmamux = STM32_DMAMUX1_USART2_RX,
+      .dmamux = EXTERNAL_USART_RX_DMAMUX,
   };
   constexpr SIO::DmaUserConfig servo_tx_dma_cfg{
       .stream = STM32_DMA_STREAM_ID_ANY,
-      .dmamux = STM32_DMAMUX1_USART2_TX,
+      .dmamux = EXTERNAL_USART_TX_DMAMUX,
   };
-#endif
-
-#if PLATFORM_MICROCAN
-  constexpr SIO::DmaUserConfig servo_rx_dma_cfg{
-      .stream = STM32_DMA_STREAM_ID_ANY,
-      .dmamux = STM32_DMAMUX1_USART1_RX,
-  };
-  constexpr SIO::DmaUserConfig servo_tx_dma_cfg{
-      .stream = STM32_DMA_STREAM_ID_ANY,
-      .dmamux = STM32_DMAMUX1_USART1_TX,
-  };
-#endif
 
   alignas(SIO::Datagram) static uint8_t servo_sio_storage[sizeof(SIO::Datagram)];
   SIO::Datagram *servoSio = nullptr;

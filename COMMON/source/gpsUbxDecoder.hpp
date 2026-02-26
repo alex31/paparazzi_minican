@@ -4,15 +4,8 @@
  */
 #pragma once
 
-#include <concepts>
-#include <type_traits>
-#include <cstdint>
-#include <cstddef>
-#include <span>
-#include <array>
 #include <etl/vector.h>
 #include "etl/span.h"
-#include "ch.h"
 //#include "stdutil.h"
 #include "gpsUbxMessageDef.hpp"
 

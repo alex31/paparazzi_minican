@@ -9,12 +9,7 @@
  */
 #pragma once
 
-#include <ch.h>
-#include <hal.h>
 #include "UAVCAN/pubSub.hpp"
-#include "roleBase.hpp"
-#include "roleStatus.hpp"
-#include "etl/vector.h"
 #include "firmwareHeader.hpp"
 
 

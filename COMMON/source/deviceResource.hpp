@@ -3,7 +3,6 @@
  * @brief Shared persistent storage handle for device resources.
  */
 #include "MFS.hpp"
-#include "UAVCAN/persistantParam.hpp"
 #include "UAVCAN/persistantStorage.hpp"
 
 /*

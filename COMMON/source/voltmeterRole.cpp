@@ -8,10 +8,7 @@
 
 #include "voltmeterRole.hpp"
 
-#include <algorithm>
-#include <cmath>
 
-#include "UAVCAN/persistantParam.hpp"
 #include "adcSurvey.hpp"
 #include "hardwareConf.hpp"
 #include "led2812.hpp"

@@ -7,12 +7,9 @@
 #if USE_SERVO_ROLE
 
 #include "servoRole.hpp"
-#include <algorithm>
-#include "resourceManager.hpp"
 #include "UAVCAN/persistantParam.hpp"
 #include "servoPwm.hpp"
 #include "servoSmart.hpp"
-#include "stdutil++.hpp"
 
 /** @brief Dispatch actuator commands to PWM and smart servo backends. */
 void ServoRole::processActuatorArrayCommand(CanardRxTransfer *,

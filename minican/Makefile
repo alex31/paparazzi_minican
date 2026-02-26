@@ -291,7 +291,7 @@ CPPSRC = $(ALLCPPSRC) \
         $(VARIOUS)/UAVCAN/persistantStorage.cpp \
         $(VARIOUS)/smart_servos/smart_servo.cpp \
         $(VARIOUS)/smart_servos/STS3032.cpp \
-        $(VARIOUS)/futabaSbusUart.cpp \
+        $(VARIOUS)/futabaSbusSio.cpp \
         $(VARIOUS)/sioWrapper.cpp \
 	$(COMMON)/adcSurvey.cpp \
 	$(COMMON)/dynamicPinConfig.cpp \

@@ -2,25 +2,9 @@
  * @file ttyConsole.cpp
  * @brief Console command handlers and parameter utilities.
  */
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
-#include <variant>
-#include <charconv>
-#include <cctype>
-#include <cmath>
-#include <string_view>
-#include <optional>
 
 #include "ttyConsole.hpp"
-#include "ch.h"
-#include "hal.h"
 #include "microrl/microrlShell.h"
-#include "stdutil.h"
-#include "printf.h"
-#include "etl/string.h"
-#include "UAVCAN/persistantParam.hpp"
-#include "UAVCAN/persistantStorage.hpp"
 #include "UAVCanSlave.hpp"
 #include "deviceResource.hpp"
 #include "adcSurvey.hpp"
@@ -55,7 +39,6 @@ using Value = std::variant<struct uavcan_protocol_param_Empty, int64_t, float, b
 #ifdef TRACE
 
 #if CONSOLE_DEV_USB
-#include "usb_serial.h"
 #endif
 
 #ifdef CONSOLE_DEV_SD
@@ -157,8 +140,6 @@ static void cmd_param(BaseSequentialStream *lchp, int argc,const char* const arg
   }
 }
 
-#include <array>
-#include <string_view>
 
 namespace {
   struct AdcCalPoint {

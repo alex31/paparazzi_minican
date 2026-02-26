@@ -3,8 +3,6 @@
 #if USE_TEMPLATE_ROLE
 
 #include "templateRole.hpp"
-#include <algorithm>
-#include "UAVCAN/persistantParam.hpp"
 
 DeviceStatus TemplateRole::subscribe(UAVCAN::Node& node)
 {

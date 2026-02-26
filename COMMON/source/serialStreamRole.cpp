@@ -5,12 +5,6 @@
 #include "serialStreamRole.hpp"
 #include "hardwareConf.hpp"
 #include "resourceManager.hpp"
-#include "stdutil++.hpp"
-#include "hal_stm32_dma.h"
-#include <algorithm>
-#include <cstring>
-#include <new>
-#include <type_traits>
 
 #if PLATFORM_MICROCAN
 #include "dynamicPinConfig.hpp"
@@ -23,14 +17,12 @@
  *
  * Flow:
  *  - `processUavcanToSerial` enqueues UAVCAN frames to the UART TX FIFO.
- *  - `sioRxCb` is called from the SIO RX worker thread and enqueues UART bytes for CAN.
- *  - `uavcanTransmitThread` splits UART frames into tunnel chunks and publishes them.
+ *  - `uavcanTransmitThread` pulls UART bytes from SIO and publishes tunnel chunks.
  *  - `uartTransmitThread` dequeues tunnel frames and sends them over UART.
  *
  * Buffers:
- *  - UART->CAN: ObjectFifo<Uart2uavcan_t, 10> (DMA heap).
  *  - CAN->UART: ObjectFifo<Uavcan2uart_t, 50> (DMA heap).
- *  - SIO continuous RX DMA handles idle flush and buffering.
+ *  - SIO continuous RX DMA + internal FIFO handle UART->CAN buffering.
  */
 
 
@@ -43,27 +35,14 @@ namespace {
     .cr3 = 0
   };
 
-#if PLATFORM_MINICAN
   constexpr SIO::DmaUserConfig serial_rx_dma_cfg{
       .stream = STM32_DMA_STREAM_ID_ANY,
-      .dmamux = STM32_DMAMUX1_USART2_RX,
+      .dmamux = EXTERNAL_USART_RX_DMAMUX,
   };
   constexpr SIO::DmaUserConfig serial_tx_dma_cfg{
       .stream = STM32_DMA_STREAM_ID_ANY,
-      .dmamux = STM32_DMAMUX1_USART2_TX,
+      .dmamux = EXTERNAL_USART_TX_DMAMUX,
   };
-#endif
-
-#if PLATFORM_MICROCAN
-  constexpr SIO::DmaUserConfig serial_rx_dma_cfg{
-      .stream = STM32_DMA_STREAM_ID_ANY,
-      .dmamux = STM32_DMAMUX1_USART1_RX,
-  };
-  constexpr SIO::DmaUserConfig serial_tx_dma_cfg{
-      .stream = STM32_DMA_STREAM_ID_ANY,
-      .dmamux = STM32_DMAMUX1_USART1_TX,
-  };
-#endif
 
 }
 
@@ -122,17 +101,12 @@ DeviceStatus SerialStream::subscribe(UAVCAN::Node& node)
   DynPin::setScenario(DynPin::Scenario::UART, 0b01100);
 #endif
   
-  using SerialToUavFifo = std::remove_reference_t<decltype(*fifoObjectSerial2Uav)>;
   using UavToSerialFifo = std::remove_reference_t<decltype(*fifoObjectUav2Serial)>;
-  void *serialToUavMem = malloc_dma(sizeof(SerialToUavFifo));
   void *uavToSerialMem = malloc_dma(sizeof(UavToSerialFifo));
-  if (!serialToUavMem || !uavToSerialMem) {
-    free_dma(serialToUavMem);
-    free_dma(uavToSerialMem);
+  if (!uavToSerialMem) {
     return DeviceStatus(DeviceStatus::SERIAL_STREAM, DeviceStatus::DMA_HEAP_FULL);
   }
 
-  fifoObjectSerial2Uav = new (serialToUavMem) SerialToUavFifo();
   fifoObjectUav2Serial = new (uavToSerialMem) UavToSerialFifo();
 
   node.subscribeBroadcastMessages<Trampoline<&SerialStream::processUavcanToSerial>::fn>();
@@ -143,22 +117,18 @@ DeviceStatus SerialStream::subscribe(UAVCAN::Node& node)
   serialStreamcfg.baud =  param_cget<"bus.serial.baudrate">();
 
   if (sio_ == nullptr) {
-    void *sio_mem = malloc_m(sizeof(SerialSIO));
-    if (!sio_mem) {
-      return DeviceStatus(DeviceStatus::SERIAL_STREAM, DeviceStatus::HEAP_FULL);
-    }
     const SIO::ContinuousConfig cfg = {
       ExternalSIOD,
       serial_rx_dma_cfg,
       serial_tx_dma_cfg,
       serialStreamcfg,
-      &SerialStream::sioRxCb,
-      this,
+      nullptr,
+      nullptr,
       "serial rx",
       NORMALPRIO,
       THD_WORKING_AREA_SIZE(512),
     };
-    sio_ = new (sio_mem) SerialSIO(cfg);
+    sio_ = new SerialSIO(cfg);
   }
   (void)sio_->start();
   return status;
@@ -166,7 +136,7 @@ DeviceStatus SerialStream::subscribe(UAVCAN::Node& node)
 
 
 /**
- * @brief Starts the worker threads for UART RX, UAVCAN TX, and UART TX.
+ * @brief Starts the worker threads for UAVCAN TX and UART TX.
  */
 DeviceStatus SerialStream::start(UAVCAN::Node&)
 {
@@ -192,23 +162,23 @@ void SerialStream::uavcanTransmitThread(void *)
   };
 
   while (true) {
-    auto msg_opt = fifoObjectSerial2Uav->receiveObject(TIME_INFINITE);
-    if (msg_opt) {
-      auto &msg_buffer = msg_opt->get();
-      uint8_t *start = msg_buffer.data();
-      size_t len = msg_buffer.size();
-      while (len != 0) {
-	msg.buffer.len = std::min(chunkSize, len);
-	memcpy(msg.buffer.data, start,  msg.buffer.len);
-	while (m_node->sendBroadcast(msg) != UAVCAN::Node::CAN_OK) {
-	  // libcanard queue is full
-	  chThdSleepMilliseconds(1);
-	}
-	len -= msg.buffer.len;
-	start += msg.buffer.len;
-      }
-      fifoObjectSerial2Uav->returnObject(msg_buffer);
+    SerialSIO::RxLease lease{};
+    if (!sio_->receiveRx(lease, TIME_INFINITE)) {
+      continue;
     }
+    const uint8_t *start = lease.data;
+    size_t len = lease.len;
+    while (len != 0U) {
+      msg.buffer.len = std::min(chunkSize, len);
+      memcpy(msg.buffer.data, start, msg.buffer.len);
+      while (m_node->sendBroadcast(msg) != UAVCAN::Node::CAN_OK) {
+        // libcanard queue is full
+        chThdSleepMilliseconds(1);
+      }
+      len -= msg.buffer.len;
+      start += msg.buffer.len;
+    }
+    sio_->releaseRx(lease);
   }
 }
 
@@ -225,31 +195,6 @@ void SerialStream::uartTransmitThread(void *)
       (void)sio_->writeTimeout(slice, TIME_INFINITE);
       fifoObjectUav2Serial->returnObject(msg_buffer);
     }
-  }
-}
-
-namespace {
-}
-
-void SerialStream::sioRxCb(const SIO::ByteSpan &slice, void *user)
-{
-  auto *self = static_cast<SerialStream *>(user);
-  if ((self == nullptr) || (self->fifoObjectSerial2Uav == nullptr)) {
-    return;
-  }
-
-  size_t offset = 0U;
-  while (offset < slice.size()) {
-    auto msg_opt = self->fifoObjectSerial2Uav->takeObject(TIME_IMMEDIATE);
-    if (!msg_opt) {
-      break;
-    }
-    auto &msg_buffer = msg_opt->get();
-    const size_t to_copy = std::min(Uart2uavcan_t::MAX_SIZE, slice.size() - offset);
-    std::memcpy(msg_buffer.data(), slice.data() + offset, to_copy);
-    msg_buffer.uninitialized_resize(to_copy);
-    self->fifoObjectSerial2Uav->sendObject(msg_buffer);
-    offset += to_copy;
   }
 }
 

@@ -4,8 +4,6 @@
  */
 #pragma once
 
-#include <ch.h>
-#include <hal.h>
 #include "roleStatus.hpp"
 #include  "UAVCAN/pubSub.hpp"
 

@@ -1,8 +1,14 @@
 A COURT TERME:
 
-
+  ° tester la branche experiemtale SIO pour tous les roles USART :
+    + gps ublox (minican tx/rx et microcan rx/only on t des code path differents)
+    + SBUS
+    + telemetrie
+    + smart servos
+    
   ° tester l'entrée bootloader serial du root makefile sur minican qui a un pad boot0 accessible
-  ° utiliser le vendor specific code pour envoyer des log d'erreur/warning
+
+  ° tester : utilisation du vendor specific code pour envoyer des log d'erreur/warning
 
 PLAN de l'Iron Bird
  ° id, role et config de chaque mini/microcan -> fichier : dump des configs

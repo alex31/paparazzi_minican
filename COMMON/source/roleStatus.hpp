@@ -4,10 +4,7 @@
  */
 #pragma once
 #include "frozen/map.h"
-#include "frozen/string.h"
-#include "etl/string.h"
 #include <etl/to_string.h>
-#include <array>
 
 /// Helper to build a frozen::map from a std::array.
 template <typename K, typename V, std::size_t N>

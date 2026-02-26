@@ -6,16 +6,10 @@
 
 #if USE_GPS_UBX_ROLE
 
-#include <algorithm>
-#include <array>
-#include <cstdint>
-#include <cstring>
 
 #include "gpsUbxRole.hpp"
 #include "hardwareConf.hpp"
 #include "resourceManager.hpp"
-#include "stdutil++.hpp"
-#include "etl/span.h"
 
 #if PLATFORM_MICROCAN
 #include "dynamicPinConfig.hpp"
@@ -231,17 +225,16 @@ namespace {
   {
     systime_t start = chVTGetSystemTimeX();
     uint8_t prev = 0;
-    uint8_t buffer[64];
-
     while (chTimeDiffX(start, chVTGetSystemTimeX()) < timeout) {
-      const size_t size = sio.readTimeout(buffer, sizeof(buffer), TIME_MS2I(50));
-      for (size_t i = 0; i < size; ++i) {
-        const uint8_t byte = buffer[i];
-        if (prev == ubxSync1 && byte == ubxSync2) {
-          return true;
-        }
-        prev = byte;
+      const msg_t c = sio.getTimeout(TIME_MS2I(50));
+      if (c < MSG_OK) {
+        continue;
       }
+      const uint8_t byte = static_cast<uint8_t>(c);
+      if (prev == ubxSync1 && byte == ubxSync2) {
+        return true;
+      }
+      prev = byte;
     }
     return false;
   }
@@ -561,27 +554,14 @@ namespace {
     .cr3 = 0
   };
 
-#if PLATFORM_MINICAN
   constexpr SIO::DmaUserConfig gps_rx_dma_cfg{
       .stream = STM32_DMA_STREAM_ID_ANY,
-      .dmamux = STM32_DMAMUX1_USART2_RX,
+      .dmamux = EXTERNAL_USART_RX_DMAMUX,
   };
   constexpr SIO::DmaUserConfig gps_tx_dma_cfg{
       .stream = STM32_DMA_STREAM_ID_ANY,
-      .dmamux = STM32_DMAMUX1_USART2_TX,
+      .dmamux = EXTERNAL_USART_TX_DMAMUX,
   };
-#endif
-
-#if PLATFORM_MICROCAN
-  constexpr SIO::DmaUserConfig gps_rx_dma_cfg{
-      .stream = STM32_DMA_STREAM_ID_ANY,
-      .dmamux = STM32_DMAMUX1_USART1_RX,
-  };
-  constexpr SIO::DmaUserConfig gps_tx_dma_cfg{
-      .stream = STM32_DMA_STREAM_ID_ANY,
-      .dmamux = STM32_DMAMUX1_USART1_TX,
-  };
-#endif
 
 
 
@@ -634,12 +614,11 @@ DeviceStatus GpsUBX::start(UAVCAN::Node& node)
   // using ublox protocol
   static GpsCfgSio *cfg_sio = nullptr;
   if (cfg_sio == nullptr) {
-    void *cfg_mem = malloc_m(sizeof(GpsCfgSio));
-    if (!cfg_mem) {
+    GpsCfgSio::Config cfg = {ExternalSIOD, gpscfg};
+    cfg_sio = new GpsCfgSio(cfg);
+    if (!cfg_sio) {
       return DeviceStatus(DeviceStatus::GPS_ROLE, DeviceStatus::HEAP_FULL);
     }
-    GpsCfgSio::Config cfg = {ExternalSIOD, gpscfg};
-    cfg_sio = new (cfg_mem) GpsCfgSio(cfg);
   } else {
     cfg_sio->setConfig(gpscfg);
   }
@@ -652,10 +631,6 @@ DeviceStatus GpsUBX::start(UAVCAN::Node& node)
   // no configuration required
 #endif
   if (sio_ == nullptr) {
-    void *sio_mem = malloc_m(sizeof(GpsSIO));
-    if (!sio_mem) {
-      return DeviceStatus(DeviceStatus::GPS_ROLE, DeviceStatus::HEAP_FULL);
-    }
     const SIO::ContinuousConfig cfg = {
       ExternalSIOD,
       gps_rx_dma_cfg,
@@ -667,7 +642,10 @@ DeviceStatus GpsUBX::start(UAVCAN::Node& node)
       NORMALPRIO,
       THD_WORKING_AREA_SIZE(1536),
     };
-    sio_ = new (sio_mem) GpsSIO(cfg);
+    sio_ = new GpsSIO(cfg);
+    if (!sio_) {
+      return DeviceStatus(DeviceStatus::GPS_ROLE, DeviceStatus::HEAP_FULL);
+    }
   }
   (void)sio_->start();
   

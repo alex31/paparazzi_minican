@@ -4,11 +4,8 @@
  */
 #pragma once
 
-#include <ch.h>
-#include <hal.h>
 #include "UAVCAN/pubSub.hpp"
 #include "roleBase.hpp"
-#include "roleStatus.hpp"
 
 /**
  * @brief Role that samples battery voltage and drives LED indication.

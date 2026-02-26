@@ -3,12 +3,8 @@
  * @brief Periodic health survey publishing for temperature and voltages.
  */
 #include "healthSurvey.hpp"
-#include <ch.h>
-#include <algorithm>
-#include <limits>
 #include "adcSurvey.hpp"
 #include "hardwareConf.hpp"
-#include "UAVCAN/persistantParam.hpp"
 
 namespace  {
   [[noreturn]]

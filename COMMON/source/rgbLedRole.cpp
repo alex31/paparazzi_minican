@@ -8,11 +8,7 @@
 
 #include "rgbLedRole.hpp"
 
-#include <algorithm>
-#include <array>
-#include <variant>
 
-#include "UAVCAN/persistantParam.hpp"
 #include "led2812.hpp"
 #include "resourceManager.hpp"
 #include "hardwareConf.hpp"

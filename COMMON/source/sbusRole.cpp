@@ -7,12 +7,8 @@
 #if USE_RC_SBUS_ROLE
 
 #include "sbusRole.hpp"
-#include <algorithm>
 #include "hardwareConf.hpp"
 #include "resourceManager.hpp"
-#include "stdutil++.hpp"
-#include <cmath>
-#include "hal_stm32_dma.h"
 
 #if PLATFORM_MICROCAN
 #include "dynamicPinConfig.hpp"
@@ -20,27 +16,14 @@
 
 
 namespace {
-  #if PLATFORM_MINICAN
   constexpr SIO::DmaUserConfig sbus_rx_dma_cfg{
       .stream = STM32_DMA_STREAM_ID_ANY,
-      .dmamux = STM32_DMAMUX1_USART2_RX,
+      .dmamux = EXTERNAL_USART_RX_DMAMUX,
   };
   constexpr SIO::DmaUserConfig sbus_tx_dma_cfg{
       .stream = STM32_DMA_STREAM_ID_ANY,
-      .dmamux = STM32_DMAMUX1_USART2_TX,
+      .dmamux = EXTERNAL_USART_TX_DMAMUX,
   };
-  #endif
-
-  #if PLATFORM_MICROCAN
-  constexpr SIO::DmaUserConfig sbus_rx_dma_cfg{
-      .stream = STM32_DMA_STREAM_ID_ANY,
-      .dmamux = STM32_DMAMUX1_USART1_RX,
-  };
-  constexpr SIO::DmaUserConfig sbus_tx_dma_cfg{
-      .stream = STM32_DMA_STREAM_ID_ANY,
-      .dmamux = STM32_DMAMUX1_USART1_TX,
-  };
-  #endif
 
   SBUSConfig sbuscfg = {	//Config du sbus de la RC
     .siop = &ExternalSIOD,

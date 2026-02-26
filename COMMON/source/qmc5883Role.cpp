@@ -8,11 +8,8 @@
 #if USE_QMC5883_ROLE
 
 #include "qmc5883Role.hpp"
-#include <algorithm>
-#include "stdutil.h"
 #include "hardwareConf.hpp"
 #include "I2C_periph.hpp"
-#include "UAVCAN/persistantParam.hpp"
 
 static_assert(__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__, "QMC5883L driver assumes little-endian MCU");
 

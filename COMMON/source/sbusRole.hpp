@@ -4,14 +4,10 @@
  */
 #pragma once
 
-#include <ch.h>
-#include <hal.h>
 #include <bitset>
 #include "UAVCAN/pubSub.hpp"
-#include "roleStatus.hpp"
 #include "roleBase.hpp"
-#include "UAVCAN/persistantParam.hpp"
-#include "futabaSbusUart.hpp"
+#include "futabaSbusSio.hpp"
 
 /**
  * @brief Role for receiving SBUS frames and publishing RC input over UAVCAN.

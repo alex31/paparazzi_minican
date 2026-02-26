@@ -7,10 +7,8 @@
 #if USE_SERVO_ROLE
 
 #include "servoPwm.hpp"
-#include <algorithm>
 #include "resourceManager.hpp"
 #include "UAVCAN/persistantParam.hpp"
-#include "stdutil++.hpp"
 
 
 
