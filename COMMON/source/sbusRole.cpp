@@ -81,7 +81,10 @@ DeviceStatus RC_Sbus::start(UAVCAN::Node& _node)
   
   enabledChannels = param_cget<"role.sbus.channel_mask">();
   rcInput.rcin.len = enabledChannels.count();
-  rcInput.id = param_cget<"role.sbus.id">();            
+  rcInput.id = param_cget<"role.sbus.id">();
+  // Debug mode for USB-UART dongles: signal is already non-inverted TTL.
+  // Normal SBUS receiver path keeps HW inversion in the USART.
+  sbuscfg.externallyInverted = param_cget<"role.sbus.debug_uart_ttl">();
   
 
   if (rcInput.rcin.len > SBUS_NUM_CHANNEL) {

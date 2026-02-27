@@ -65,6 +65,9 @@
       {"role.sbus.channel_mask", {.min=0, .max=0b1111'1111'1111'1111, .v = 0b1111'1111'1111'1111}},
       // in case there is multiple RC, each RC must have a unique ID
       {"role.sbus.id", {.min=0, .max=0xff, .v = 0}},
+      // true: UART-level non-inverted signal (debug with USB-UART dongle)
+      // false: real SBUS signal, inversion handled by USART peripheral.
+      {"role.sbus.debug_uart_ttl", {.v = false}},
 #endif
 
 #if USE_SERIAL_STREAM_ROLE

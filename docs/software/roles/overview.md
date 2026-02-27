@@ -56,6 +56,7 @@ Reads SBUS on UART and publishes dronecan.sensors.rc.RCInput.
 Params:
 - role.sbus.channel_mask
 - role.sbus.id
+- role.sbus.debug_uart_ttl (true: non-inverted TTL debug input, false: normal SBUS inversion)
 
 Wiring:
 - SBUS on USART2 RX (PB04) on MiniCAN
