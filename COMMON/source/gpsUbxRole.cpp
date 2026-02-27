@@ -23,6 +23,52 @@ namespace {
   bool utcToUnixUsec(const UBX::NavPvt& msg, uint64_t& out);
 
   using GpsCfgSio = SIO::Buffered<256U>;
+  /**
+   * @brief Scan for UBX sync bytes to confirm the link is alive.
+   */
+  bool waitForUbxSync(GpsCfgSio &sio, systime_t timeout)
+  {
+    systime_t start = chVTGetSystemTimeX();
+    uint8_t prev = 0;
+    while (chTimeDiffX(start, chVTGetSystemTimeX()) < timeout) {
+      const msg_t c = sio.getTimeout(TIME_MS2I(50));
+      if (c < MSG_OK) {
+        continue;
+      }
+      const uint8_t byte = static_cast<uint8_t>(c);
+      if (prev == UBX::Decoder::Sync1 && byte == UBX::Decoder::Sync2) {
+        return true;
+      }
+      prev = byte;
+    }
+    return false;
+  }
+
+  /**
+   * @brief Probe a list of baudrates and return the first one exposing UBX sync.
+   */
+  bool detectUbxBaud(GpsCfgSio &sio, SIOConfig &cfg, etl::span<const uint32_t> baudList,
+                     systime_t timeout, uint32_t &detectedBaud)
+  {
+    detectedBaud = 0U;
+    for (const auto baud : baudList) {
+      cfg.baud = baud;
+      sio.stop();
+      sio.setConfig(cfg);
+      if (sio.start() != HAL_RET_SUCCESS) {
+        continue;
+      }
+      const bool gotSync = waitForUbxSync(sio, timeout);
+      sio.stop();
+      if (gotSync) {
+        detectedBaud = baud;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  static constexpr std::array<uint32_t, 3> autoBaudList = {57'600U, 115'200U, 230'400U};
 
 #if PLATFORM_MINICAN
   /**
@@ -216,27 +262,6 @@ namespace {
     }
     ubxSendValset(sio, ubxCfgNavspgDynModel, &dynModelAirborne,
                   ubxKeySize(ubxCfgNavspgDynModel));
-  }
-
-  /**
-   * @brief Scan for UBX sync bytes to confirm the link is alive.
-   */
-  bool waitForUbxSync(GpsCfgSio &sio, systime_t timeout)
-  {
-    systime_t start = chVTGetSystemTimeX();
-    uint8_t prev = 0;
-    while (chTimeDiffX(start, chVTGetSystemTimeX()) < timeout) {
-      const msg_t c = sio.getTimeout(TIME_MS2I(50));
-      if (c < MSG_OK) {
-        continue;
-      }
-      const uint8_t byte = static_cast<uint8_t>(c);
-      if (prev == ubxSync1 && byte == ubxSync2) {
-        return true;
-      }
-      prev = byte;
-    }
-    return false;
   }
 
   /**
@@ -609,6 +634,28 @@ DeviceStatus GpsUBX::start(UAVCAN::Node& node)
 #endif
 
   gpscfg.baud =  param_cget<"bus.serial.baudrate">();
+#if PLATFORM_MICROCAN
+  if (gpscfg.baud == 0U) {
+    static GpsCfgSio *probe_sio = nullptr;
+    if (probe_sio == nullptr) {
+      GpsCfgSio::Config cfg = {ExternalSIOD, gpscfg};
+      probe_sio = new GpsCfgSio(cfg);
+      if (!probe_sio) {
+        return DeviceStatus(DeviceStatus::GPS_ROLE, DeviceStatus::HEAP_FULL);
+      }
+    }
+    uint32_t detectedBaud = 0U;
+    if (!detectUbxBaud(*probe_sio, gpscfg, autoBaudList, TIME_MS2I(900), detectedBaud)) {
+      detectedBaud = 115'200U;
+      node.infoCb("gps.ubx: auto-baud failed, fallback %lu",
+                  static_cast<unsigned long>(detectedBaud));
+    } else {
+      node.infoCb("gps.ubx: auto-baud detected %lu",
+                  static_cast<unsigned long>(detectedBaud));
+    }
+    gpscfg.baud = detectedBaud;
+  }
+#endif
 #if PLATFORM_MINICAN
   // minican is full duplex for the GPS and can configure it
   // using ublox protocol
@@ -620,6 +667,19 @@ DeviceStatus GpsUBX::start(UAVCAN::Node& node)
       return DeviceStatus(DeviceStatus::GPS_ROLE, DeviceStatus::HEAP_FULL);
     }
   } else {
+    cfg_sio->setConfig(gpscfg);
+  }
+  if (gpscfg.baud == 0U) {
+    uint32_t detectedBaud = 0U;
+    if (!detectUbxBaud(*cfg_sio, gpscfg, autoBaudList, TIME_MS2I(900), detectedBaud)) {
+      detectedBaud = 115'200U;
+      node.infoCb("gps.ubx: auto-baud failed, fallback %lu",
+                  static_cast<unsigned long>(detectedBaud));
+    } else {
+      node.infoCb("gps.ubx: auto-baud detected %lu",
+                  static_cast<unsigned long>(detectedBaud));
+    }
+    gpscfg.baud = detectedBaud;
     cfg_sio->setConfig(gpscfg);
   }
   (void)cfg_sio->start();
@@ -647,7 +707,12 @@ DeviceStatus GpsUBX::start(UAVCAN::Node& node)
       return DeviceStatus(DeviceStatus::GPS_ROLE, DeviceStatus::HEAP_FULL);
     }
   }
-  (void)sio_->start();
+  const msg_t startStatus = sio_->start();
+  if (startStatus != HAL_RET_SUCCESS) {
+    const uint16_t specific =
+      static_cast<uint16_t>((startStatus < MSG_OK) ? -startStatus : startStatus);
+    return DeviceStatus(DeviceStatus::GPS_ROLE, DeviceStatus::NOT_RESPONDING, specific);
+  }
   
   return status;
 }

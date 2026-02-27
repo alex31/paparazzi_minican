@@ -21,7 +21,9 @@
       // I²C frequency : valid values : 100, 400, 1000
       {"bus.i2c.frequency_khz", {.min = 100, .max = 1000, .v = 400}},
       // shared baudrate for all roles that use usart (but smart servo which use autobaud)
-      {"bus.serial.baudrate", {.min = 57'600, .max = 460'800, .v = 115'200}},
+      // 0 is reserved for ROLE.gnss.ubx to trigger UBX auto-baud probing
+      // (RX-only on MICROCAN, detect-then-keep-baud on MINICAN).
+      {"bus.serial.baudrate", {.min = 0, .max = 460'800, .v = 115'200}},
       {"hardware.nickname", {.v = "nickname"}},
       // fancy led pattern if role.identification is true
       {"ROLE.identification", {.v = true}},

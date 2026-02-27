@@ -5,6 +5,7 @@
 #include "serialStreamRole.hpp"
 #include "hardwareConf.hpp"
 #include "resourceManager.hpp"
+#include "UAVCanHelper.hpp"
 
 #if PLATFORM_MICROCAN
 #include "dynamicPinConfig.hpp"
@@ -83,6 +84,15 @@ void SerialStream::processUavcanToSerial(CanardRxTransfer *,
 DeviceStatus SerialStream::subscribe(UAVCAN::Node& node)
 {
   m_node = &node;
+  DeviceStatus status(DeviceStatus::SERIAL_STREAM);
+  protocol =  param_cget<"role.tunnel.serial.protocol">();
+  serialStreamcfg.baud =  param_cget<"bus.serial.baudrate">();
+  if (serialStreamcfg.baud == 0U) {
+    DebugTrace("serial.tunnel: bus.serial.baudrate=0 is invalid for this role");
+    // Let start() report a UAVCAN log when the node is fully started.
+    return status;
+  }
+
   // use serial2 TX + RX
   using HR = HWResource;
 #if PLATFORM_MINICAN
@@ -110,11 +120,6 @@ DeviceStatus SerialStream::subscribe(UAVCAN::Node& node)
   fifoObjectUav2Serial = new (uavToSerialMem) UavToSerialFifo();
 
   node.subscribeBroadcastMessages<Trampoline<&SerialStream::processUavcanToSerial>::fn>();
-  DeviceStatus status(DeviceStatus::SERIAL_STREAM);
-  
- 
-  protocol =  param_cget<"role.tunnel.serial.protocol">();
-  serialStreamcfg.baud =  param_cget<"bus.serial.baudrate">();
 
   if (sio_ == nullptr) {
     const SIO::ContinuousConfig cfg = {
@@ -140,6 +145,15 @@ DeviceStatus SerialStream::subscribe(UAVCAN::Node& node)
  */
 DeviceStatus SerialStream::start(UAVCAN::Node&)
 {
+  if (param_cget<"bus.serial.baudrate">() == 0U) {
+    DebugTrace("serial.tunnel: ROLE.tunnel.serial refused (bus.serial.baudrate=0)");
+    if (m_node != nullptr) {
+      UAVCAN::Helper::log(*m_node, UAVCAN_PROTOCOL_DEBUG_LOGLEVEL_ERROR,
+                          "serialStreamRole.cpp::start()",
+                          "bus.serial.baudrate=0 invalid for ROLE.tunnel.serial");
+    }
+    return DeviceStatus(DeviceStatus::SERIAL_STREAM, DeviceStatus::INVALID_PARAM);
+  }
   chThdCreateFromHeap(NULL, THD_WORKING_AREA_SIZE(1024), "serial uavcan tx", NORMALPRIO, 
 		      &Trampoline<&SerialStream::uavcanTransmitThread>::fn, this);
   chThdCreateFromHeap(NULL, THD_WORKING_AREA_SIZE(512), "serial uart tx", NORMALPRIO, 

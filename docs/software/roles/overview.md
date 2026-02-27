@@ -80,8 +80,10 @@ Params:
 - bus.serial.baudrate
 
 Notes:
-- MiniCAN uses full duplex UART and attempts GPS auto-configuration.
-- MicroCAN is RX-only and expects GPS to be preconfigured.
+- `bus.serial.baudrate > 0`: fixed UART baudrate.
+- `bus.serial.baudrate = 0`: GNSS UBX auto-baud probing on `57600`, `115200`, `230400`.
+- MiniCAN (full duplex): detect baud, then configure GPS while keeping that detected baud.
+- MicroCAN (RX-only): detect baud from incoming UBX stream only; GPS must already be configured to emit UBX.
 
 Wiring:
 - USART2 TX/RX on PB03/PB04 (MiniCAN)

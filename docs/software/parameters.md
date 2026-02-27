@@ -7,7 +7,7 @@ Important parameters:
 - uavcan.node_id (0 = dynamic ID)
 - uavcan.dynid.fd (enable FD dynamic allocation)
 - uavcan.param_set_behavior (SetRam / SetRamFlash / SetRamFlashAndReboot)
-- bus.serial.baudrate
+- bus.serial.baudrate (0..460800, where 0 enables GNSS UBX auto-baud probing)
 - bus.i2c.frequency_khz
 - ROLE.* toggles for each role
 
