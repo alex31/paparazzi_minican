@@ -68,18 +68,44 @@ sub fmt_hex {
 
 sub overlaps_for {
     my ($list_ref, $start_key, $end_key) = @_;
+    # We create a local sorted copy of the sections.
+    # Sorting by start address lets us stop early in the inner loop:
+    # once section[j] starts after section[i] ends, all further j will
+    # start even later, so they cannot overlap section[i].
     my @list = sort { $a->{$start_key} <=> $b->{$start_key} } @{$list_ref};
     my @overlaps;
 
+    # For each section i, we only need to compare with sections that come
+    # after it in sorted order.
+    #
+    # Complexity note:
+    # - Worst case is O(n^2) (many overlapping ranges).
+    # - In typical linker layouts where sections are mostly disjoint and
+    #   sorted, the early "last" reduces work significantly.
     for (my $i = 0; $i < @list; $i++) {
         for (my $j = $i + 1; $j < @list; $j++) {
+            # No possible overlap from this j onward:
+            # current candidate starts at or after end of i.
+            #
+            # Ranges are treated as half-open intervals [start, end):
+            # if j.start == i.end, they are adjacent, not overlapping.
             last if $list[$j]->{$start_key} >= $list[$i]->{$end_key};
+
+            # Real overlap condition for half-open intervals:
+            # j.start < i.end
+            #
+            # The opposite direction (i.start < j.end) is guaranteed here
+            # because j is sorted after i, so j.start >= i.start.
             if ($list[$j]->{$start_key} < $list[$i]->{$end_key}) {
+                # Store the pair exactly as found; formatting is done later.
                 push @overlaps, [$list[$i], $list[$j]];
             }
         }
     }
 
+    # Return all detected overlapping pairs. Each item is:
+    #   [ section_a_hashref, section_b_hashref ]
+    # where the hashrefs contain fields like name/start/end addresses.
     return @overlaps;
 }
 

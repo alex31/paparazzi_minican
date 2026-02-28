@@ -10,6 +10,8 @@
 #include "gpsUbxRole.hpp"
 #include "hardwareConf.hpp"
 #include "resourceManager.hpp"
+#include "UAVCanHelper.hpp"
+#include <cstdio>
 
 #if PLATFORM_MICROCAN
 #include "dynamicPinConfig.hpp"
@@ -616,6 +618,22 @@ DeviceStatus GpsUBX::start(UAVCAN::Node& node)
   using HR = HWResource;
   DeviceStatus status(DeviceStatus::GPS_ROLE);
   m_node = &node;
+
+  const auto logAutoBaudResult = [&](const bool success, const uint32_t baud) {
+    char text[90];
+    if (!success) {
+      std::snprintf(text, sizeof(text), "gps.ubx: auto-baud failed, fallback %lu",
+                    static_cast<unsigned long>(baud));
+      (void)UAVCAN::Helper::log(node, UAVCAN_PROTOCOL_DEBUG_LOGLEVEL_ERROR,
+                                "gpsUbxRole.cpp::start()", text);
+    } else {
+      std::snprintf(text, sizeof(text), "gps.ubx: auto-baud detected %lu",
+                    static_cast<unsigned long>(baud));
+      (void)UAVCAN::Helper::log(node, UAVCAN_PROTOCOL_DEBUG_LOGLEVEL_INFO,
+                                "gpsUbxRole.cpp::start()", text);
+    }
+    node.infoCb("%s", text);
+  };
   
 #if PLATFORM_MINICAN
   if (not boardResource.tryAcquire(HR::USART_2, HR::PB03, HR::PB04)) {
@@ -645,14 +663,12 @@ DeviceStatus GpsUBX::start(UAVCAN::Node& node)
       }
     }
     uint32_t detectedBaud = 0U;
-    if (!detectUbxBaud(*probe_sio, gpscfg, autoBaudList, TIME_MS2I(900), detectedBaud)) {
+    const bool autoBaudOk =
+      detectUbxBaud(*probe_sio, gpscfg, autoBaudList, TIME_MS2I(900), detectedBaud);
+    if (!autoBaudOk) {
       detectedBaud = 115'200U;
-      node.infoCb("gps.ubx: auto-baud failed, fallback %lu",
-                  static_cast<unsigned long>(detectedBaud));
-    } else {
-      node.infoCb("gps.ubx: auto-baud detected %lu",
-                  static_cast<unsigned long>(detectedBaud));
     }
+    logAutoBaudResult(autoBaudOk, detectedBaud);
     gpscfg.baud = detectedBaud;
   }
 #endif
@@ -671,14 +687,12 @@ DeviceStatus GpsUBX::start(UAVCAN::Node& node)
   }
   if (gpscfg.baud == 0U) {
     uint32_t detectedBaud = 0U;
-    if (!detectUbxBaud(*cfg_sio, gpscfg, autoBaudList, TIME_MS2I(900), detectedBaud)) {
+    const bool autoBaudOk =
+      detectUbxBaud(*cfg_sio, gpscfg, autoBaudList, TIME_MS2I(900), detectedBaud);
+    if (!autoBaudOk) {
       detectedBaud = 115'200U;
-      node.infoCb("gps.ubx: auto-baud failed, fallback %lu",
-                  static_cast<unsigned long>(detectedBaud));
-    } else {
-      node.infoCb("gps.ubx: auto-baud detected %lu",
-                  static_cast<unsigned long>(detectedBaud));
     }
+    logAutoBaudResult(autoBaudOk, detectedBaud);
     gpscfg.baud = detectedBaud;
     cfg_sio->setConfig(gpscfg);
   }
