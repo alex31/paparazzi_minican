@@ -1,0 +1,21 @@
+#include "roleConf.h"
+
+#if USE_SERIAL_STREAM_ROLE
+
+#include "serialStreamRole.hpp"
+#include "hardwareConf.hpp"
+#include "ressourceManager.hpp"
+#include "stdutil++.hpp"
+#include <new>
+#include <type_traits>
+
+#if PLATFORM_MICROCAN
+#include "dynamicPinConfig.hpp"
+#endif
+
+/*
+  Todo:
+
+  declarer 2 fifoobject :
+  dans le sens uart -> uavcan object = std::array<uint8_t, 300> et il y en a 5
+  dans le s
