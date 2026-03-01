@@ -10,6 +10,11 @@
 #include "resourceManager.hpp"
 #include "smart_servos/STS3032.h"
 #include "hardwareConf.hpp"
+#include "UAVCanHelper.hpp"
+#include <algorithm>
+#include <array>
+#include <cstdio>
+#include <limits>
 
 
 #if PLATFORM_MICROCAN
@@ -41,6 +46,8 @@ namespace  {
   uint32_t	     startIndex = std::numeric_limits<uint32_t>::max();
   uint32_t	     numServos = 0;
   uint32_t	     reportPeriod = 0;
+  constexpr sysinterval_t kImmediateStatusMinInterval = TIME_MS2I(8);
+  std::array<systime_t, BROADCAST_ID + 1U> immediateLastPublishTs = {};
   void periodic(void *);
   UAVCAN::Node*	     nodep = nullptr;
   void copy(const STS3032::StateVector& sv, uavcan_equipment_actuator_Status &msg,
@@ -58,6 +65,7 @@ DeviceStatus ServoSmart::start(UAVCAN::Node& node)
       reportFrequency != 0) {
     reportPeriod = CH_CFG_ST_FREQUENCY / param_cget<"role.servo.smart.status_frequency">();
   }
+  immediateLastPublishTs.fill(0U);
   nodep = &node;
 
   // use serial2 TX + RX
@@ -69,13 +77,12 @@ DeviceStatus ServoSmart::start(UAVCAN::Node& node)
 #endif
   
 #if PLATFORM_MICROCAN
-  if (not boardResource.tryAcquire(HR::USART_1, HR::PA09, HR::PA10,
-				   HR::F2, HR::F3)) {
+  if (not boardResource.tryAcquire(HR::USART_1, HR::PA09, HR::F2)) {
     return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT,
 			std::to_underlying(HR::USART_1));
   }
   // MSB F4 F3 F2a F0b F0a LSB
-  DynPin::setScenario(DynPin::Scenario::UART, 0b01100);
+  DynPin::setScenario(DynPin::Scenario::UART, 0b00100);
 #endif
 
   
@@ -98,18 +105,45 @@ DeviceStatus ServoSmart::start(UAVCAN::Node& node)
 	       servoBus->getSerialBaudrate() / 1000U);
   } else {
     DebugTrace("detectBaudrate failed with status 0x%x: aborting", status);
-    return DeviceStatus(DeviceStatus::SERVO_SMART, DeviceStatus::HETEROGENEOUS_BAUDS);
+    if (status == SmartServo::STATUS_TIMEOUT) {
+      return DeviceStatus(DeviceStatus::SERVO_SMART, DeviceStatus::NOT_RESPONDING, static_cast<uint16_t>(status));
+    }
+    if (status == SmartServo::HETEROGENEOUS_BAUDRATES) {
+      return DeviceStatus(DeviceStatus::SERVO_SMART, DeviceStatus::HETEROGENEOUS_BAUDS, static_cast<uint16_t>(status));
+    }
+    return DeviceStatus(DeviceStatus::SERVO_SMART, DeviceStatus::INVALID_PARAM, static_cast<uint16_t>(status));
   }
-  
-    
-  for(uint8_t id = 1U; id <= numServos; id++) {
-    if (servoBus->ping(id) == SmartServo::OK) {
-      DebugTrace("ping ok return id = %u", id);
-      setUnitless(id, 0);
-    } else {
-      DebugTrace("Error : servo %u not responding", id);
+
+  if ((startIndex + numServos) > BROADCAST_ID) {
+    DebugTrace("Error: invalid smart-servo mapping start=%lu count=%lu", startIndex, numServos);
+    return DeviceStatus(DeviceStatus::SERVO_SMART, DeviceStatus::INVALID_PARAM, startIndex);
+  }
+
+  bool responding[BROADCAST_ID + 1U] = {false};
+  uint32_t respondingCount = 0U;
+  for (uint16_t id = 0U; id < BROADCAST_ID; id++) {
+    if (servoBus->ping(static_cast<uint8_t>(id)) == SmartServo::OK) {
+      responding[id] = true;
+      respondingCount++;
+      DebugTrace("smart-servo scan: id=%u responding", id);
+
+      char text[90];
+      std::snprintf(text, sizeof(text), "servo.smart: id %u responding", static_cast<unsigned>(id));
+      (void)UAVCAN::Helper::log(node, UAVCAN_PROTOCOL_DEBUG_LOGLEVEL_INFO,
+				"servoSmart.cpp::start()", text);
+    }
+  }
+  DebugTrace("smart-servo scan: %lu id(s) responding", respondingCount);
+  if (respondingCount == 0U) {
+    return DeviceStatus(DeviceStatus::SERVO_SMART, DeviceStatus::NOT_RESPONDING, 0U);
+  }
+
+  for (uint32_t id = startIndex; id < (startIndex + numServos); id++) {
+    if (!responding[id]) {
+      DebugTrace("Error: configured servo id=%lu not responding", id);
       return DeviceStatus(DeviceStatus::SERVO_SMART, DeviceStatus::NOT_RESPONDING, id);
     }
+    setUnitless(id, 0);
   }
 
   if (reportPeriod != 0) {
@@ -151,6 +185,41 @@ void ServoSmart::setSpeed(uint8_t index, float value)
     uint16_t speed = std::min(65535.0f, value * 652.7f);   
     servoBus->speedLimit(index, speed);
   } 
+}
+
+/** @brief Publish one status sample immediately, with per-servo rate limiting. */
+void ServoSmart::publishImmediateStatus(uint8_t index)
+{
+  if (index > BROADCAST_ID || nodep == nullptr || servoBus == nullptr) {
+    return;
+  }
+  if ((startIndex > index) || (index >= (startIndex + numServos))) {
+    return;
+  }
+
+  const systime_t now = chVTGetSystemTimeX();
+  systime_t& last = immediateLastPublishTs[index];
+  if ((last != 0U) && (chTimeDiffX(last, now) < kImmediateStatusMinInterval)) {
+    // DebugTrace("smart-servo immediate status rate-limited id=%u", index);
+    return;
+  }
+  last = now;
+
+  STS3032::StateVector sv = servoBus->readStates(index);
+  if (sv.status == SmartServo::STATUS_TIMEOUT) {
+    // DebugTrace("smart-servo immediate status read timeout id=%u", index);
+    return;
+  }
+
+  uavcan_equipment_actuator_Status msg;
+  copy(sv, msg, index);
+  const auto canStatus = nodep->sendBroadcast(msg);
+  if (canStatus == UAVCAN::Node::CAN_OK) {
+    // DebugTrace("smart-servo immediate status published id=%u", index);
+  } else {
+    // DebugTrace("smart-servo immediate status publish failed id=%u status=%u",
+    //	       index, static_cast<unsigned>(canStatus));
+  }
 }
 
 namespace {

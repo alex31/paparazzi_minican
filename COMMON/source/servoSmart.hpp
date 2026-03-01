@@ -18,4 +18,6 @@ namespace ServoSmart {
   void setTorque(uint8_t index, float value);
   /** @brief Publish a speed setpoint for the given servo index. */
   void setSpeed(uint8_t index, float value);
+  /** @brief Publish one immediate status sample for the given servo index. */
+  void publishImmediateStatus(uint8_t index);
 }
