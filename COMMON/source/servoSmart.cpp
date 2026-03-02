@@ -16,6 +16,10 @@
 #include <cstdio>
 #include <limits>
 
+#ifndef SERVO_SMART_DEBUG_SPEED_TELEMETRY
+#define SERVO_SMART_DEBUG_SPEED_TELEMETRY 0
+#endif
+
 
 #if PLATFORM_MICROCAN
 #include "dynamicPinConfig.hpp"
@@ -249,6 +253,12 @@ namespace {
     msg.force = std::numeric_limits<float>::quiet_NaN(); // not available
     msg.speed = sv.speed;
     msg.power_rating_pct = std::clamp(static_cast<int>(sv.load * 100), 0, 100);
+#if SERVO_SMART_DEBUG_SPEED_TELEMETRY
+    DebugTrace("servo.smart speed publish id=%u sv.speed=%d msg.speed=%.3f",
+	       static_cast<unsigned>(id),
+	       static_cast<int>(sv.speed),
+	       static_cast<double>(msg.speed));
+#endif
   }
 
   
