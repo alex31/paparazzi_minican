@@ -13,6 +13,7 @@
 #include "UAVCanHelper.hpp"
 #include <algorithm>
 #include <array>
+#include <bitset>
 #include <cstdio>
 #include <limits>
 
@@ -50,12 +51,71 @@ namespace  {
   uint32_t	     startIndex = std::numeric_limits<uint32_t>::max();
   uint32_t	     numServos = 0;
   uint32_t	     reportPeriod = 0;
-  constexpr sysinterval_t kImmediateStatusMinInterval = TIME_MS2I(8);
+  constexpr sysinterval_t immediateStatusMinInterval = TIME_MS2I(8);
+  // Startup reliability tuning:
+  // Servos and the half-duplex line may need a short settle time after UART init.
+  // Then we retry detect/scan to absorb sporadic timeout frames at boot.
+  constexpr sysinterval_t servoBootSettleDelay = TIME_MS2I(120);
+  constexpr size_t detectBaudrateMaxAttempts = 5U;
+  constexpr sysinterval_t detectBaudrateRetryDelay = TIME_MS2I(30);
+  constexpr size_t scanPingAttempts = 3U;
+  constexpr sysinterval_t scanPingRetryDelay = TIME_MS2I(2);
+  constexpr size_t scanPassesWhenEmpty = 3U;
+  constexpr sysinterval_t scanRetryDelay = TIME_MS2I(30);
+  constexpr size_t configuredServoPingAttempts = 6U;
   std::array<systime_t, BROADCAST_ID + 1U> immediateLastPublishTs = {};
   void periodic(void *);
   UAVCAN::Node*	     nodep = nullptr;
-  void copy(const STS3032::StateVector& sv, uavcan_equipment_actuator_Status &msg,
+	  void copy(const STS3032::StateVector& sv, uavcan_equipment_actuator_Status &msg,
 	    uint8_t id);
+
+  // A single missed status frame should not mark an ID as absent.
+  bool pingWithRetry(uint8_t id, size_t attempts)
+  {
+    for (size_t attempt = 0; attempt < attempts; ++attempt) {
+      if (servoBus->ping(id) == SmartServo::OK) {
+	return true;
+      }
+      if ((attempt + 1U) < attempts) {
+	chThdSleep(scanPingRetryDelay);
+      }
+    }
+    return false;
+  }
+
+  SmartServo::Status detectBaudrateWithRetry()
+  {
+    SmartServo::Status status = SmartServo::STATUS_TIMEOUT;
+    for (size_t attempt = 0; attempt < detectBaudrateMaxAttempts; ++attempt) {
+      // Probe common STS baudrates and tolerate occasional startup timeouts.
+      status = servoBus->detectBaudrate({1'000'000U, 500'000U, 250'000U});
+      if (status == SmartServo::OK || status == SmartServo::HETEROGENEOUS_BAUDRATES) {
+	return status;
+      }
+      if ((attempt + 1U) < detectBaudrateMaxAttempts) {
+	chThdSleep(detectBaudrateRetryDelay);
+      }
+    }
+    return status;
+  }
+
+  uint32_t scanRespondingIds(UAVCAN::Node& node, std::bitset<BROADCAST_ID + 1U>& responding)
+  {
+    uint32_t respondingCount = 0U;
+    for (uint16_t id = 0U; id < BROADCAST_ID; ++id) {
+      if (pingWithRetry(static_cast<uint8_t>(id), scanPingAttempts)) {
+	responding.set(id);
+	++respondingCount;
+	DebugTrace("smart-servo scan: id=%u responding", id);
+
+	char text[90];
+	std::snprintf(text, sizeof(text), "servo.smart: id %u responding", static_cast<unsigned>(id));
+	(void)UAVCAN::Helper::log(node, UAVCAN_PROTOCOL_DEBUG_LOGLEVEL_INFO,
+				  "servoSmart.cpp::start()", text);
+      }
+    }
+    return respondingCount;
+  }
 }
 
 
@@ -104,7 +164,9 @@ DeviceStatus ServoSmart::start(UAVCAN::Node& node)
   }
 
   servoBus->init();
-  if (auto status = servoBus->detectBaudrate({1'000'000U, 500'000U, 250'000U}); status == SmartServo::OK) {
+  // Allow bus/servos to become responsive after peripheral reconfiguration.
+  chThdSleep(servoBootSettleDelay);
+  if (auto status = detectBaudrateWithRetry(); status == SmartServo::OK) {
     DebugTrace("detectBaudrate OK -> Kbaud = %lu",
 	       servoBus->getSerialBaudrate() / 1000U);
   } else {
@@ -123,27 +185,36 @@ DeviceStatus ServoSmart::start(UAVCAN::Node& node)
     return DeviceStatus(DeviceStatus::SERVO_SMART, DeviceStatus::INVALID_PARAM, startIndex);
   }
 
-  bool responding[BROADCAST_ID + 1U] = {false};
+  std::bitset<BROADCAST_ID + 1U> responding;
   uint32_t respondingCount = 0U;
-  for (uint16_t id = 0U; id < BROADCAST_ID; id++) {
-    if (servoBus->ping(static_cast<uint8_t>(id)) == SmartServo::OK) {
-      responding[id] = true;
-      respondingCount++;
-      DebugTrace("smart-servo scan: id=%u responding", id);
-
-      char text[90];
-      std::snprintf(text, sizeof(text), "servo.smart: id %u responding", static_cast<unsigned>(id));
-      (void)UAVCAN::Helper::log(node, UAVCAN_PROTOCOL_DEBUG_LOGLEVEL_INFO,
-				"servoSmart.cpp::start()", text);
+  // If the first scan catches transient line noise, rescan before failing role start.
+  for (size_t pass = 0; pass < scanPassesWhenEmpty; ++pass) {
+    responding.reset();
+    respondingCount = scanRespondingIds(node, responding);
+    DebugTrace("smart-servo scan pass %u/%u: %lu id(s) responding",
+	       static_cast<unsigned>(pass + 1U),
+	       static_cast<unsigned>(scanPassesWhenEmpty),
+	       respondingCount);
+    if (respondingCount != 0U) {
+      break;
+    }
+    if ((pass + 1U) < scanPassesWhenEmpty) {
+      chThdSleep(scanRetryDelay);
     }
   }
-  DebugTrace("smart-servo scan: %lu id(s) responding", respondingCount);
+
   if (respondingCount == 0U) {
     return DeviceStatus(DeviceStatus::SERVO_SMART, DeviceStatus::NOT_RESPONDING, 0U);
   }
 
   for (uint32_t id = startIndex; id < (startIndex + numServos); id++) {
-    if (!responding[id]) {
+    // Configured IDs are mission-critical: give them extra retries before aborting.
+    if (!responding.test(id) &&
+	 pingWithRetry(static_cast<uint8_t>(id), configuredServoPingAttempts)) {
+      responding.set(id);
+      DebugTrace("smart-servo configured id=%lu recovered after retries", id);
+    }
+    if (!responding.test(id)) {
       DebugTrace("Error: configured servo id=%lu not responding", id);
       return DeviceStatus(DeviceStatus::SERVO_SMART, DeviceStatus::NOT_RESPONDING, id);
     }
@@ -203,7 +274,7 @@ void ServoSmart::publishImmediateStatus(uint8_t index)
 
   const systime_t now = chVTGetSystemTimeX();
   systime_t& last = immediateLastPublishTs[index];
-  if ((last != 0U) && (chTimeDiffX(last, now) < kImmediateStatusMinInterval)) {
+  if ((last != 0U) && (chTimeDiffX(last, now) < immediateStatusMinInterval)) {
     // DebugTrace("smart-servo immediate status rate-limited id=%u", index);
     return;
   }
