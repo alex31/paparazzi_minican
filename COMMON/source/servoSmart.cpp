@@ -44,9 +44,7 @@ namespace  {
       .dmamux = EXTERNAL_USART_TX_DMAMUX,
   };
 
-  alignas(SIO::Datagram) static uint8_t servo_sio_storage[sizeof(SIO::Datagram)];
   SIO::Datagram *servoSio = nullptr;
-  alignas(STS3032) static uint8_t servo_bus_storage[sizeof(STS3032)];
   STS3032 *servoBus = nullptr;
   uint32_t	     startIndex = std::numeric_limits<uint32_t>::max();
   uint32_t	     numServos = 0;
@@ -157,10 +155,10 @@ DeviceStatus ServoSmart::start(UAVCAN::Node& node)
       servo_tx_dma_cfg,
       servoSioCfg
     };
-    servoSio = new (servo_sio_storage) SIO::Datagram(cfg);
+    servoSio = new SIO::Datagram(cfg);
   }
   if (servoBus == nullptr) {
-    servoBus = new (servo_bus_storage) STS3032(servoSio, &servoSioCfg);
+    servoBus = new STS3032(servoSio, &servoSioCfg);
   }
 
   servoBus->init();

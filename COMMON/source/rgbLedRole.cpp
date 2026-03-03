@@ -107,12 +107,13 @@ DeviceStatus RgbLedRole::start(UAVCAN::Node& /*node*/)
   palSetLineMode(LINE_F0_b, PAL_MODE_ALTERNATE(F0_b_TIM_AF) | PAL_STM32_OSPEED_HIGHEST);
 #endif
 
-  static Led2812Strip<kMaxLeds, Led_t> strip(&ledPwm, ledTiming,
-					     STM32_DMA_STREAM_ID_ANY,
-					     dmaMux,
-					     static_cast<TimerChannel>(LED2812_TIM_CH - 1U),
-					     activeLedCount);
-  ledStrip = &strip;
+  if (ledStrip == nullptr) {
+    ledStrip = new Led2812Strip<kMaxLeds, Led_t>(&ledPwm, ledTiming,
+                                                 STM32_DMA_STREAM_ID_ANY,
+                                                 dmaMux,
+                                                 static_cast<TimerChannel>(LED2812_TIM_CH - 1U),
+                                                 activeLedCount);
+  }
 
   chThdCreateStatic(waLedStrip, sizeof(waLedStrip), NORMALPRIO,
 		    &ledThread, nullptr);
