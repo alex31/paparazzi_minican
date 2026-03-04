@@ -12,6 +12,7 @@
 #include "led2812.hpp"
 #include "resourceManager.hpp"
 #include "hardwareConf.hpp"
+#include "stdutil.h"
 
 #define CONCAT_NX(st1, st2) st1 ## st2
 #define CONCAT3_NX(st1, st2, st3) st1 ## st2 ## st3
@@ -108,11 +109,16 @@ DeviceStatus RgbLedRole::start(UAVCAN::Node& /*node*/)
 #endif
 
   if (ledStrip == nullptr) {
-    ledStrip = new Led2812Strip<kMaxLeds, Led_t>(&ledPwm, ledTiming,
-                                                 STM32_DMA_STREAM_ID_ANY,
-                                                 dmaMux,
-                                                 static_cast<TimerChannel>(LED2812_TIM_CH - 1U),
-                                                 activeLedCount);
+    ledStrip = try_new_dma<Led2812Strip<kMaxLeds, Led_t>>(
+      DeviceStatus::LED2812_ROLE, status,
+      &ledPwm, ledTiming,
+      STM32_DMA_STREAM_ID_ANY,
+      dmaMux,
+      static_cast<TimerChannel>(LED2812_TIM_CH - 1U),
+      activeLedCount);
+    if (not status) {
+      return status;
+    }
   }
 
   chThdCreateStatic(waLedStrip, sizeof(waLedStrip), NORMALPRIO,

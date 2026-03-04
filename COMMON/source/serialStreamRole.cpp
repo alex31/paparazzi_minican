@@ -6,6 +6,7 @@
 #include "hardwareConf.hpp"
 #include "resourceManager.hpp"
 #include "UAVCanHelper.hpp"
+#include "stdutil.h"
 
 #if PLATFORM_MICROCAN
 #include "dynamicPinConfig.hpp"
@@ -112,12 +113,10 @@ DeviceStatus SerialStream::subscribe(UAVCAN::Node& node)
 #endif
   
   using UavToSerialFifo = std::remove_reference_t<decltype(*fifoObjectUav2Serial)>;
-  void *uavToSerialMem = malloc_dma(sizeof(UavToSerialFifo));
-  if (!uavToSerialMem) {
-    return DeviceStatus(DeviceStatus::SERIAL_STREAM, DeviceStatus::DMA_HEAP_FULL);
+  fifoObjectUav2Serial = try_new_dma<UavToSerialFifo>(DeviceStatus::SERIAL_STREAM, status);
+  if (not status) {
+    return status;
   }
-
-  fifoObjectUav2Serial = new (uavToSerialMem) UavToSerialFifo();
 
   node.subscribeBroadcastMessages<Trampoline<&SerialStream::processUavcanToSerial>::fn>();
 
@@ -133,7 +132,10 @@ DeviceStatus SerialStream::subscribe(UAVCAN::Node& node)
       NORMALPRIO,
       THD_WORKING_AREA_SIZE(512),
     };
-    sio_ = new SerialSIO(cfg);
+    sio_ = try_new_dma<SerialSIO>(DeviceStatus::SERIAL_STREAM, status, cfg);
+    if (not status) {
+      return status;
+    }
   }
   (void)sio_->start();
   return status;

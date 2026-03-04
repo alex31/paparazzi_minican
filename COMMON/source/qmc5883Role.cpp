@@ -100,28 +100,29 @@ DeviceStatus Qmc5883Role::start(UAVCAN::Node& node)
 
   sensorId = static_cast<uint8_t>(param_cget<"role.i2c.magnetometer.q5883.sensor_id">());
 
-  dmaBuf = static_cast<DmaBuffers*>(malloc_dma(sizeof(DmaBuffers)));
-  if (!dmaBuf) {
-    return DeviceStatus(DeviceStatus::MAG_QMC5883, DeviceStatus::DMA_HEAP_FULL);
+  DeviceStatus status(DeviceStatus::MAG_QMC5883);
+  dmaBuf = try_new_dma<DmaBuffers>(DeviceStatus::MAG_QMC5883, status);
+  if (!status) {
+    return status;
   }
 
-  msg_t status = MSG_OK;
+  msg_t ret = MSG_OK;
   static const uint8_t resetPeriod[] = {REG_RESET_PERIOD, 0x01};
-  status = xfer(resetPeriod, sizeof(resetPeriod), nullptr, 0);
+  ret = xfer(resetPeriod, sizeof(resetPeriod), nullptr, 0);
 
-  if (status == MSG_OK) {
+  if (ret == MSG_OK) {
     static const uint8_t ctrl2[] = {REG_CONTROL_2, CTRL2_SOFT_RESET};
-    status = xfer(ctrl2, sizeof(ctrl2), nullptr, 0);
+    ret = xfer(ctrl2, sizeof(ctrl2), nullptr, 0);
   }
 
-  if (status == MSG_OK) {
+  if (ret == MSG_OK) {
     dmaBuf->ctrl1[0] = REG_CONTROL_1;
     dmaBuf->ctrl1[1] = static_cast<uint8_t>(CTRL1_OSR_256 | CTRL1_ODR_50HZ |
 					    rangeBits | CTRL1_MODE_CONT);
-    status = xfer(dmaBuf->ctrl1, sizeof(dmaBuf->ctrl1), nullptr, 0);
+    ret = xfer(dmaBuf->ctrl1, sizeof(dmaBuf->ctrl1), nullptr, 0);
   }
 
-  if (status != MSG_OK) {
+  if (ret != MSG_OK) {
     return DeviceStatus(DeviceStatus::MAG_QMC5883, DeviceStatus::I2C_TIMOUT);
   }
 

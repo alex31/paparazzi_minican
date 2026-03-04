@@ -11,6 +11,8 @@
 #include "smart_servos/STS3032.h"
 #include "hardwareConf.hpp"
 #include "UAVCanHelper.hpp"
+#include "roleBase.hpp"
+#include "stdutil.h"
 #include <algorithm>
 #include <array>
 #include <bitset>
@@ -148,6 +150,7 @@ DeviceStatus ServoSmart::start(UAVCAN::Node& node)
 #endif
 
   
+  DeviceStatus status(DeviceStatus::SERVO_SMART);
   if (servoSio == nullptr) {
     const SIO::DatagramConfig cfg = {
       ExternalSIOD,
@@ -155,27 +158,29 @@ DeviceStatus ServoSmart::start(UAVCAN::Node& node)
       servo_tx_dma_cfg,
       servoSioCfg
     };
-    servoSio = new SIO::Datagram(cfg);
+    servoSio = try_new_dma<SIO::Datagram>(DeviceStatus::SERVO_SMART, status, cfg);
+    if (not status) return status;
   }
   if (servoBus == nullptr) {
-    servoBus = new STS3032(servoSio, &servoSioCfg);
+    servoBus = try_new_dma<STS3032>(DeviceStatus::SERVO_SMART, status, servoSio, &servoSioCfg);
+    if (not status) return status;
   }
 
   servoBus->init();
   // Allow bus/servos to become responsive after peripheral reconfiguration.
   chThdSleep(servoBootSettleDelay);
-  if (auto status = detectBaudrateWithRetry(); status == SmartServo::OK) {
+  if (auto baudStatus = detectBaudrateWithRetry(); baudStatus == SmartServo::OK) {
     DebugTrace("detectBaudrate OK -> Kbaud = %lu",
 	       servoBus->getSerialBaudrate() / 1000U);
   } else {
-    DebugTrace("detectBaudrate failed with status 0x%x: aborting", status);
-    if (status == SmartServo::STATUS_TIMEOUT) {
-      return DeviceStatus(DeviceStatus::SERVO_SMART, DeviceStatus::NOT_RESPONDING, static_cast<uint16_t>(status));
+    DebugTrace("detectBaudrate failed with status 0x%x: aborting", baudStatus);
+    if (baudStatus == SmartServo::STATUS_TIMEOUT) {
+      return DeviceStatus(DeviceStatus::SERVO_SMART, DeviceStatus::NOT_RESPONDING, static_cast<uint16_t>(baudStatus));
     }
-    if (status == SmartServo::HETEROGENEOUS_BAUDRATES) {
-      return DeviceStatus(DeviceStatus::SERVO_SMART, DeviceStatus::HETEROGENEOUS_BAUDS, static_cast<uint16_t>(status));
+    if (baudStatus == SmartServo::HETEROGENEOUS_BAUDRATES) {
+      return DeviceStatus(DeviceStatus::SERVO_SMART, DeviceStatus::HETEROGENEOUS_BAUDS, static_cast<uint16_t>(baudStatus));
     }
-    return DeviceStatus(DeviceStatus::SERVO_SMART, DeviceStatus::INVALID_PARAM, static_cast<uint16_t>(status));
+    return DeviceStatus(DeviceStatus::SERVO_SMART, DeviceStatus::INVALID_PARAM, static_cast<uint16_t>(baudStatus));
   }
 
   if ((startIndex + numServos) > BROADCAST_ID) {

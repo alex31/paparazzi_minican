@@ -11,6 +11,7 @@
 #include "hardwareConf.hpp"
 #include "resourceManager.hpp"
 #include "UAVCanHelper.hpp"
+#include "stdutil.h"
 #include <cstdio>
 
 #if PLATFORM_MICROCAN
@@ -657,10 +658,8 @@ DeviceStatus GpsUBX::start(UAVCAN::Node& node)
     static GpsCfgSio *probe_sio = nullptr;
     if (probe_sio == nullptr) {
       GpsCfgSio::Config cfg = {ExternalSIOD, gpscfg};
-      probe_sio = new GpsCfgSio(cfg);
-      if (!probe_sio) {
-        return DeviceStatus(DeviceStatus::GPS_ROLE, DeviceStatus::HEAP_FULL);
-      }
+      probe_sio = try_new_dma<GpsCfgSio>(DeviceStatus::GPS_ROLE, status, cfg);
+      if (not status) return status;
     }
     uint32_t detectedBaud = 0U;
     const bool autoBaudOk =
@@ -678,10 +677,8 @@ DeviceStatus GpsUBX::start(UAVCAN::Node& node)
   static GpsCfgSio *cfg_sio = nullptr;
   if (cfg_sio == nullptr) {
     GpsCfgSio::Config cfg = {ExternalSIOD, gpscfg};
-    cfg_sio = new GpsCfgSio(cfg);
-    if (!cfg_sio) {
-      return DeviceStatus(DeviceStatus::GPS_ROLE, DeviceStatus::HEAP_FULL);
-    }
+    cfg_sio = try_new_dma<GpsCfgSio>(DeviceStatus::GPS_ROLE, status, cfg);
+    if (not status) return status;
   } else {
     cfg_sio->setConfig(gpscfg);
   }
@@ -716,10 +713,8 @@ DeviceStatus GpsUBX::start(UAVCAN::Node& node)
       NORMALPRIO,
       THD_WORKING_AREA_SIZE(1536),
     };
-    sio_ = new GpsSIO(cfg);
-    if (!sio_) {
-      return DeviceStatus(DeviceStatus::GPS_ROLE, DeviceStatus::HEAP_FULL);
-    }
+    sio_ = try_new_dma<GpsSIO>(DeviceStatus::GPS_ROLE, status, cfg);
+    if (not status) return status;
   }
   const msg_t startStatus = sio_->start();
   if (startStatus != HAL_RET_SUCCESS) {
