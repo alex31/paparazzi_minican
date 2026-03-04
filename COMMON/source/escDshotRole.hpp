@@ -4,12 +4,7 @@
  */
 #pragma once
 
-#include <ch.h>
-#include <hal.h>
-#include <array>
-#include <cstdint>
 #include "UAVCAN/pubSub.hpp"
-#include "roleStatus.hpp"
 #include "roleBase.hpp"
 #include "esc_dshot.h"
 

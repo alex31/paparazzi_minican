@@ -8,14 +8,12 @@
 
 #include "voltmeterRole.hpp"
 
-#include <algorithm>
-#include <cmath>
 
-#include "UAVCAN/persistantParam.hpp"
 #include "adcSurvey.hpp"
 #include "hardwareConf.hpp"
 #include "led2812.hpp"
 #include "resourceManager.hpp"
+#include "stdutil.h"
 
 #define CONCAT_NX(st1, st2) st1 ## st2
 #define CONCAT3_NX(st1, st2, st3) st1 ## st2 ## st3
@@ -203,12 +201,18 @@ DeviceStatus VoltmeterRole::start(UAVCAN::Node& /*node*/)
   palSetLineMode(LINE_F0_b, PAL_MODE_ALTERNATE(F0_b_TIM_AF) | PAL_STM32_OSPEED_HIGHEST);
 #endif
 
-  static Led2812Strip<kLedCount, Led_t> strip(&ledPwm, ledTiming,
-                                              STM32_DMA_STREAM_ID_ANY,
-                                              dmaMux,
-                                              static_cast<TimerChannel>(LED2812_TIM_CH - 1U),
-                                              kLedCount);
-  ledStrip = &strip;
+  if (ledStrip == nullptr) {
+    ledStrip = try_new_dma<Led2812Strip<kLedCount, Led_t>>(
+      DeviceStatus::VOLTMETER_ROLE, status,
+      &ledPwm, ledTiming,
+      STM32_DMA_STREAM_ID_ANY,
+      dmaMux,
+      static_cast<TimerChannel>(LED2812_TIM_CH - 1U),
+      kLedCount);
+    if (not status) {
+      return status;
+    }
+  }
 
   chThdCreateStatic(waMinican, sizeof(waMinican), NORMALPRIO,
                     &VoltmeterRole::voltmeterThread, this);

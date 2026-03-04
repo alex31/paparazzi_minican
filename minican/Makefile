@@ -241,6 +241,7 @@ include $(CHIBIOS)/tools/mk/autobuild.mk
 # Other files (optional).
 include $(CHIBIOS)/os/hal/lib/complex/xsnor/hal_xsnor.mk
 include $(CHIBIOS)/os/hal/lib/complex/mfs/hal_mfs.mk
+include $(CHIBIOS)/os/hal/lib/complex/buffered_sio/hal_buffered_sio.mk
 include $(CHIBIOS)/os/test/test.mk
 include $(CHIBIOS)/test/mfs/mfs_test.mk
 
@@ -273,7 +274,6 @@ CSRC = $(ALLCSRC) \
        $(VARIOUS)/timerDmaCache.c \
        $(VARIOUS)/dshot_erps.c \
        $(VARIOUS)/dshot_rpmCapture.c \
-       $(VARIOUS)/futabaSbusUart.c \
        $(VARIOUS)/hal_stm32_crc_v1.c
 
 
@@ -291,6 +291,8 @@ CPPSRC = $(ALLCPPSRC) \
         $(VARIOUS)/UAVCAN/persistantStorage.cpp \
         $(VARIOUS)/smart_servos/smart_servo.cpp \
         $(VARIOUS)/smart_servos/STS3032.cpp \
+        $(VARIOUS)/futabaSbusSio.cpp \
+        $(VARIOUS)/sioWrapper.cpp \
 	$(COMMON)/adcSurvey.cpp \
 	$(COMMON)/dynamicPinConfig.cpp \
 	$(COMMON)/servoRole.cpp \
@@ -390,6 +392,9 @@ $(OBJS): $(CONFDIR)/board.h
 LD = $(TRGT)g++
 
 PY := python3
+PERL := perl
+ELF_OVERLAP_CHECKER := ../tools/check_elf_overlap.pl
+CHECK_ELF_OVERLAP ?= yes
 
 .PHONY: build_dsdlc
 
@@ -397,6 +402,15 @@ build_dsdlc:
 	@echo Generating dsdl code from $(DSDL_ROOTS) to $(DSDLC)
 	$(PY) $(RELATIVE)/../UAVCAN/dronecan_dsdlc/dronecan_dsdlc.py -O $(DSDLC) $(DSDL_ROOTS)
 	@echo Done
+
+ifeq ($(CHECK_ELF_OVERLAP),yes)
+.PHONY: check_elf_overlap
+check_elf_overlap: $(BUILDDIR)/$(PROJECT).elf
+	@echo "Checking ELF ALLOC section overlaps (VMA/LMA)"
+	$(PERL) $(ELF_OVERLAP_CHECKER) --objdump $(TRGT)objdump --elf $<
+
+all: check_elf_overlap
+endif
 
 $(CONFDIR)/board.h: $(CONFDIR)/$(PLATFORM).cfg
 	boardGen.pl --no-pp-line --no-adcp-in 	$<  $@

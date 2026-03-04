@@ -7,11 +7,8 @@
 #if USE_RC_SBUS_ROLE
 
 #include "sbusRole.hpp"
-#include <algorithm>
 #include "hardwareConf.hpp"
 #include "resourceManager.hpp"
-#include "stdutil++.hpp"
-#include <cmath>
 
 #if PLATFORM_MICROCAN
 #include "dynamicPinConfig.hpp"
@@ -19,8 +16,19 @@
 
 
 namespace {
+  constexpr SIO::DmaUserConfig sbus_rx_dma_cfg{
+      .stream = STM32_DMA_STREAM_ID_ANY,
+      .dmamux = EXTERNAL_USART_RX_DMAMUX,
+  };
+  constexpr SIO::DmaUserConfig sbus_tx_dma_cfg{
+      .stream = STM32_DMA_STREAM_ID_ANY,
+      .dmamux = EXTERNAL_USART_TX_DMAMUX,
+  };
+
   SBUSConfig sbuscfg = {	//Config du sbus de la RC
-    .uartd = &ExternalUARTD,
+    .siop = &ExternalSIOD,
+    .rx_dma_cfg = sbus_rx_dma_cfg,
+    .tx_dma_cfg = sbus_tx_dma_cfg,
 #ifdef TRACE
     .errorCb = [](SBUSError err) {DebugTrace("Sbus Err %u", err)},
 #else
@@ -73,7 +81,10 @@ DeviceStatus RC_Sbus::start(UAVCAN::Node& _node)
   
   enabledChannels = param_cget<"role.sbus.channel_mask">();
   rcInput.rcin.len = enabledChannels.count();
-  rcInput.id = param_cget<"role.sbus.id">();            
+  rcInput.id = param_cget<"role.sbus.id">();
+  // Debug mode for USB-UART dongles: signal is already non-inverted TTL.
+  // Normal SBUS receiver path keeps HW inversion in the USART.
+  sbuscfg.externallyInverted = param_cget<"role.sbus.debug_uart_ttl">();
   
 
   if (rcInput.rcin.len > SBUS_NUM_CHANNEL) {

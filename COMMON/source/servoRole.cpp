@@ -7,43 +7,60 @@
 #if USE_SERVO_ROLE
 
 #include "servoRole.hpp"
-#include <algorithm>
-#include "resourceManager.hpp"
 #include "UAVCAN/persistantParam.hpp"
 #include "servoPwm.hpp"
 #include "servoSmart.hpp"
-#include "stdutil++.hpp"
+#include <bitset>
 
 /** @brief Dispatch actuator commands to PWM and smart servo backends. */
 void ServoRole::processActuatorArrayCommand(CanardRxTransfer *,
 					    const  uavcan_equipment_actuator_ArrayCommand &msg)
 {
+  std::bitset<256U> smartImmediateStatusPending;
+
   for (size_t idx = 0; idx < msg.commands.len; ++idx) {
+    const auto &cmd = msg.commands.data[idx];
+
     if (ServoRole::m_role_servo_pwm) {
-      if (msg.commands.data[idx].command_type ==
-	  UAVCAN_EQUIPMENT_ACTUATOR_COMMAND_COMMAND_TYPE_PWM) {
-	ServoPWM::setPwm(msg.commands.data[idx].actuator_id,
-			 msg.commands.data[idx].command_value);
-      } else if (msg.commands.data[idx].command_type ==
-		 UAVCAN_EQUIPMENT_ACTUATOR_COMMAND_COMMAND_TYPE_UNITLESS) {
-	ServoPWM::setUnitless(msg.commands.data[idx].actuator_id,
-			      msg.commands.data[idx].command_value);
+      if (cmd.command_type ==
+		  UAVCAN_EQUIPMENT_ACTUATOR_COMMAND_COMMAND_TYPE_PWM) {
+	ServoPWM::setPwm(cmd.actuator_id, cmd.command_value);
+	      } else if (cmd.command_type ==
+			 UAVCAN_EQUIPMENT_ACTUATOR_COMMAND_COMMAND_TYPE_UNITLESS) {
+	ServoPWM::setUnitless(cmd.actuator_id, cmd.command_value);
+	      }
+	    }
+	      
+    if (ServoRole::m_role_servo_smart) {
+      bool smartCommandHandled = false;
+      if (cmd.command_type ==
+		  UAVCAN_EQUIPMENT_ACTUATOR_COMMAND_COMMAND_TYPE_UNITLESS) {
+	ServoSmart::setUnitless(cmd.actuator_id, cmd.command_value);
+	smartCommandHandled = true;
+	      } else if (cmd.command_type ==
+			 UAVCAN_EQUIPMENT_ACTUATOR_COMMAND_COMMAND_TYPE_FORCE) {
+	ServoSmart::setTorque(cmd.actuator_id, cmd.command_value);
+	smartCommandHandled = true;
+	      } else if (cmd.command_type ==
+			 UAVCAN_EQUIPMENT_ACTUATOR_COMMAND_COMMAND_TYPE_SPEED) {
+	ServoSmart::setSpeed(cmd.actuator_id, cmd.command_value);
+	smartCommandHandled = true;
+      }
+      if (smartCommandHandled) {
+	if (smartImmediateStatusPending[cmd.actuator_id]) {
+	  DebugTrace("smart-servo immediate status coalesced id=%u", cmd.actuator_id);
+	}
+	smartImmediateStatusPending[cmd.actuator_id] = true;
       }
     }
-      
-    if (ServoRole::m_role_servo_smart) {
-      if (msg.commands.data[idx].command_type ==
-	  UAVCAN_EQUIPMENT_ACTUATOR_COMMAND_COMMAND_TYPE_UNITLESS) {
-	ServoSmart::setUnitless(msg.commands.data[idx].actuator_id,
-				msg.commands.data[idx].command_value);
-      } else if (msg.commands.data[idx].command_type ==
-		 UAVCAN_EQUIPMENT_ACTUATOR_COMMAND_COMMAND_TYPE_FORCE) {
-	ServoSmart::setTorque(msg.commands.data[idx].actuator_id,
-			      msg.commands.data[idx].command_value);
-      } else if (msg.commands.data[idx].command_type ==
-		 UAVCAN_EQUIPMENT_ACTUATOR_COMMAND_COMMAND_TYPE_SPEED) {
-	ServoSmart::setSpeed(msg.commands.data[idx].actuator_id,
-			     msg.commands.data[idx].command_value);
+  }
+
+  if (ServoRole::m_role_servo_smart) {
+    for (size_t idx = 0; idx < msg.commands.len; ++idx) {
+      const uint8_t actuatorId = msg.commands.data[idx].actuator_id;
+      if (smartImmediateStatusPending[actuatorId]) {
+	ServoSmart::publishImmediateStatus(actuatorId);
+	smartImmediateStatusPending[actuatorId] = false;
       }
     }
   }

@@ -1,0 +1,11 @@
+#include "roleConf.h"
+
+#if USE_SERIAL_STREAM_ROLE
+
+#include <algorithm>
+#include <new>
+#include <cstring>
+
+#include "serialStreamRole.hpp"
+#include "hardwareConf.hpp"
+#include "ressourceManager.hpp

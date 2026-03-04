@@ -4,16 +4,10 @@
  * @brief Implements the UAVCAN firmware update process.
  */
 
-#include <algorithm>
 
 #include "firmwareUpdate.hpp"
 #include "hardwareConf.hpp"
-#include "stdutil++.hpp"
-#include "eeprom_stm_m95p.hpp"
 #include "MFS.hpp"
-#include "etl/string_view.h"
-#include "etl/span.h"
-#include "hardwareConf.hpp"
 #include "UAVCAN/dsdlStringUtils.hpp"
 #include "UAVCanHelper.hpp"
 /*

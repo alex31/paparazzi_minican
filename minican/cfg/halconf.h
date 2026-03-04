@@ -45,7 +45,7 @@
 #endif
 
 #if !defined(STM32_DMA_USE_ASYNC_TIMOUT) || defined(__DOXYGEN__)
-#define STM32_DMA_USE_ASYNC_TIMOUT FALSE
+#define STM32_DMA_USE_ASYNC_TIMOUT TRUE
 #endif
 
 #if !defined(STM32_DMA_DRIVER_USER_DATA_FIELD) || defined(__DOXYGEN__)
@@ -179,7 +179,7 @@
  * @brief   Enables the SIO subsystem.
  */
 #if !defined(HAL_USE_SIO) || defined(__DOXYGEN__)
-#define HAL_USE_SIO                         FALSE
+#define HAL_USE_SIO                         TRUE
 #endif
 
 /**
@@ -200,7 +200,7 @@
  * @brief   Enables the UART subsystem.
  */
 #if !defined(HAL_USE_UART) || defined(__DOXYGEN__)
-#define HAL_USE_UART                        TRUE
+#define HAL_USE_UART                        FALSE
 #endif
 
 /**

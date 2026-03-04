@@ -4,7 +4,6 @@
  */
 #pragma once
 #include "UAVCAN/pubSub.hpp"
-#include "etl/string.h"
 /*
 
 #define UAVCAN_PROTOCOL_DEBUG_LOGLEVEL_DEBUG 0

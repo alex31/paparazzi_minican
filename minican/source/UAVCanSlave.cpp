@@ -2,15 +2,9 @@
  * @file UAVCanSlave.cpp
  * @brief UAVCAN node initialization and role orchestration.
  */
-#include <algorithm>
-#include <ch.h>
-#include <cstring>
-#include "etl/vector.h"
 #include "UAVCanSlave.hpp"
 #include "deviceResource.hpp"
-#include "UAVCAN/persistantParam.hpp"
 #include "UAVCAN/dsdlStringUtils.hpp"
-#include "nodeParametersEnum.hpp"
 
 #if USE_SERVO_ROLE
 #include "servoRole.hpp"
@@ -35,7 +29,6 @@
 #include "voltmeterRole.hpp"
 #endif
 #if USE_TEMPLATE_ROLE
-#include "templateRole.hpp"
 #endif
 #if USE_GPS_UBX_ROLE
 #include "gpsUbxRole.hpp"

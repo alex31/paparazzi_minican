@@ -2,15 +2,9 @@
  * @file adcSurvey.cpp
  * @brief ADC sampling, conversion, and threshold monitoring implementation.
  */
-#include <ch.h>
-#include <hal.h>
-#include <utility>
-#include <algorithm>
-#include "stdutil.h"
 #include "adcSurvey.hpp"
 #include "adcSamples.hpp"
 #include "jobQueue.hpp"
-#include "UAVCAN/persistantParam.hpp"
 #include "hardwareConf.hpp"
 
 /*

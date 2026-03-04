@@ -2,11 +2,6 @@
  * @file resourceManager.hpp
  * @brief Simple bitmap-based hardware resource manager.
  */
-#include <cstdint>
-#include <concepts>
-#include <type_traits>
-#include <bit>
-#include <utility>
 
 
 /** @brief Enumeration of all available hardware resources. */

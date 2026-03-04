@@ -4,11 +4,8 @@
  */
 #pragma once
 
-#include <ch.h>
-#include <hal.h>
 #include "UAVCAN/pubSub.hpp"
 #include "roleBase.hpp"
-#include "roleStatus.hpp"
 
 /**
  * @brief Role for reading QMC5883 magnetometer data over I2C.

@@ -2,14 +2,11 @@
  * @file I2C_periph.cpp
  * @brief Shared I2C initialization and recovery logic.
  */
-#include <ch.h>
-#include <hal.h>
 
 #include "I2C_periph.hpp"
 #include "hardwareConf.hpp"
 #include "resourceManager.hpp"
 #include "dynamicPinConfig.hpp"
-#include "UAVCAN/persistantParam.hpp"
 #include "stdutil.h"
 
 namespace {

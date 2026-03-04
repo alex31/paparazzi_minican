@@ -5,9 +5,8 @@
 #include "serialStreamRole.hpp"
 #include "hardwareConf.hpp"
 #include "resourceManager.hpp"
-#include "stdutil++.hpp"
-#include <new>
-#include <type_traits>
+#include "UAVCanHelper.hpp"
+#include "stdutil.h"
 
 #if PLATFORM_MICROCAN
 #include "dynamicPinConfig.hpp"
@@ -20,42 +19,32 @@
  *
  * Flow:
  *  - `processUavcanToSerial` enqueues UAVCAN frames to the UART TX FIFO.
- *  - `uartReceiveThread` continuously DMA-reads from UART and enqueues frames to CAN.
- *  - `gatherLostBytes` drains bytes received between DMA armings (via `rxchar_cb`)
- *    and packs them into the FIFO when a slot is available.
- *  - `uavcanTransmitThread` splits UART frames into tunnel chunks and publishes them.
+ *  - `uavcanTransmitThread` pulls UART bytes from SIO and publishes tunnel chunks.
  *  - `uartTransmitThread` dequeues tunnel frames and sends them over UART.
  *
  * Buffers:
- *  - UART->CAN: ObjectFifo<Uart2uavcan_t, 10> (DMA heap) + small gap input_queue.
  *  - CAN->UART: ObjectFifo<Uavcan2uart_t, 50> (DMA heap).
- *  - Hardware UART FIFO is enabled with 1-byte thresholds to preserve RXNE semantics.
+ *  - SIO continuous RX DMA + internal FIFO handle UART->CAN buffering.
  */
 
 
 namespace {
-  void rxchar_cb(hal_uart_driver *udp, uint16_t c);
-
-  UARTConfig serialStreamcfg =
-  {
-    .txend1_cb =nullptr,
-    .txend2_cb = nullptr,
-    .rxend_cb = nullptr,
-    .rxchar_cb = rxchar_cb,
-    .rxerr_cb = nullptr,
-    .timeout_cb = nullptr,
-    .timeout = 6,
-    .speed = 0, // will be be at init
-    .cr1 = USART_CR1_RTOIE | USART_CR1_FIFOEN, 
+  SIOConfig serialStreamcfg = {
+    .baud = 0, // will be set at init
+    .presc = USART_PRESC1,
+    .cr1 = USART_CR1_RTOIE | USART_CR1_FIFOEN,
     .cr2 = USART_CR2_STOP1_BITS | USART_CR2_RTOEN,
     .cr3 = 0
   };
 
-  /// Small queue to capture bytes that arrive between DMA armings.
-  struct UartGapCapture_t {
-    input_queue_t rxq;
-    uint8_t rxbuf[60];
-  } *gapCapture = nullptr;
+  constexpr SIO::DmaUserConfig serial_rx_dma_cfg{
+      .stream = STM32_DMA_STREAM_ID_ANY,
+      .dmamux = EXTERNAL_USART_RX_DMAMUX,
+  };
+  constexpr SIO::DmaUserConfig serial_tx_dma_cfg{
+      .stream = STM32_DMA_STREAM_ID_ANY,
+      .dmamux = EXTERNAL_USART_TX_DMAMUX,
+  };
 
 }
 
@@ -96,6 +85,15 @@ void SerialStream::processUavcanToSerial(CanardRxTransfer *,
 DeviceStatus SerialStream::subscribe(UAVCAN::Node& node)
 {
   m_node = &node;
+  DeviceStatus status(DeviceStatus::SERIAL_STREAM);
+  protocol =  param_cget<"role.tunnel.serial.protocol">();
+  serialStreamcfg.baud =  param_cget<"bus.serial.baudrate">();
+  if (serialStreamcfg.baud == 0U) {
+    DebugTrace("serial.tunnel: bus.serial.baudrate=0 is invalid for this role");
+    // Let start() report a UAVCAN log when the node is fully started.
+    return status;
+  }
+
   // use serial2 TX + RX
   using HR = HWResource;
 #if PLATFORM_MINICAN
@@ -114,104 +112,56 @@ DeviceStatus SerialStream::subscribe(UAVCAN::Node& node)
   DynPin::setScenario(DynPin::Scenario::UART, 0b01100);
 #endif
   
-  using SerialToUavFifo = std::remove_reference_t<decltype(*fifoObjectSerial2Uav)>;
   using UavToSerialFifo = std::remove_reference_t<decltype(*fifoObjectUav2Serial)>;
-  void *serialToUavMem = malloc_dma(sizeof(SerialToUavFifo));
-  void *uavToSerialMem = malloc_dma(sizeof(UavToSerialFifo));
-  if (!serialToUavMem || !uavToSerialMem) {
-    free_dma(serialToUavMem);
-    free_dma(uavToSerialMem);
-    return DeviceStatus(DeviceStatus::SERIAL_STREAM, DeviceStatus::DMA_HEAP_FULL);
+  fifoObjectUav2Serial = try_new_dma<UavToSerialFifo>(DeviceStatus::SERIAL_STREAM, status);
+  if (not status) {
+    return status;
   }
-
-  gapCapture = (UartGapCapture_t *) malloc_m(sizeof(UartGapCapture_t));
-  if (!gapCapture) {
-    free_dma(serialToUavMem);
-    free_dma(uavToSerialMem);
-    free_m(gapCapture);
-    return DeviceStatus(DeviceStatus::SERIAL_STREAM, DeviceStatus::HEAP_FULL);
-  }
-  
-  fifoObjectSerial2Uav = new (serialToUavMem) SerialToUavFifo();
-  fifoObjectUav2Serial = new (uavToSerialMem) UavToSerialFifo();
 
   node.subscribeBroadcastMessages<Trampoline<&SerialStream::processUavcanToSerial>::fn>();
-  DeviceStatus status(DeviceStatus::SERIAL_STREAM);
-  
- 
-  protocol =  param_cget<"role.tunnel.serial.protocol">();
-  serialStreamcfg.speed =  param_cget<"bus.serial.baudrate">();
-  iqObjectInit(&gapCapture->rxq, gapCapture->rxbuf, sizeof(gapCapture->rxbuf),
-	       nullptr, nullptr);
-  uartStart(&ExternalUARTD, &serialStreamcfg);
+
+  if (sio_ == nullptr) {
+    const SIO::ContinuousConfig cfg = {
+      ExternalSIOD,
+      serial_rx_dma_cfg,
+      serial_tx_dma_cfg,
+      serialStreamcfg,
+      nullptr,
+      nullptr,
+      "serial rx",
+      NORMALPRIO,
+      THD_WORKING_AREA_SIZE(512),
+    };
+    sio_ = try_new_dma<SerialSIO>(DeviceStatus::SERIAL_STREAM, status, cfg);
+    if (not status) {
+      return status;
+    }
+  }
+  (void)sio_->start();
   return status;
 }
 
 
 /**
- * @brief Starts the worker threads for UART RX, UAVCAN TX, and UART TX.
+ * @brief Starts the worker threads for UAVCAN TX and UART TX.
  */
 DeviceStatus SerialStream::start(UAVCAN::Node&)
 {
-  chThdCreateFromHeap(NULL, THD_WORKING_AREA_SIZE(512), "serial rx", NORMALPRIO, 
-		      &Trampoline<&SerialStream::uartReceiveThread>::fn, this);
+  if (param_cget<"bus.serial.baudrate">() == 0U) {
+    DebugTrace("serial.tunnel: ROLE.tunnel.serial refused (bus.serial.baudrate=0)");
+    if (m_node != nullptr) {
+      UAVCAN::Helper::log(*m_node, UAVCAN_PROTOCOL_DEBUG_LOGLEVEL_ERROR,
+                          "serialStreamRole.cpp::start()",
+                          "bus.serial.baudrate=0 invalid for ROLE.tunnel.serial");
+    }
+    return DeviceStatus(DeviceStatus::SERIAL_STREAM, DeviceStatus::INVALID_PARAM);
+  }
   chThdCreateFromHeap(NULL, THD_WORKING_AREA_SIZE(1024), "serial uavcan tx", NORMALPRIO, 
 		      &Trampoline<&SerialStream::uavcanTransmitThread>::fn, this);
   chThdCreateFromHeap(NULL, THD_WORKING_AREA_SIZE(512), "serial uart tx", NORMALPRIO, 
 		      &Trampoline<&SerialStream::uartTransmitThread>::fn, this);
   
   return DeviceStatus(DeviceStatus::SERIAL_STREAM);
-}
-
-/**
- * @brief Pack bytes captured between DMA armings into a FIFO object.
- *
- * Best effort: if no free FIFO object is available, the captured bytes are dropped.
- */
-void SerialStream::gatherLostBytes()
-{
-  etl::vector<uint8_t, sizeof(gapCapture->rxbuf)> interDmaBytes = {};
-
-  for (int ch = iqGetTimeout(&gapCapture->rxq, TIME_IMMEDIATE);
-       (ch >= 0) && !interDmaBytes.full();
-       ch = iqGetTimeout(&gapCapture->rxq, TIME_IMMEDIATE)) {
-
-    interDmaBytes.push_back((uint8_t)ch);
-  }
-  
-  if (not interDmaBytes.empty()) {
-    // best effort, if we have exhausted fifo object, nothing can be done
-    // to save private ryan
-    auto msg_opt = fifoObjectSerial2Uav->takeObject(TIME_IMMEDIATE);
-    if (msg_opt) {
-      auto &msg_buffer = msg_opt->get();
-      memcpy(msg_buffer.data(), interDmaBytes.data(), interDmaBytes.size());
-      msg_buffer.uninitialized_resize(interDmaBytes.size());
-      fifoObjectSerial2Uav->sendObject(msg_buffer);
-    }
-  }
-}
-
-/**
- * @brief UART RX loop: drain gap bytes, arm DMA receive, enqueue completed frames.
- */
-void SerialStream::uartReceiveThread(void *)
-{
-  while (true) {
-    gatherLostBytes();
-    auto msg_opt = fifoObjectSerial2Uav->takeObject(TIME_INFINITE);
-    if (msg_opt) {
-      auto &msg_buffer = msg_opt->get();
-      size_t size = Uart2uavcan_t::MAX_SIZE;
-      uartReceiveTimeout(&ExternalUARTD, &size, msg_buffer.data(), TIME_INFINITE);
-      if (size) {
-	msg_buffer.uninitialized_resize(size);
-	fifoObjectSerial2Uav->sendObject(msg_buffer);
-      } else {
-	fifoObjectSerial2Uav->returnObject(msg_buffer);
-      }
-    }
-  }
 }
 
 /**
@@ -228,23 +178,23 @@ void SerialStream::uavcanTransmitThread(void *)
   };
 
   while (true) {
-    auto msg_opt = fifoObjectSerial2Uav->receiveObject(TIME_INFINITE);
-    if (msg_opt) {
-      auto &msg_buffer = msg_opt->get();
-      uint8_t *start = msg_buffer.data();
-      size_t len = msg_buffer.size();
-      while (len != 0) {
-	msg.buffer.len = std::min(chunkSize, len);
-	memcpy(msg.buffer.data, start,  msg.buffer.len);
-	while (m_node->sendBroadcast(msg) != UAVCAN::Node::CAN_OK) {
-	  // libcanard queue is full
-	  chThdSleepMilliseconds(1);
-	}
-	len -= msg.buffer.len;
-	start += msg.buffer.len;
-      }
-      fifoObjectSerial2Uav->returnObject(msg_buffer);
+    SerialSIO::RxLease lease{};
+    if (!sio_->receiveRx(lease, TIME_INFINITE)) {
+      continue;
     }
+    const uint8_t *start = lease.data;
+    size_t len = lease.len;
+    while (len != 0U) {
+      msg.buffer.len = std::min(chunkSize, len);
+      memcpy(msg.buffer.data, start, msg.buffer.len);
+      while (m_node->sendBroadcast(msg) != UAVCAN::Node::CAN_OK) {
+        // libcanard queue is full
+        chThdSleepMilliseconds(1);
+      }
+      len -= msg.buffer.len;
+      start += msg.buffer.len;
+    }
+    sio_->releaseRx(lease);
   }
 }
 
@@ -257,19 +207,10 @@ void SerialStream::uartTransmitThread(void *)
     auto msg_opt = fifoObjectUav2Serial->receiveObject(TIME_INFINITE);
     if (msg_opt) {
       auto &msg_buffer = msg_opt->get();
-      size_t toSend = msg_buffer.buffer.len;
-      uartSendTimeout(&ExternalUARTD, &toSend, msg_buffer.buffer.data, TIME_INFINITE);
+      const SIO::ByteSpan slice(msg_buffer.buffer.data, msg_buffer.buffer.len);
+      (void)sio_->writeTimeout(slice, TIME_INFINITE);
       fifoObjectUav2Serial->returnObject(msg_buffer);
     }
-  }
-}
-
-namespace {
-  /// UART RX ISR hook: capture bytes between DMA armings.
-  void rxchar_cb(hal_uart_driver *, uint16_t c) {
-    chSysLockFromISR();
-    iqPutI(&gapCapture->rxq, static_cast<uint8_t>(c));  // drops if full
-    chSysUnlockFromISR();
   }
 }
 

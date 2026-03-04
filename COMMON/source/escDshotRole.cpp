@@ -7,10 +7,7 @@
 #if USE_ESC_DSHOT_ROLE
 
 #include "escDshotRole.hpp"
-#include <algorithm>
 #include "resourceManager.hpp"
-#include "UAVCAN/persistantParam.hpp"
-#include "stdutil++.hpp"
 #include "hardwareConf.hpp"
 
 #if PLATFORM_MICROCAN

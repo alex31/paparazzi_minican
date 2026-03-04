@@ -33,8 +33,9 @@ Roles UAVCAN – messages reçus / envoyés
 - GpsUBX (`ROLE.gnss.ubx`)
   - Reçoit : rien en UAVCAN (consomme les messages UBX sur l’UART).
   - Envoie : `uavcan.equipment.gnss.Fix2` (NAV-PVT), `uavcan.equipment.gnss.Auxiliary` (NAV-DOP/NAV-SAT).
-  - Paramètres : `bus.serial.baudrate`.
+  - Paramètres : `bus.serial.baudrate` (`>0` vitesse fixe, `0` auto-baud UBX sur 57600/115200/230400).
   - Notes : acquisition des ressources USART/pins avant démarrage de l’UART ; allocation DMA vérifiée avant de lancer le thread, sinon retour erreur mémoire.
+  - Notes : MiniCAN détecte d’abord le baud puis configure le GPS en conservant cette vitesse ; MicroCAN reste RX-only (détection passive UBX).
 
 - Magnétomètre QMC5883 (`ROLE.i2c.magnetometer.q5883`)
   - Reçoit : rien.

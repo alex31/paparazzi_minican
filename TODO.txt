@@ -1,38 +1,18 @@
-A COURT TERME:
-
-
-  ° tester l'entrée bootloader serial du root makefile sur minican qui a un pad boot0 accessible
-  ° utiliser le vendor specific code pour envoyer des log d'erreur/warning
-
-PLAN de l'Iron Bird
- ° id, role et config de chaque mini/microcan -> fichier : dump des configs
----
-
 CODÉ MAIS PAS TESTÉ :
-  ° smart servo : retour via le message uavcan.equipment.actuator.Status.
-  
-  ° roleUbxGps en mode configuration
+  ° tester l'entrée bootloader serial du root makefile sur minican qui a un pad boot0 accessible
+
+  ° tester : utilisation du vendor specific code pour envoyer des log d'erreur/warning
+
+  ° tester roleUbxGps en mode configuration
 
 
   °  Utiliser le specific code application pour remonter des infos :
-    - n° de blocs transféré pendant un firmware update 
     - code si il y a des pb d'alim ou autre
     - tester si on boote après un watchdog reset en provoquant un panic avec la commande panic du shell
+    - n° de blocs transféré pendant un firmware update => DONE
 ---
 
 A DEBUGGER:
-
-
-USART -> SIO + DMA double buffer
-  - ROLE.tunnel.serial (SerialStream): uses ExternalUARTD + uartStart/Receive/Send and acquires USART resources. (COMMON/source/serialStreamRole.cpp)
-  - ROLE.gnss.ubx (GpsUBX): configures/reads the GPS over UART (ExternalUARTD, uartStart, uartReceiveTimeout). (COMMON/source/gpsUbxRole.cpp)
-  - ROLE.sbus (SBUS RC): SBUS driver is wired to ExternalUARTD and acquires USART resources. (COMMON/source/sbusRole.cpp)
-  - ROLE.servo.smart (Smart servos): STS3032 bus runs on ExternalUARTD and acquires USART resources. (COMMON/source/servoSmart.cpp)
-
-
-
-TUNNEL SERIAL :
-  -> version qui gere la comm/config xbee et qui decapsule encapsule le header xbee ?
 
 
 ---
@@ -61,6 +41,12 @@ GITHUB :
    -> howto: ajouter un role
       ° ajouter un role avec un LLM
 ---
+
+
+ROLES à améliorer :
+TUNNEL SERIAL :
+  -> version qui gere la comm/config xbee et qui decapsule encapsule le header xbee ?
+
 
 ROLES à ajouter :
   ° role IO_expender
@@ -94,11 +80,9 @@ AHRS / notch filtering notes:
   Optional/Specialized Roles
 
   - GNSS extras: RTCM stream pass‑through + moving‑baseline/heading — Tools/AP_Periph/gps.cpp
-  - ADS‑B receiver bridge — Tools/AP_Periph/adsb.cpp
   - Relay/Hardpoint outputs — Tools/AP_Periph/relay.cpp and Tools/AP_Periph/hardpoint.cpp
   - Buzzer/notify output — Tools/AP_Periph/buzzer.cpp
-  - Actuator telemetry for PWM/ESC status — Tools/AP_Periph/actuator_telem.cpp
-  - EFI/engine telemetry — Tools/AP_Periph/efi.cpp
+
 
 ---
 
@@ -129,21 +113,34 @@ fifo hardware profondeur 3 : 3x64 en fdcan mais seulement 3x8 en CAN 2.0
 
 ---
 
-  ┌─────────────────┬───────────────┬────────────────
-  │ Component       │ Size (Approx) │ Notes                                       │
-  ├─────────────────┼───────────────┼────────────────
-  │ OS and utility  │ 120 KB        │ Chibios, HAL, drivers, utilities            │
-  │ + Console/Shell │ + 40 KB       │ Unexpectedly large due to formatting logic. │
-  │ + Param System  │ + 42 KB       │ C++ Templates + Float parsing.              │
-  │ + UAVCAN C++    │ + 35 KB       │ pubSub.o templates are expensive.           │
-  │ + C Runtime     │ + 20 KB       │ printf, startup, math.                      │
-  │ TOTAL           │ ~ 257 KB      │ Matches observed size.                      │
-  └─────────────────┴───────────────┴───────────────
-
-
-
 ====
 
+CODE MODERNIZATION (C++26 / GCC 15.2):
 
+  ° DeviceStatus Monadic Flow:
+    + add DeviceStatus::and_then(F&& f) to allow chaining role initialization.
+    + flatten UAVCanSlave.cpp::start() by replacing the pyramid of 'if(ok)' with a monadic pipeline.
 
- 
+  ° Flash Optimization (Remove snprintf):
+    + replace snprintf calls with std::to_chars (constexpr in C++26) for numeric conversions.
+    + objective: remove the expensive printf/formatting engine from the binary (gain ~5-10KB).
+
+  ° String Handling (Modern std::string_view):
+    + replace manual size checks and strncmp with C++23 methods: starts_with(), ends_with(), contains().
+    + impact: cleaner code, better compiler optimization, zero RAM overhead.
+
+  ° Template Simplification (Structural Types):
+    + replace FixedString wrapper in addRole<...>() with C++20 StringLiteral structural type.
+    + allows passing "ROLE.name" directly as a template parameter.
+
+  ° Variant/Visitor Modernization:
+    + use a variadic 'overload' lambda helper for variant/StoredValue visiting in ttyConsole.cpp.
+    + removes the need for separate visitor structs (OverloadDyn).
+
+  ° DSDL Static Assignment:
+    + use consteval helpers for assigning literal strings to DSDL fields (text.len + text.data).
+    + ensures length validation at compile-time and optimized register-to-memory transfers.
+
+  ° Chrono Integration (Glue for ChibiOS):
+    + implement a chibios_clock for std::chrono integration.
+    + allows using 300ms, 1s literals safely while mapping to chibios ticks (sysinterval_t).

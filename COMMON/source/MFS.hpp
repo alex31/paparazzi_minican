@@ -6,7 +6,6 @@
 
 #include "hal.h"
 #include "hal_mfs.h"
-#include <unistd.h>
 #include "eeprom_stm_m95p.hpp"
 
 

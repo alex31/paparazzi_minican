@@ -2,17 +2,11 @@
  * @file main.cpp
  * @brief Application entry point and system initialization.
  */
-#include <ch.h>
 #include <hal.h>
-#include "stdutil.h"
 #include "ttyConsole.hpp"
-#include "led2812.hpp"
 #include "rgbLeds.hpp"
 #include "adcSurvey.hpp"
 #include "dynamicPinConfig.hpp"
-#include "MFS.hpp"
-#include "UAVCAN/persistantParam.hpp"
-#include "UAVCAN/persistantStorage.hpp"
 #include "deviceResource.hpp"
 #include "UAVCanSlave.hpp"
 #include "hardwareConf.hpp"

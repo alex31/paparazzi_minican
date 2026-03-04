@@ -4,9 +4,31 @@
  */
 #pragma once
 
-#include <ch.h>
-#include <hal.h>
 #include "roleStatus.hpp"
+#include "stdutil.h"
+#include <new>
+#include <utility>
+
+/**
+ * @brief Helper to allocate an object on the DMA heap and initialize it.
+ *
+ * @tparam T      The type of object to create.
+ * @tparam Args   Constructor arguments types.
+ * @param source  The source role for the error reporting.
+ * @param status  Reference to store the status in case of success or failure.
+ * @param args    Constructor arguments to forward.
+ * @return T*     Pointer to the newly created object, or nullptr on failure.
+ */
+template<typename T, typename... Args>
+T* try_new_dma(DeviceStatus::Source source, DeviceStatus& status, Args&&... args) {
+  void* mem = malloc_dma(sizeof(T));
+  if (mem == nullptr) {
+    status = DeviceStatus(source, DeviceStatus::DMA_HEAP_FULL);
+    return nullptr;
+  }
+  status = DeviceStatus(source, DeviceStatus::OK);
+  return new (mem) T(std::forward<Args>(args)...);
+}
 
 /**
  * @brief Base interface for all roles connected to a UAVCAN node.

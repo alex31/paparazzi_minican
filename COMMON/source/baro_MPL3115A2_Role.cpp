@@ -7,7 +7,6 @@
 #if USE_BARO_MPL3115A2_ROLE
 
 #include "baro_MPL3115A2_Role.hpp"
-#include "stdutil.h"
 #include "hardwareConf.hpp"
 #include "I2C_periph.hpp"
 

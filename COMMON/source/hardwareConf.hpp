@@ -3,12 +3,7 @@
  * @brief Hardware configuration constants and aliases.
  */
 #pragma once
-#include <stdint.h>
-#include <array>
-#include <string>
-#include "ch.h"
 #include "hal.h"
-#include "UAVCAN/persistantParam.hpp"
 #include "UAVCAN/persistantStorage.hpp"
 
 
@@ -28,7 +23,9 @@
 */
 
 #define CONCAT_NX(st1, st2) st1 ## st2
+#define CONCAT3_NX(st1, st2, st3) st1 ## st2 ## st3
 #define CONCAT(st1, st2) CONCAT_NX(st1, st2)
+#define CONCAT3(st1, st2, st3) CONCAT3_NX(st1, st2, st3)
 
 #define STR_(x) #x
 #define STR(x)  STR_(x)
@@ -100,8 +97,12 @@ static constexpr SPIDriver& EepromSPID	  = SPID1;
 #if PLATFORM_MINICAN
 static constexpr SPIDriver& ExternalSPID  = SPID1;
 static constexpr I2CDriver& ExternalI2CD  = I2CD1;
+#define EXTERNAL_USART_ID UART_TX_USART
 #if HAL_USE_UART
 static constexpr UARTDriver &ExternalUARTD = CONCAT(UARTD, UART_TX_USART);
+#endif
+#if HAL_USE_SIO
+static constexpr SIODriver &ExternalSIOD = SIOD2;
 #endif
 // External WS2812 strip on PB07 (TIM3_CH4)
 #define LED2812_TIM      I2C_SDA_TIM
@@ -111,8 +112,12 @@ static constexpr PWMDriver& LedStripPWMD  = CONCAT(PWMD, LED2812_TIM);
 static constexpr SPIDriver& ExternalSPID  = SPID2;
 static constexpr I2CDriver& ExternalI2CD  = I2CD2;
 #define SRV1_TIM F1_b_TIM
+#define EXTERNAL_USART_ID F2_a_USART
 #if HAL_USE_UART
 static constexpr UARTDriver& ExternalUARTD =  CONCAT(UARTD, F2_a_USART);
+#endif
+#if HAL_USE_SIO
+static constexpr SIODriver &ExternalSIOD = SIOD1;
 #endif
 // External WS2812 strip on F0_b (PB07, TIM3_CH4)
 #define LED2812_TIM      F0_b_TIM
@@ -121,6 +126,11 @@ static constexpr PWMDriver& LedStripPWMD  = CONCAT(PWMD, LED2812_TIM);
 #endif
 #elif (!defined BOOTLOADER_MCAN)
 #error  PLATFORM_MINICAN and/or PLATFORM_MICROCAN and/or BOOTLOADER_MCAN not defined
+#endif
+
+#if defined(EXTERNAL_USART_ID)
+#define EXTERNAL_USART_RX_DMAMUX CONCAT3(STM32_DMAMUX1_USART, EXTERNAL_USART_ID, _RX)
+#define EXTERNAL_USART_TX_DMAMUX CONCAT3(STM32_DMAMUX1_USART, EXTERNAL_USART_ID, _TX)
 #endif
 
 /** @brief SPI configuration for the EEPROM device. */

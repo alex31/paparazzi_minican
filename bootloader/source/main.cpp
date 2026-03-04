@@ -22,11 +22,6 @@
  * 5. In case of a critical error, it enters an infinite loop with a specific RGB LED pattern.
  */
 
-#include <ch.h>
-#include <hal.h>
-#include "stdutil.h"
-#include "ttyConsole.hpp"
-#include "led2812.hpp"
 #include "rgbLeds.hpp"
 #include "M95P/eeprom_stm_m95p.hpp"
 #include "firmwareHeader.hpp"

@@ -2,8 +2,6 @@
  * @file rgbLeds.cpp
  * @brief Onboard WS2812 status LED implementation.
  */
-#include <ch.h>
-#include <hal.h>
 #include "rgbLeds.hpp"
 
 /*
