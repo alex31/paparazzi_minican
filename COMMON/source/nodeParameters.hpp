@@ -22,7 +22,7 @@
       {"bus.i2c.frequency_khz", {.min = 100, .max = 1000, .v = 400}},
       // shared baudrate for all roles that use usart (but smart servo which use autobaud)
       // 0 is reserved for ROLE.gnss.ubx to trigger UBX auto-baud probing
-      // (RX-only on MICROCAN, detect-then-keep-baud on MINICAN).
+      // and GPS reconfiguration over UBX on startup.
       {"bus.serial.baudrate", {.min = 0, .max = 460'800, .v = 115'200}},
       {"hardware.nickname", {.v = "nickname"}},
       // fancy led pattern if role.identification is true
@@ -38,7 +38,7 @@
       {"role.servo.pwm.map_index1", {.min=0, .max=124, .v = 0}},
       // when pins are shared between timer and other peripherals, select
       // the channels that are in use, other will be free
-      // mask is : msb F4 F3 F2 F1 lsb
+      // mask is : msb CH4 CH3 CH2 CH1 lsb
       {"role.servo.pwm.channel_mask", {.min=0b0001, .max=0b1111, .v = 0b1111}},
 	
       {"ROLE.servo.smart", {.v = false}},

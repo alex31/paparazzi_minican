@@ -10,10 +10,6 @@
 #include "resourceManager.hpp"
 #include "hardwareConf.hpp"
 
-#if PLATFORM_MICROCAN
-#include "dynamicPinConfig.hpp"
-#endif
-
 #define CONCAT_NX(st1, st2) st1 ## st2
 #define CONCAT(st1, st2) CONCAT_NX(st1, st2)
 
@@ -74,10 +70,6 @@ DeviceStatus EscDshot::start(UAVCAN::Node& /*node*/)
                         std::to_underlying(HR::TIM_1));
   }
 
-#if PLATFORM_MICROCAN
-  DynPin::setScenario(DynPin::Scenario::PWM, channelMap.mask);
-#endif
-
   // only acquire pins that are in use depending on role.esc.dshot.channel_mask
   for (uint8_t channelIdx = 0; channelIdx < numChannels; ++channelIdx) {
     const uint8_t channel = channelMap[channelIdx];
@@ -86,13 +78,6 @@ DeviceStatus EscDshot::start(UAVCAN::Node& /*node*/)
       return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT,
                           std::to_underlying(pinRes));
     }
-#if PLATFORM_MICROCAN
-    const auto altRes = static_cast<HR>(std::to_underlying(HR::F1) + channel);
-    if (not boardResource.tryAcquire(altRes)) {
-      return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT,
-                          std::to_underlying(altRes));
-    }
-#endif
   }
 
   // if the serial telemetry is used in the future,

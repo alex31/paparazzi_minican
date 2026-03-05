@@ -23,11 +23,6 @@
 #define SERVO_SMART_DEBUG_SPEED_TELEMETRY 0
 #endif
 
-
-#if PLATFORM_MICROCAN
-#include "dynamicPinConfig.hpp"
-#endif
-
 namespace  {
   SIOConfig servoSioCfg = {
     .baud = 250'000,
@@ -133,22 +128,10 @@ DeviceStatus ServoSmart::start(UAVCAN::Node& node)
   nodep = &node;
 
   // use serial2 TX + RX
-#if PLATFORM_MINICAN
   if (not boardResource.tryAcquire(HR::USART_2, HR::PB03, HR::PB04)) {
     return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT,
 			std::to_underlying(HR::USART_2));
   }
-#endif
-  
-#if PLATFORM_MICROCAN
-  if (not boardResource.tryAcquire(HR::USART_1, HR::PA09, HR::F2)) {
-    return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT,
-			std::to_underlying(HR::USART_1));
-  }
-  // MSB F4 F3 F2a F0b F0a LSB
-  DynPin::setScenario(DynPin::Scenario::UART, 0b00100);
-#endif
-
   
   DeviceStatus status(DeviceStatus::SERVO_SMART);
   if (servoSio == nullptr) {

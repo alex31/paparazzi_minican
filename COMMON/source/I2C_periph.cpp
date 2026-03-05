@@ -6,7 +6,7 @@
 #include "I2C_periph.hpp"
 #include "hardwareConf.hpp"
 #include "resourceManager.hpp"
-#include "dynamicPinConfig.hpp"
+#include "UAVCAN/persistantParam.hpp"
 #include "stdutil.h"
 
 namespace {
@@ -35,6 +35,82 @@ namespace {
 
   /// Track whether the I2C peripheral has already been started.
   bool started = false;
+
+  /// RAII helper to save/restore GPIO configuration during bus recovery.
+  class gpio_config_t {
+    using gpio_t = GPIO_TypeDef *;
+    const gpio_t gpio_port_a = reinterpret_cast<GPIO_TypeDef *>(GPIOA_BASE);
+    const gpio_t gpio_port_b = reinterpret_cast<GPIO_TypeDef *>(GPIOB_BASE);
+    GPIO_TypeDef a, b;
+
+  public:
+    gpio_config_t() { save(); }
+
+    void restore() {
+      *gpio_port_a = a;
+      *gpio_port_b = b;
+    }
+
+  private:
+    void save() {
+      a = *gpio_port_a;
+      b = *gpio_port_b;
+    }
+  };
+
+  /// Attempt to unhang a stuck I2C bus by toggling SCL.
+  bool i2cUnhangBus()
+  {
+    bool sdaReleased;
+    gpio_config_t context;
+    const ioline_t sdaLine = LINE_I2C_SDA;
+    const ioline_t sclLine = LINE_I2C_SCL;
+
+    palSetLineMode(sdaLine, PAL_MODE_INPUT);
+    chThdSleepMicroseconds(100);
+    sdaReleased = palReadLine(sdaLine) == PAL_HIGH;
+    uint32_t currentInput;
+    if (sdaReleased) {
+      context.restore();
+      return true;
+    }
+
+    palSetLineMode(sclLine, PAL_MODE_INPUT);
+    chThdSleepMicroseconds(100);
+    currentInput = palReadLine(sclLine) == PAL_HIGH;
+    palSetLineMode(sclLine, PAL_MODE_OUTPUT_PUSHPULL);
+    palWriteLine(sclLine, currentInput);
+    chThdSleepMicroseconds(100);
+
+    for (uint8_t i = 0; i <= 8; i++) {
+      chSysPolledDelayX(US2RTC(STM32_SYSCLK, 10)); // 10us: 100 kHz
+      palToggleLine(sclLine);
+      chSysPolledDelayX(US2RTC(STM32_SYSCLK, 10));
+      palToggleLine(sclLine);
+      chSysPolledDelayX(US2RTC(STM32_SYSCLK, 10));
+      sdaReleased = palReadLine(sdaLine) == PAL_HIGH;
+      if (sdaReleased) {
+        break;
+      }
+    }
+
+    context.restore();
+    return sdaReleased;
+  }
+
+  /// Enable/disable I2C pull-up resistors based on persistent parameter.
+  void i2cActivatePullup()
+  {
+    if (param_cget<"bus.i2c.pullup_resistor">()) {
+      palSetLineMode(LINE_PULLUP_SCL, PAL_MODE_OUTPUT_PUSHPULL);
+      palSetLineMode(LINE_PULLUP_SDA, PAL_MODE_OUTPUT_PUSHPULL);
+      palSetLine(LINE_PULLUP_SCL);
+      palSetLine(LINE_PULLUP_SDA);
+    } else {
+      palSetLineMode(LINE_PULLUP_SCL, PAL_MODE_INPUT);
+      palSetLineMode(LINE_PULLUP_SDA, PAL_MODE_INPUT);
+    }
+  }
 }
 
 
@@ -49,19 +125,11 @@ namespace I2CPeriph
 
     using HR = HWResource;
     
-#if PLATFORM_MINICAN
     if (not boardResource.tryAcquire(HR::PA15, HR::PB07, HR::I2C_1)) {
       return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT,
 			  std::to_underlying(HR::I2C_1));
     }
-#elif PLATFORM_MICROCAN
-    if (not boardResource.tryAcquire(HR::I2C_2, HR::F1, HR::F2)) {
-      return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT,
-			  std::to_underlying(HR::I2C_2));
-    }
-    DynPin::setScenario(DynPin::Scenario::I2C);
-#endif
-    DynPin::i2cActivatePullup();
+    i2cActivatePullup();
     
     const uint32_t freqKhz = param_cget<"bus.i2c.frequency_khz">();
     
@@ -83,16 +151,13 @@ namespace I2CPeriph
   {
     const auto config = ExternalI2CD.config;
     i2cStop(&ExternalI2CD);
-    if (DynPin::i2cUnhangBus(&ExternalI2CD) == false) {
+    if (i2cUnhangBus() == false) {
       DebugTrace("unhang bus I2C1 failed");
     }
     
     i2cStart(&ExternalI2CD, config);
   }
 };
-
-
-
 
 
 

@@ -14,10 +14,6 @@
 #include "stdutil.h"
 #include <cstdio>
 
-#if PLATFORM_MICROCAN
-#include "dynamicPinConfig.hpp"
-#endif
-
 namespace {
   /**
    * @brief Convert UBX UTC date/time to Unix epoch microseconds.
@@ -73,7 +69,6 @@ namespace {
 
   static constexpr std::array<uint32_t, 3> autoBaudList = {57'600U, 115'200U, 230'400U};
 
-#if PLATFORM_MINICAN
   /**
    * @brief UBX framing and configuration constants (M10 compatible).
    *
@@ -324,7 +319,6 @@ namespace {
       }
     }
   }
-#endif // PLATFORM_MINICAN
 
 }
 
@@ -636,43 +630,13 @@ DeviceStatus GpsUBX::start(UAVCAN::Node& node)
     node.infoCb("%s", text);
   };
   
-#if PLATFORM_MINICAN
   if (not boardResource.tryAcquire(HR::USART_2, HR::PB03, HR::PB04)) {
     return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT,
 			std::to_underlying(HR::USART_2));
   }
-#endif
-  
-#if PLATFORM_MICROCAN
-  if (not boardResource.tryAcquire(HR::USART_1, HR::PA10, HR::F3)) {
-    return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT,
-			std::to_underlying(HR::USART_1));
-  }
-  //  MSB F4 F3 F2a F0b F0a LSB
-  DynPin::setScenario(DynPin::Scenario::UART, 0b01000);
-#endif
 
   gpscfg.baud =  param_cget<"bus.serial.baudrate">();
-#if PLATFORM_MICROCAN
-  if (gpscfg.baud == 0U) {
-    static GpsCfgSio *probe_sio = nullptr;
-    if (probe_sio == nullptr) {
-      GpsCfgSio::Config cfg = {ExternalSIOD, gpscfg};
-      probe_sio = try_new_dma<GpsCfgSio>(DeviceStatus::GPS_ROLE, status, cfg);
-      if (not status) return status;
-    }
-    uint32_t detectedBaud = 0U;
-    const bool autoBaudOk =
-      detectUbxBaud(*probe_sio, gpscfg, autoBaudList, TIME_MS2I(900), detectedBaud);
-    if (!autoBaudOk) {
-      detectedBaud = 115'200U;
-    }
-    logAutoBaudResult(autoBaudOk, detectedBaud);
-    gpscfg.baud = detectedBaud;
-  }
-#endif
-#if PLATFORM_MINICAN
-  // minican is full duplex for the GPS and can configure it
+  // microcan is full duplex for the GPS and can configure it
   // using ublox protocol
   static GpsCfgSio *cfg_sio = nullptr;
   if (cfg_sio == nullptr) {
@@ -696,11 +660,6 @@ DeviceStatus GpsUBX::start(UAVCAN::Node& node)
   (void)cfg_sio->start();
   configureGpsUbx(*cfg_sio, gpscfg, gpscfg.baud);
   cfg_sio->stop();
-#else
-  // microcan is RX only due to smaller connector and expect an already
-  // configured gps via u‑center (newer version: u‑center2 for M10+)
-  // no configuration required
-#endif
   if (sio_ == nullptr) {
     const SIO::ContinuousConfig cfg = {
       ExternalSIOD,

@@ -8,10 +8,6 @@
 #include "UAVCanHelper.hpp"
 #include "stdutil.h"
 
-#if PLATFORM_MICROCAN
-#include "dynamicPinConfig.hpp"
-#endif
-
 /**
  * @file serialStreamRole.cpp
  *
@@ -96,21 +92,10 @@ DeviceStatus SerialStream::subscribe(UAVCAN::Node& node)
 
   // use serial2 TX + RX
   using HR = HWResource;
-#if PLATFORM_MINICAN
   if (not boardResource.tryAcquire(HR::USART_2, HR::PB03, HR::PB04)) {
     return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT,
 			std::to_underlying(HR::USART_2));
   }
-#endif
-  
-#if PLATFORM_MICROCAN
-  if (not boardResource.tryAcquire(HR::USART_1, HR::PA09, HR::PA10, HR::F2, HR::F3)) {
-    return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT,
-			std::to_underlying(HR::USART_1));
-  }
-  //  MSB F4 F3 F2a F0b F0a LSB
-  DynPin::setScenario(DynPin::Scenario::UART, 0b01100);
-#endif
   
   using UavToSerialFifo = std::remove_reference_t<decltype(*fifoObjectUav2Serial)>;
   fifoObjectUav2Serial = try_new_dma<UavToSerialFifo>(DeviceStatus::SERIAL_STREAM, status);

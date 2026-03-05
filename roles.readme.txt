@@ -17,7 +17,6 @@ Roles UAVCAN – messages reçus / envoyés
   - Paramètres : `role.esc.dshot.map_index1` (premier ESC), `role.esc.dshot.channel_mask` (canaux actifs CH1..CH4), `role.esc.dshot.cmd_rate` (période en ticks ChibiOS, base `CH_CFG_ST_FREQUENCY`), `role.esc.dshot.rpm_freq_div` (0 = pas de télémétrie bidir).
   - Notes :
     - Le driver bas niveau émet toujours une trame DShot 4 canaux (DMA/TIM). Les canaux masqués sont forcés à MOTOR_STOP (0), et seuls les canaux sélectionnés contiennent une consigne utile.
-    - Sur MicroCAN, `channel_mask` sert aussi à configurer les broches partagées via `dynamicPinConfig`.
 
 - SBUS RC (`ROLE.sbus`)
   - Reçoit : rien en UAVCAN (écoute SBUS série).
@@ -35,7 +34,7 @@ Roles UAVCAN – messages reçus / envoyés
   - Envoie : `uavcan.equipment.gnss.Fix2` (NAV-PVT), `uavcan.equipment.gnss.Auxiliary` (NAV-DOP/NAV-SAT).
   - Paramètres : `bus.serial.baudrate` (`>0` vitesse fixe, `0` auto-baud UBX sur 57600/115200/230400).
   - Notes : acquisition des ressources USART/pins avant démarrage de l’UART ; allocation DMA vérifiée avant de lancer le thread, sinon retour erreur mémoire.
-  - Notes : MiniCAN détecte d’abord le baud puis configure le GPS en conservant cette vitesse ; MicroCAN reste RX-only (détection passive UBX).
+  - Notes : le rôle détecte d’abord le baud puis configure le GPS en conservant cette vitesse.
 
 - Magnétomètre QMC5883 (`ROLE.i2c.magnetometer.q5883`)
   - Reçoit : rien.
@@ -53,8 +52,7 @@ Roles UAVCAN – messages reçus / envoyés
   - Envoie : rien.
   - Paramètres : `role.led2812.led_number` (1..8).
   - Notes :
-    - Utilise le même matériel que le voltmètre (TIM3_CH4 sur PB07 / F0_b selon la carte), donc ne peut pas être activé en même temps que `ROLE.voltmeter`.
-    - Sur MicroCAN, acquisition de ressource supplémentaire côté connecteur (`F0`) pour éviter les conflits quand plusieurs broches partagent le même header.
+    - Utilise le même matériel que le voltmètre (TIM3_CH4 sur PB07), donc ne peut pas être activé en même temps que `ROLE.voltmeter`.
 
 - Voltmeter (`ROLE.voltmeter`)
   - Reçoit : `uavcan.equipment.gnss.Fix2` (pour extinction auto si `role.voltmeter.gps_speed_off_mps` > 0).
@@ -67,7 +65,7 @@ Roles UAVCAN – messages reçus / envoyés
     - Seuil "vide" : 3.4V/cellule (clignotement rouge), "plein" : 4.2V/cellule (8 vertes fixes).
     - Pour économiser la batterie, si un `uavcan.equipment.gnss.Fix2` valide est reçu et que la vitesse sol
       dépasse `role.voltmeter.gps_speed_off_mps`, les LEDs sont éteintes.
-    - Matériel partagé avec `ROLE.led2812` : mutualisation TIM3/PB07 et, sur MicroCAN, le connecteur `F0`.
+    - Matériel partagé avec `ROLE.led2812` : mutualisation TIM3/PB07.
 
 - TemplateRole (`ROLE.template`)
   - Reçoit : `uavcan.protocol.NodeStatus` (broadcast) pour exemple pédagogique.

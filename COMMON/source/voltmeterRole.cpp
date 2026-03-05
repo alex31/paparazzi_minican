@@ -36,7 +36,7 @@ namespace {
 
   Led2812Strip<kLedCount, Led_t> *ledStrip = nullptr;
 
-  THD_WORKING_AREA(waMinican, 512);
+  THD_WORKING_AREA(waMicrocan, 512);
 
   /** @brief Clamp the configured cell count to a valid range. */
   uint8_t getCells()
@@ -176,30 +176,15 @@ DeviceStatus VoltmeterRole::start(UAVCAN::Node& /*node*/)
   using HR = HWResource;
   DeviceStatus status(DeviceStatus::VOLTMETER_ROLE);
 
-  const bool acquired =
-#if PLATFORM_MICROCAN
-    boardResource.tryAcquire(HR::TIM_3, HR::PB07, HR::F0);
-#else
-    boardResource.tryAcquire(HR::TIM_3, HR::PB07);
-#endif
+  const bool acquired = boardResource.tryAcquire(HR::TIM_3, HR::PB07);
 
   if (not acquired) {
-    const auto conflict =
-      boardResource.isAllocated(HR::TIM_3) ? HR::TIM_3 :
-#if PLATFORM_MICROCAN
-      (boardResource.isAllocated(HR::F0) ? HR::F0 : HR::PB07);
-#else
-      HR::PB07;
-#endif
+    const auto conflict = boardResource.isAllocated(HR::TIM_3) ? HR::TIM_3 : HR::PB07;
     return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT,
                         std::to_underlying(conflict));
   }
 
-#if PLATFORM_MINICAN
   palSetLineMode(LINE_I2C_SDA, PAL_MODE_ALTERNATE(I2C_SDA_TIM_AF) | PAL_STM32_OSPEED_HIGHEST);
-#elif PLATFORM_MICROCAN
-  palSetLineMode(LINE_F0_b, PAL_MODE_ALTERNATE(F0_b_TIM_AF) | PAL_STM32_OSPEED_HIGHEST);
-#endif
 
   if (ledStrip == nullptr) {
     ledStrip = try_new_dma<Led2812Strip<kLedCount, Led_t>>(
@@ -214,7 +199,7 @@ DeviceStatus VoltmeterRole::start(UAVCAN::Node& /*node*/)
     }
   }
 
-  chThdCreateStatic(waMinican, sizeof(waMinican), NORMALPRIO,
+  chThdCreateStatic(waMicrocan, sizeof(waMicrocan), NORMALPRIO,
                     &VoltmeterRole::voltmeterThread, this);
   return status;
 }
