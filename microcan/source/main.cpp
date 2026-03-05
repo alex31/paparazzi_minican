@@ -6,7 +6,6 @@
 #include "ttyConsole.hpp"
 #include "rgbLeds.hpp"
 #include "adcSurvey.hpp"
-#include "dynamicPinConfig.hpp"
 #include "deviceResource.hpp"
 #include "UAVCanSlave.hpp"
 #include "hardwareConf.hpp"
@@ -70,13 +69,6 @@ int main(void)
   
   RgbLed::setColor(HSV{0.3, 1, 0.1});
   RgbLed::setMotif(500, 0b1010101010101010);
-  if (not DynPin::isFirmwareMatchHardware()) {
-    RgbLed::setWheelOfDeath();
-    for (int i = 0; i < 5; i++)
-      DebugTrace ("FATAL : FIRMWARE do not match HARDWARE");
-    goto end;
-  }
-
 
   if (mfs_error_t status = MFS::start(); status != MFS_NO_ERROR) {
     DebugTrace("MFS::start has failed with code %d", status);

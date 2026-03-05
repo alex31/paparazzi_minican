@@ -1,13 +1,8 @@
 # Build and Flash
 
-Top level build (bootloader + firmware for both MiniCAN/MicroCAN):
+Top level build (bootloader + MicroCAN firmware):
 ```sh
 make
-```
-
-Build only MiniCAN firmware:
-```sh
-make minican
 ```
 
 Build only MicroCAN firmware:
@@ -33,14 +28,13 @@ make CAN_BITRATE=1000 RELEASE=s
 
 Flash (requires bmpflash or other configured flasher):
 ```sh
-make flashmini
+make flash
 make flashmicro
 ```
 
 Initial flashing via ROM UART bootloader:
 ```sh
-make uartflashmini DEV=/dev/ttyUSB0
-make uartflashmicro DEV=/dev/ttyUSB1
+make uartflashmicro DEV=/dev/ttyUSB0
 ```
 
 Bootloader size is set in the top level Makefile (see BOOTLOADER_SIZE).

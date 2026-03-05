@@ -5,6 +5,7 @@ test
 result
 build
 *~
-
+microcan/cfg/.boardgen_*.stamp
+microcan/cfg/values.txt
 
 

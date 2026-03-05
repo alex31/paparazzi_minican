@@ -12,5 +12,5 @@ Important parameters:
 - ROLE.* toggles for each role
 
 Parameter handling is implemented in:
-- [minican/source/UAVCanSlave.cpp](../../minican/source/UAVCanSlave.cpp) (GetSet, ExecuteOpcode)
+- [microcan/source/UAVCanSlave.cpp](../../microcan/source/UAVCanSlave.cpp) (GetSet, ExecuteOpcode)
 - [COMMON/source/deviceResource.cpp](../../COMMON/source/deviceResource.cpp) (storage instance)

@@ -1,6 +1,6 @@
-# MiniCAN v5
+# MicroCAN v5
 
-Board: MiniCAN v5 (STM32G491K, 170 MHz, single-precision FPU).
+Board: MicroCAN v5 (STM32G491K, 170 MHz, single-precision FPU).
 
 Core peripherals:
 - CAN FD with software selectable terminal resistor
@@ -13,5 +13,5 @@ Core peripherals:
 - ADC monitoring for battery and 5V
 
 Key files:
-- [minican/cfg/MINICAN.cfg](../../../minican/cfg/MINICAN.cfg) (pin map)
-- [HARDWARE/MINICAN/](../../../HARDWARE/MINICAN/) (schematics)
+- [microcan/cfg/MICROCAN.cfg](../../../microcan/cfg/MICROCAN.cfg) (pin map)
+- [HARDWARE/MICROCAN/](../../../HARDWARE/MICROCAN/) (schematics)

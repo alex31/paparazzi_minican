@@ -33,7 +33,7 @@ Outputs:
 
 Wiring:
 - PWM on TIM1 CH1..CH4 (PA08..PA11)
-- Smart servos use UART (USART2 on MiniCAN)
+- Smart servos use UART (USART2 on MicroCAN)
 
 ### EscDshot (ROLE.esc.dshot)
 Receives uavcan.equipment.esc.RawCommand and drives DShot on TIM1 CH1..CH4.
@@ -48,7 +48,7 @@ Telemetry:
 - uavcan.equipment.esc.Status if bidirectional DShot is enabled.
 
 Wiring:
-- TIM1 CH1..CH4 on PA08..PA11 (MiniCAN)
+- TIM1 CH1..CH4 on PA08..PA11 (MicroCAN)
 
 ### SBUS RC (ROLE.sbus)
 Reads SBUS on UART and publishes dronecan.sensors.rc.RCInput.
@@ -59,7 +59,7 @@ Params:
 - role.sbus.debug_uart_ttl (true: non-inverted TTL debug input, false: normal SBUS inversion)
 
 Wiring:
-- SBUS on USART2 RX (PB04) on MiniCAN
+- SBUS on USART2 RX (PB04) on MicroCAN
 
 ### SerialStream (ROLE.tunnel.serial)
 UART <-> uavcan.tunnel.Broadcast bridge.
@@ -69,7 +69,7 @@ Params:
 - bus.serial.baudrate
 
 Wiring:
-- USART2 TX/RX on PB03/PB04 (MiniCAN)
+- USART2 TX/RX on PB03/PB04 (MicroCAN)
 
 ### GpsUBX (ROLE.gnss.ubx)
 Decodes UBX from UART and publishes:
@@ -82,11 +82,10 @@ Params:
 Notes:
 - `bus.serial.baudrate > 0`: fixed UART baudrate.
 - `bus.serial.baudrate = 0`: GNSS UBX auto-baud probing on `57600`, `115200`, `230400`.
-- MiniCAN (full duplex): detect baud, then configure GPS while keeping that detected baud.
-- MicroCAN (RX-only): detect baud from incoming UBX stream only; GPS must already be configured to emit UBX.
+- Detect baud, then configure GPS while keeping that detected baud.
 
 Wiring:
-- USART2 TX/RX on PB03/PB04 (MiniCAN)
+- USART2 TX/RX on PB03/PB04 (MicroCAN)
 
 ### QMC5883 Magnetometer (ROLE.i2c.magnetometer.q5883)
 Publishes uavcan.equipment.ahrs.MagneticFieldStrength2.

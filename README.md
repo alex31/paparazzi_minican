@@ -1,6 +1,6 @@
-# MiniCAN
+# MicroCAN
 
-MiniCAN is a flexible UAVCAN interface card based on an STM32G491 microcontroller. It acts as a proxy between a UAVCAN network and a variety of peripherals such as servos, ESCs, sensors and serial links. The project contains both the bootloader and the main firmware used on the board.
+MicroCAN is a flexible UAVCAN interface card based on an STM32G491 microcontroller. It acts as a proxy between a UAVCAN network and a variety of peripherals such as servos, ESCs, sensors and serial links. The project contains both the bootloader and the main firmware used on the board.
 
 ## Features
 
@@ -14,12 +14,12 @@ MiniCAN is a flexible UAVCAN interface card based on an STM32G491 microcontrolle
 - **Health survey** publishing battery and core temperature measurements
 - Configurable roles and parameters stored in persistent memory
 
-Hardware design files for the MiniCAN and MicroCAN board are available under [HARDWARE/](HARDWARE/).
+Hardware design files are available under [HARDWARE/](HARDWARE/).
 
 ## Repository layout
 
 - [bootloader/](bootloader/) – bootloader source code and configuration
-- [minican/](minican/) – main application implementing the UAVCAN node and all roles
+- [microcan/](microcan/) – main application implementing the UAVCAN node and all roles
 - [COMMON/](COMMON/) – modules shared between bootloader and application
 - [HARDWARE/](HARDWARE/) – hardware schematics and CubeMX configuration
 - [docs/](docs/) – software and hardware documentation
@@ -40,7 +40,7 @@ make            # builds bootloader and firmware
 make flash       # flashes both images using bmpflash
 ```
 
-You can also build `bootloader` or `minican` individually by invoking `make -C bootloader` or `make -C minican`.
+You can also build `bootloader` or `microcan` individually by invoking `make -C bootloader` or `make -C microcan`.
 
 ## License
 

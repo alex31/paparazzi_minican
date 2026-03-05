@@ -1,7 +1,7 @@
 /**
  * @file main.cpp
  * @author Alex Bustico
- * @brief Bootloader for the MiniCAN G491 V4 board.
+ * @brief Bootloader for the MicroCAN G491 V4 board.
  *
  * @details This bootloader is responsible for updating the main application firmware.
  * It checks for a new firmware image stored in an external M95P EEPROM,

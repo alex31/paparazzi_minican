@@ -1,4 +1,4 @@
-Configuration	MiniCAN_v5
+Configuration	MicroCAN_v5
 STM32CubeMX 	6.15.0
 Date	07/28/2025
 MCU	STM32G491KEUx
@@ -119,8 +119,8 @@ Pin Nb	PINs	FUNCTIONs	LABELs
 SOFTWARE PROJECT
 
 Project Settings : 
-Project Name : MiniCAN_v5
-Project Folder : /home/alex/DEV/STM32/CHIBIOS/C21DEV/MINICAN/MINICAN_V5_MICROCAN_V3/HARDWARE/MINICAN
+Project Name : MicroCAN_v5
+Project Folder : HARDWARE/MICROCAN
 Toolchain / IDE : EWARM V8.50
 Firmware Package Name and Version : STM32Cube FW_G4 V1.6.1
 
@@ -135,7 +135,6 @@ Set all free pins as analog (to optimize the power consumption) : No
 
 Toolchains Settings : 
 Compiler Optimizations : 
-
 
 
 

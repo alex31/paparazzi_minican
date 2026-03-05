@@ -23,12 +23,11 @@ resources, and parameters for your new role.
 - Add #define USE_MY_ROLE true in [COMMON/source/roleConf.h](../../COMMON/source/roleConf.h)
 
 4) Register in UAVCanSlave
-- Add the role include in [minican/source/UAVCanSlave.cpp](../../minican/source/UAVCanSlave.cpp)
+- Add the role include in [microcan/source/UAVCanSlave.cpp](../../microcan/source/UAVCanSlave.cpp)
 - Add addRole<MyRole, FixedString("ROLE.my_role")>(); in CANSlave::start()
 
 5) Allocate resources
 - In start(), use boardResource.tryAcquire(...) for pins and peripherals
-- If MicroCAN uses shared pins, call DynPin::setScenario(...) where needed
 
 6) Subscribe and publish
 - Implement subscribe() for UAVCAN message subscriptions
@@ -52,7 +51,7 @@ Recommended workflow:
 - Copy/rename the files and class
 - Add parameters to [COMMON/source/nodeParameters.hpp](../../COMMON/source/nodeParameters.hpp)
 - Add compile-time toggle in [COMMON/source/roleConf.h](../../COMMON/source/roleConf.h)
-- Register in [minican/source/UAVCanSlave.cpp](../../minican/source/UAVCanSlave.cpp)
+- Register in [microcan/source/UAVCanSlave.cpp](../../microcan/source/UAVCanSlave.cpp)
 - Add documentation to [roles.readme.txt](../../roles.readme.txt)
 
 3) Review output for
@@ -63,7 +62,7 @@ Recommended workflow:
 
 Example prompt:
 ```
-Create a new role named FooRole for MiniCAN.
+Create a new role named FooRole for MicroCAN.
 It should read a sensor over I2C1 at 50 Hz and publish uavcan.equipment.foo.Bar.
 Use parameter ROLE.foo to enable it and role.foo.sensor_id to set sensor ID.
 Add resource allocation for I2C1 and PB07/PA15 pins.

@@ -1,11 +1,9 @@
 # Hardware Overview
 
-This section documents the hardware platform and board files for MiniCAN and
-MicroCAN.
+This section documents the hardware platform and board files.
 
 Key board files:
-- [minican/cfg/MINICAN.cfg](../../minican/cfg/MINICAN.cfg) (pin map)
-- [HARDWARE/MINICAN/](../../HARDWARE/MINICAN/) (schematics and board docs)
+- [microcan/cfg/MICROCAN.cfg](../../microcan/cfg/MICROCAN.cfg) (pin map)
 - [HARDWARE/MICROCAN/](../../HARDWARE/MICROCAN/) (schematics and board docs)
 
 Onboard RGB LED behavior is defined in software. See:

@@ -6,7 +6,7 @@ The system is split into two firmware images:
   stage firmware update protocol.
 
 Core components:
-- [minican/source/UAVCanSlave.cpp](../../minican/source/UAVCanSlave.cpp)
+- [microcan/source/UAVCanSlave.cpp](../../microcan/source/UAVCanSlave.cpp)
   - Creates the UAVCAN node
   - Handles UAVCAN services (GetNodeInfo, Param GetSet, Restart, FW update)
   - Dynamically instantiates enabled roles

@@ -28,8 +28,8 @@ Timing:
 - During dynamic ID allocation, the startup motif remains active until an ID is
   assigned, then the node ID display takes over
 
-## Application (minican) LED codes
-Patterns set in [minican/source/main.cpp](../../minican/source/main.cpp):
+## Application (microcan) LED codes
+Patterns set in [microcan/source/main.cpp](../../microcan/source/main.cpp):
 - Boot/startup (before checks): greenish, motif 0b1010101010101010, period 500 ms
 - Firmware/hardware mismatch: wheel-of-death (continuous rainbow sweep)
 - MFS init failure: blue, motif 0b10101010, period 200 ms

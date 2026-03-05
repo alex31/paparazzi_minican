@@ -30,11 +30,7 @@
 #define STR_(x) #x
 #define STR(x)  STR_(x)
 #define NAME_STRING(prefix, sep, version) prefix sep version
-#if defined(PLATFORM_MINICAN) && PLATFORM_MINICAN
-#define DEVICE_NAME NAME_STRING("org.pprz.minican", "V", STR(HW_VERSION))
-#elif defined(PLATFORM_MICROCAN) && PLATFORM_MICROCAN
 #define DEVICE_NAME NAME_STRING("org.pprz.microcan", "V", STR(HW_VERSION))
-#endif
 using namespace std::literals;
 
 static constexpr uint32_t operator""_hz (unsigned long long int freq)
@@ -93,8 +89,7 @@ constexpr size_t BLANK_GAP_SIZE_SECTORS = ((128U * 1024U) / SECTOR_SIZE_BYTES);
 
 static constexpr SPIDriver& EepromSPID	  = SPID1;
 
-#if (defined PLATFORM_MINICAN) && (defined PLATFORM_MICROCAN)
-#if PLATFORM_MINICAN
+#if defined(PLATFORM_MICROCAN) && PLATFORM_MICROCAN
 static constexpr SPIDriver& ExternalSPID  = SPID1;
 static constexpr I2CDriver& ExternalI2CD  = I2CD1;
 #define EXTERNAL_USART_ID UART_TX_USART
@@ -108,24 +103,8 @@ static constexpr SIODriver &ExternalSIOD = SIOD2;
 #define LED2812_TIM      I2C_SDA_TIM
 #define LED2812_TIM_CH   I2C_SDA_TIM_CH
 static constexpr PWMDriver& LedStripPWMD  = CONCAT(PWMD, LED2812_TIM);
-#elif  PLATFORM_MICROCAN
-static constexpr SPIDriver& ExternalSPID  = SPID2;
-static constexpr I2CDriver& ExternalI2CD  = I2CD2;
-#define SRV1_TIM F1_b_TIM
-#define EXTERNAL_USART_ID F2_a_USART
-#if HAL_USE_UART
-static constexpr UARTDriver& ExternalUARTD =  CONCAT(UARTD, F2_a_USART);
-#endif
-#if HAL_USE_SIO
-static constexpr SIODriver &ExternalSIOD = SIOD1;
-#endif
-// External WS2812 strip on F0_b (PB07, TIM3_CH4)
-#define LED2812_TIM      F0_b_TIM
-#define LED2812_TIM_CH   F0_b_TIM_CH
-static constexpr PWMDriver& LedStripPWMD  = CONCAT(PWMD, LED2812_TIM);
-#endif
 #elif (!defined BOOTLOADER_MCAN)
-#error  PLATFORM_MINICAN and/or PLATFORM_MICROCAN and/or BOOTLOADER_MCAN not defined
+#error PLATFORM_MICROCAN and/or BOOTLOADER_MCAN not defined
 #endif
 
 #if defined(EXTERNAL_USART_ID)

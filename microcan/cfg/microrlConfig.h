@@ -30,7 +30,7 @@ for example this prompt will green color (if you terminal supports color)*/
 Define prompt text (without ESC sequence, only text) prompt length, it needs because if you use
 ESC sequence, it's not possible detect only text length*/
 /*
-         -DPLATFORM_MINICAN=$(PLATFORM_MINICAN) -DPLATFORM_MICROCAN=$(PLATFORM_MICROCAN) \
+         -DPLATFORM_MICROCAN=$(PLATFORM_MICROCAN) \
 	-DPLATFORM=$(PLATFORM)
 	-DHW_VERSION=$(HW_VERSION) \
         -DSW_VERSION_MAJOR=$(SW_VERSION_MAJOR) -DSW_VERSION_MINOR=$(SW_VERSION_MINOR)

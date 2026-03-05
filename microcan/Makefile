@@ -21,22 +21,10 @@ GIT_SHA := $(shell git rev-parse --short=8 HEAD 2>/dev/null || echo 0)
 # Convertir en entier literal hexadecimal
 VCS_COMMIT := $(shell printf "0x%s\n" $(GIT_SHA))
 
-ifndef PLATFORM
-$(warning PLATFORM should be MINICAN or MICROCAN setting MINICAN as default)
-PLATFORM = MINICAN
-endif
-
-ifeq "$(PLATFORM)" "MINICAN"
-PLATFORM_MINICAN=1
-PLATFORM_MICROCAN=0
-HW_VERSION=5
-FW_APP_ID := org.pprz.minicanV$(HW_VERSION)
-else ifeq "$(PLATFORM)" "MICROCAN"
-PLATFORM_MINICAN=0
-PLATFORM_MICROCAN=1
-HW_VERSION=3
+PLATFORM := MICROCAN
+PLATFORM_MICROCAN := 1
+HW_VERSION := 5
 FW_APP_ID := org.pprz.microcanV$(HW_VERSION)
-endif
 
 CAN_BITRATE ?= 1000
 
@@ -294,7 +282,6 @@ CPPSRC = $(ALLCPPSRC) \
         $(VARIOUS)/futabaSbusSio.cpp \
         $(VARIOUS)/sioWrapper.cpp \
 	$(COMMON)/adcSurvey.cpp \
-	$(COMMON)/dynamicPinConfig.cpp \
 	$(COMMON)/servoRole.cpp \
 	$(COMMON)/gpsUbxRole.cpp \
 	$(COMMON)/gpsUbxDecoder.cpp \
@@ -347,7 +334,7 @@ UDEFS = -DCANARD_ENABLE_CANFD=$(CANARD_ENABLE_CANFD) \
         -DCANARD_ENABLE_TAO_OPTION=true -DCANARD_ALLOCATE_SEM=true \
         -DDRONECAN_CXX_WRAPPERS=true \
         -DFROZEN_NO_EXCEPTIONS=1 -DPRECISE_FDCAN_TIMINGS=$(PRECISE_FDCAN_TIMINGS) \
-        -DPLATFORM_MINICAN=$(PLATFORM_MINICAN) -DPLATFORM_MICROCAN=$(PLATFORM_MICROCAN) \
+        -DPLATFORM_MICROCAN=$(PLATFORM_MICROCAN) \
 	-DPLATFORM=$(PLATFORM) -DCAN_BITRATE=$(CAN_BITRATE) \
 	-DVCS_COMMIT=$(VCS_COMMIT) -DHW_VERSION=$(HW_VERSION) \
         -DSW_VERSION_MAJOR=$(SW_VERSION_MAJOR) -DSW_VERSION_MINOR=$(SW_VERSION_MINOR)
@@ -412,15 +399,14 @@ check_elf_overlap: $(BUILDDIR)/$(PROJECT).elf
 all: check_elf_overlap
 endif
 
-$(CONFDIR)/board.h: $(CONFDIR)/$(PLATFORM).cfg
+$(CONFDIR)/board.h: $(CONFDIR)/MICROCAN.cfg
 	boardGen.pl --no-pp-line --no-adcp-in 	$<  $@
 
-# board.h is shared for MINICAN/MICROCAN; ensure it is regenerated when PLATFORM changes.
-BOARDGEN_STAMP := $(CONFDIR)/.boardgen_$(PLATFORM).stamp
+BOARDGEN_STAMP := $(CONFDIR)/.boardgen_MICROCAN.stamp
 
 $(BOARDGEN_STAMP):
 	@rm -f $(CONFDIR)/.boardgen_*.stamp
-	@echo $(PLATFORM) > $@
+	@echo MICROCAN > $@
 
 $(CONFDIR)/board.h: $(BOARDGEN_STAMP)
 
@@ -443,7 +429,7 @@ firmware: all
 
 distclean:
 	@rm $(CONFDIR)/board.h
-	@rm -R build_MI*
+	@rm -R build_MICROCAN
 
 # flash: all
 # 	@echo write $(BUILDDIR)/$(PROJECT).elf to flash memory

@@ -1,5 +1,5 @@
 CODÉ MAIS PAS TESTÉ :
-  ° tester l'entrée bootloader serial du root makefile sur minican qui a un pad boot0 accessible
+  ° tester l'entrée bootloader serial du root makefile sur microcan qui a un pad boot0 accessible
 
   ° tester : utilisation du vendor specific code pour envoyer des log d'erreur/warning
 
@@ -60,7 +60,7 @@ AHRS / notch filtering notes:
   - Invensense IMU driver configures AAF/LPF; internal IMU notch is left at default.
   - ArduPilot uses CMSIS-DSP mainly for FFT (GyroFFT), not for notch filters.
   - CMSIS-DSP in ArduPilot is shipped as prebuilt DSP libs + headers.
-  - Minican plan (recent Invensense 6-axis IMU):
+  - Microcan plan (recent Invensense 6-axis IMU):
     * Use gyro notch from bidir DShot RPM (4 motors + harmonics).
     * Update notch coefficients at low rate (e.g., 50-200 Hz).
     * Optional FFT-based tracking for non-motor resonances if CPU budget allows.

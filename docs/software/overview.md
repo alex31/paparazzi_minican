@@ -1,6 +1,6 @@
 # Software Overview
 
-MiniCAN is a UAVCAN (DroneCAN) peripheral node based on an STM32G491 MCU. It
+MicroCAN is a UAVCAN (DroneCAN) peripheral node based on an STM32G491 MCU. It
 bridges the CAN network to physical peripherals (UART, I2C, PWM, DShot, LEDs)
 via a modular role system.
 
@@ -14,9 +14,9 @@ Key properties:
 
 Repository layout:
 - [bootloader/](../../bootloader/) : Bootloader application
-- [minican/](../../minican/) : Main firmware (UAVCAN node + roles)
+- [microcan/](../../microcan/) : Main firmware (UAVCAN node + roles)
 - [COMMON/](../../COMMON/) : Shared drivers, roles, utilities
-- [HARDWARE/](../../HARDWARE/) : Schematics and board files for MiniCAN/MicroCAN
+- [HARDWARE/](../../HARDWARE/) : Schematics and board files
 
 For detailed roles, see [roles/overview.md](roles/overview.md) and
 [roles.readme.txt](../../roles.readme.txt).

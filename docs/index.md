@@ -1,4 +1,4 @@
-# MiniCAN Documentation
+# MicroCAN Documentation
 
 This is the entry point for project documentation. The docs are split into
 software and hardware sections.
@@ -17,8 +17,7 @@ Software
 Hardware
 - [hardware/overview.md](hardware/overview.md)
 - [hardware/bringup.md](hardware/bringup.md)
-- [hardware/boards/minican_v5.md](hardware/boards/minican_v5.md)
-- [hardware/boards/microcan_v3.md](hardware/boards/microcan_v3.md)
+- [hardware/boards/microcan_v5.md](hardware/boards/microcan_v5.md)
 
 Assets (images, diagrams)
 - [assets/](assets/)

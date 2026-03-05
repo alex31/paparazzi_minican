@@ -26,8 +26,8 @@ Token is word separate by white space, for example 3 token line:
 /*
 Define you prompt string here. You can use colors escape code, for highlight you prompt,
 for example this prompt will green color (if you terminal supports color)*/
-//#define _PROMPT_DEFAUTL "\033[32mMiniCan >\033[0m "	// green color
-#define _PROMPT_DEFAUTL "\033[32mMiniCan BL >\033[0m "	// green color
+//#define _PROMPT_DEFAUTL "\033[32mMicroCan >\033[0m "	// green color
+#define _PROMPT_DEFAUTL "\033[32mMicroCan BL >\033[0m "	// green color
 
 /*
 Define prompt text (without ESC sequence, only text) prompt length, it needs because if you use
