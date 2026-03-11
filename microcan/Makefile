@@ -200,14 +200,14 @@ else
   RELATIVE=../../..
 endif
 
-CHIBIOS  := $(RELATIVE)/$(notdir $(MY_DIRNAME))
+CHIBIOS  := ../ext/ChibiOS_21.11_stable
 CONFDIR  := ./cfg
 BUILDDIR := ./build_$(PLATFORM)
 DEPDIR   := ./.dep
-STMSRC = $(RELATIVE)/COMMON/stm
-VARIOUS = $(RELATIVE)/COMMON/various
-ETL_LIB = ../../../../../etl/include
-FROZEN_LIB := ../../../../../frozen/include
+STMSRC = ../ext/GLOBAL_COMMON/stm
+VARIOUS = ../ext/GLOBAL_COMMON/various
+ETL_LIB = ../ext/etl/include
+FROZEN_LIB := ../ext/frozen/include
 COMMON := ../COMMON/source
 COMMON_CFG := $(COMMON)/../cfg
 SRCDIR = ./source
@@ -239,8 +239,8 @@ include $(CHIBIOS)/test/mfs/mfs_test.mk
 #LDSCRIPT= $(STARTUPLD)/STM32G491xE.ld
 LDSCRIPT= $(CONFDIR)/STM32G491xE.ld
 
-DSDL := $(RELATIVE)/../UAVCAN/DSDL
-DSDLC := $(RELATIVE)/../UAVCAN/DSDLC
+DSDL := ../ext/UAVCAN/DSDL
+DSDLC := ../ext/UAVCAN/dronecan_dsdlc
 DSDL_ROOTS_PART := $(sort $(dir $(wildcard $(DSDL)/*/)))
 DSDL_ROOTS := $(filter-out $(DSDL)/tests/,$(DSDL_ROOTS_PART))
 DSDLC_CSRC := $(wildcard $(DSDLC)/src/*.c)
@@ -256,7 +256,7 @@ CSRC = $(ALLCSRC) \
        $(VARIOUS)/microrl/microrl.c \
        $(VARIOUS)/hal_stm32_dma.c \
        $(VARIOUS)/M95P/hal_xsnor_stm_m95p.c \
-       $(RELATIVE)/../UAVCAN/libcanard/canard.c \
+       ../ext/UAVCAN/libcanard/canard.c \
        $(VARIOUS)/inputCapture.c \
        $(VARIOUS)/esc_dshot.c \
        $(VARIOUS)/timerDmaCache.c \
@@ -311,7 +311,7 @@ ASMXSRC = $(ALLXASMSRC)
 # Inclusion directories.
 INCDIR = $(CONFDIR) $(ALLINC) $(CHIBIOS)/os/various $(VARIOUS) \
 	 $(VARIOUS)/M95P $(EXTLIB) $(ETL_LIB) $(FROZEN_LIB) $(COMMON) \
-         $(RELATIVE)/../UAVCAN/libcanard $(DSDLC)/include ../canard_chutils \
+         ../ext/UAVCAN/libcanard $(DSDLC)/include ../canard_chutils \
 	 $(TESTINC) $(COMMON_CFG)
  
 
@@ -387,7 +387,7 @@ CHECK_ELF_OVERLAP ?= yes
 
 build_dsdlc:
 	@echo Generating dsdl code from $(DSDL_ROOTS) to $(DSDLC)
-	$(PY) $(RELATIVE)/../UAVCAN/dronecan_dsdlc/dronecan_dsdlc.py -O $(DSDLC) $(DSDL_ROOTS)
+	$(PY) ../ext/UAVCAN/dronecan_dsdlc/dronecan_dsdlc.py -O $(DSDLC) $(DSDL_ROOTS)
 	@echo Done
 
 ifeq ($(CHECK_ELF_OVERLAP),yes)

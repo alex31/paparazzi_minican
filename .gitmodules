@@ -1,0 +1,22 @@
+[submodule "ext/ChibiOS_21.11_stable"]
+	path = ext/ChibiOS_21.11_stable
+	url = https://github.com/alex31/ChibiOS_mirror.git
+	branch = stable_21.11.x_with_ext_and_local_fixes_mdma_fixes
+[submodule "ext/etl"]
+	path = ext/etl
+	url = https://github.com/ETLCPP/etl.git
+[submodule "ext/frozen"]
+	path = ext/frozen
+	url = https://github.com/serge-sans-paille/frozen.git
+	branch = master
+[submodule "ext/UAVCAN/DSDL"]
+	path = ext/UAVCAN/DSDL
+	url = https://github.com/paparazzi/DSDL.git
+	branch = minican
+[submodule "ext/UAVCAN/libcanard"]
+	path = ext/UAVCAN/libcanard
+	url = https://github.com/dronecan/libcanard.git
+[submodule "ext/UAVCAN/dronecan_dsdlc"]
+	path = ext/UAVCAN/dronecan_dsdlc
+	url = https://github.com/dronecan/dronecan_dsdlc.git
+	branch = master

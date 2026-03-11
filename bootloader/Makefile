@@ -153,14 +153,14 @@ else
   RELATIVE=../../..
 endif
 
-CHIBIOS  := $(RELATIVE)/$(notdir $(MY_DIRNAME))
+CHIBIOS  := ../ext/ChibiOS_21.11_stable
 CONFDIR  := ./cfg
 BUILDDIR := ./build
 DEPDIR   := ./.dep
-STMSRC = $(RELATIVE)/COMMON/stm
-VARIOUS = $(RELATIVE)/COMMON/various
-ETL_LIB = ../../../../../etl/include
-FROZEN_LIB := ../../../../../frozen/include
+STMSRC = ../ext/GLOBAL_COMMON/stm
+VARIOUS = ../ext/GLOBAL_COMMON/various
+ETL_LIB = ../ext/etl/include
+FROZEN_LIB := ../ext/frozen/include
 COMMON := ../COMMON/source
 COMMON_CFG := $(COMMON)/../cfg
 SRCDIR = ./source
@@ -188,8 +188,8 @@ include $(CHIBIOS)/tools/mk/autobuild.mk
 #LDSCRIPT= $(STARTUPLD)/STM32G491xE.ld
 LDSCRIPT= $(CONFDIR)/STM32G491xE.ld
 
-DSDL := $(RELATIVE)/../UAVCAN/DSDL
-DSDLC := $(RELATIVE)/../UAVCAN/DSDLC
+DSDL := ../ext/UAVCAN/DSDL
+DSDLC := ../ext/UAVCAN/dronecan_dsdlc
 DSDL_ROOTS_PART := $(sort $(dir $(wildcard $(DSDL)/*/)))
 DSDL_ROOTS := $(filter-out $(DSDL)/tests/,$(DSDL_ROOTS_PART))
 DSDLC_CSRC := $(wildcard $(DSDLC)/src/*.c)
@@ -224,7 +224,7 @@ ASMXSRC = $(ALLXASMSRC)
 # Inclusion directories.
 INCDIR = $(CONFDIR) $(ALLINC) $(CHIBIOS)/os/various $(VARIOUS) \
 	 $(VARIOUS)/M95P $(EXTLIB) $(ETL_LIB) $(FROZEN_LIB) $(COMMON) \
-         $(RELATIVE)/../UAVCAN/libcanard $(DSDLC)/include ../canard_chutils \
+         ../ext/UAVCAN/libcanard $(DSDLC)/include ../canard_chutils \
          $(COMMON_CFG)
  
 
