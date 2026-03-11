@@ -4,7 +4,8 @@
 	branch = stable_21.11.x_with_ext_and_local_fixes_mdma_fixes
 [submodule "ext/etl"]
 	path = ext/etl
-	url = https://github.com/ETLCPP/etl.git
+	url = https://github.com/alex31/etl.git
+	branch = c++26_compat
 [submodule "ext/frozen"]
 	path = ext/frozen
 	url = https://github.com/serge-sans-paille/frozen.git
@@ -15,7 +16,8 @@
 	branch = minican
 [submodule "ext/UAVCAN/libcanard"]
 	path = ext/UAVCAN/libcanard
-	url = https://github.com/dronecan/libcanard.git
+	url = https://github.com/alex31/libcanard.git
+	branch = fd_anonymous
 [submodule "ext/UAVCAN/dronecan_dsdlc"]
 	path = ext/UAVCAN/dronecan_dsdlc
 	url = https://github.com/dronecan/dronecan_dsdlc.git
