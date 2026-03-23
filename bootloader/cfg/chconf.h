@@ -1,5 +1,5 @@
 /*
-    ChibiOS - Copyright (C) 2006..2020 Giovanni Di Sirio
+    ChibiOS - Copyright (C) 2006-2026 Giovanni Di Sirio.
 
     Licensed under the Apache License, Version 2.0 (the "License");
     you may not use this file except in compliance with the License.
@@ -37,6 +37,32 @@
 #define TRUE_IF_DTRACE FALSE
 #endif
 
+/**
+ * @brief   Kernel hardening level.
+ * @details This option is the level of functional-safety checks enabled
+ *          in the kerkel. The meaning is:
+ *          - 0: No checks, maximum performance.
+ *          - 1: Reasonable checks.
+ *          - 2: All checks.
+ *          .
+ */
+#if !defined(CH_CFG_HARDENING_LEVEL)
+#define CH_CFG_HARDENING_LEVEL              0
+#endif
+
+/**
+ * @brief   Memory checks APIs.
+ * @details If enabled then the memory checks APIs are included in the kernel.
+ *
+ * @note    The default is @p TRUE.
+ */
+#if !defined(CH_CFG_USE_MEMCHECKS)
+#define CH_CFG_USE_MEMCHECKS                 TRUE_IF_DTRACE
+#endif
+
+#define PORT_ENABLE_GUARD_PAGES             FALSE
+
+
 /*===========================================================================*/
 /**
  * @name System settings
@@ -53,19 +79,6 @@
  */
 #if !defined(CH_CFG_SMP_MODE)
 #define CH_CFG_SMP_MODE                     FALSE
-#endif
-
-/**
- * @brief   Kernel hardening level.
- * @details This option is the level of functional-safety checks enabled
- *          in the kerkel. The meaning is:
- *          - 0: No checks, maximum performance.
- *          - 1: Reasonable checks.
- *          - 2: All checks.
- *          .
- */
-#if !defined(CH_CFG_HARDENING_LEVEL)
-#define CH_CFG_HARDENING_LEVEL              0
 #endif
 
 /** @} */
@@ -176,7 +189,7 @@
  * @note    The default is @p TRUE.
  */
 #if !defined(CH_CFG_OPTIMIZE_SPEED)
-#define CH_CFG_OPTIMIZE_SPEED                TRUE_IF_DTRACE
+#define CH_CFG_OPTIMIZE_SPEED               TRUE_IF_DTRACE
 #endif
 
 /** @} */
@@ -196,7 +209,7 @@
  * @note    The default is @p TRUE.
  */
 #if !defined(CH_CFG_USE_TM)
-#define CH_CFG_USE_TM                        TRUE_IF_DTRACE
+#define CH_CFG_USE_TM                       TRUE_IF_DTRACE
 #endif
 
 /**
@@ -206,7 +219,7 @@
  * @note    The default is @p TRUE.
  */
 #if !defined(CH_CFG_USE_TIMESTAMP)
-#define CH_CFG_USE_TIMESTAMP                 TRUE_IF_DTRACE
+#define CH_CFG_USE_TIMESTAMP                TRUE_IF_DTRACE
 #endif
 
 /**
@@ -216,7 +229,7 @@
  * @note    The default is @p TRUE.
  */
 #if !defined(CH_CFG_USE_REGISTRY)
-#define CH_CFG_USE_REGISTRY                  TRUE_IF_DTRACE
+#define CH_CFG_USE_REGISTRY                 TRUE_IF_DTRACE
 #endif
 
 /**
@@ -227,7 +240,7 @@
  * @note    The default is @p TRUE.
  */
 #if !defined(CH_CFG_USE_WAITEXIT)
-#define CH_CFG_USE_WAITEXIT                  TRUE_IF_DTRACE
+#define CH_CFG_USE_WAITEXIT                 TRUE_IF_DTRACE
 #endif
 
 /**
@@ -284,7 +297,7 @@
  * @note    Requires @p CH_CFG_USE_MUTEXES.
  */
 #if !defined(CH_CFG_USE_CONDVARS)
-#define CH_CFG_USE_CONDVARS                  TRUE_IF_DTRACE
+#define CH_CFG_USE_CONDVARS                 TRUE_IF_DTRACE
 #endif
 
 /**
@@ -296,7 +309,7 @@
  * @note    Requires @p CH_CFG_USE_CONDVARS.
  */
 #if !defined(CH_CFG_USE_CONDVARS_TIMEOUT)
-#define CH_CFG_USE_CONDVARS_TIMEOUT          TRUE_IF_DTRACE
+#define CH_CFG_USE_CONDVARS_TIMEOUT         TRUE_IF_DTRACE
 #endif
 
 /**
@@ -306,7 +319,7 @@
  * @note    The default is @p TRUE.
  */
 #if !defined(CH_CFG_USE_EVENTS)
-#define CH_CFG_USE_EVENTS                    TRUE_IF_DTRACE
+#define CH_CFG_USE_EVENTS                   TRUE_IF_DTRACE
 #endif
 
 /**
@@ -318,7 +331,7 @@
  * @note    Requires @p CH_CFG_USE_EVENTS.
  */
 #if !defined(CH_CFG_USE_EVENTS_TIMEOUT)
-#define CH_CFG_USE_EVENTS_TIMEOUT            TRUE_IF_DTRACE
+#define CH_CFG_USE_EVENTS_TIMEOUT           TRUE_IF_DTRACE
 #endif
 
 /**
@@ -329,7 +342,7 @@
  * @note    The default is @p TRUE.
  */
 #if !defined(CH_CFG_USE_MESSAGES)
-#define CH_CFG_USE_MESSAGES                  TRUE_IF_DTRACE
+#define CH_CFG_USE_MESSAGES                 TRUE_IF_DTRACE
 #endif
 
 /**
@@ -355,7 +368,7 @@
  * @note    Requires @p CH_CFG_USE_HEAP and/or @p CH_CFG_USE_MEMPOOLS.
  */
 #if !defined(CH_CFG_USE_DYNAMIC)
-#define CH_CFG_USE_DYNAMIC                   TRUE_IF_DTRACE
+#define CH_CFG_USE_DYNAMIC                  TRUE_IF_DTRACE
 #endif
 
 /** @} */
@@ -376,17 +389,7 @@
  * @note    Requires @p CH_CFG_USE_SEMAPHORES.
  */
 #if !defined(CH_CFG_USE_MAILBOXES)
-#define CH_CFG_USE_MAILBOXES                 TRUE_IF_DTRACE
-#endif
-
-/**
- * @brief   Memory checks APIs.
- * @details If enabled then the memory checks APIs are included in the kernel.
- *
- * @note    The default is @p TRUE.
- */
-#if !defined(CH_CFG_USE_MEMCHECKS)
-#define CH_CFG_USE_MEMCHECKS                 TRUE_IF_DTRACE
+#define CH_CFG_USE_MAILBOXES                TRUE_IF_DTRACE
 #endif
 
 /**
@@ -397,7 +400,7 @@
  * @note    The default is @p TRUE.
  */
 #if !defined(CH_CFG_USE_MEMCORE)
-#define CH_CFG_USE_MEMCORE                   TRUE_IF_DTRACE
+#define CH_CFG_USE_MEMCORE                  TRUE_IF_DTRACE
 #endif
 
 /**
@@ -426,7 +429,7 @@
  * @note    Mutexes are recommended.
  */
 #if !defined(CH_CFG_USE_HEAP)
-#define CH_CFG_USE_HEAP                      TRUE_IF_DTRACE
+#define CH_CFG_USE_HEAP                     TRUE_IF_DTRACE
 #endif
 
 /**
@@ -437,7 +440,7 @@
  * @note    The default is @p TRUE.
  */
 #if !defined(CH_CFG_USE_MEMPOOLS)
-#define CH_CFG_USE_MEMPOOLS                  TRUE_IF_DTRACE
+#define CH_CFG_USE_MEMPOOLS                 TRUE_IF_DTRACE
 #endif
 
 /**
@@ -512,7 +515,7 @@
  * @note    The default is @p FALSE.
  */
 #if !defined(CH_CFG_USE_FACTORY)
-#define CH_CFG_USE_FACTORY                   TRUE_IF_DTRACE
+#define CH_CFG_USE_FACTORY                  TRUE_IF_DTRACE
 #endif
 
 /**
@@ -528,42 +531,42 @@
  * @brief   Enables the registry of generic objects.
  */
 #if !defined(CH_CFG_FACTORY_OBJECTS_REGISTRY)
-#define CH_CFG_FACTORY_OBJECTS_REGISTRY      TRUE_IF_DTRACE
+#define CH_CFG_FACTORY_OBJECTS_REGISTRY     TRUE_IF_DTRACE
 #endif
 
 /**
  * @brief   Enables factory for generic buffers.
  */
 #if !defined(CH_CFG_FACTORY_GENERIC_BUFFERS)
-#define CH_CFG_FACTORY_GENERIC_BUFFERS       TRUE_IF_DTRACE
+#define CH_CFG_FACTORY_GENERIC_BUFFERS      TRUE_IF_DTRACE
 #endif
 
 /**
  * @brief   Enables factory for semaphores.
  */
 #if !defined(CH_CFG_FACTORY_SEMAPHORES)
-#define CH_CFG_FACTORY_SEMAPHORES            TRUE_IF_DTRACE
+#define CH_CFG_FACTORY_SEMAPHORES           TRUE_IF_DTRACE
 #endif
 
 /**
  * @brief   Enables factory for mailboxes.
  */
 #if !defined(CH_CFG_FACTORY_MAILBOXES)
-#define CH_CFG_FACTORY_MAILBOXES             TRUE_IF_DTRACE
+#define CH_CFG_FACTORY_MAILBOXES            TRUE_IF_DTRACE
 #endif
 
 /**
  * @brief   Enables factory for objects FIFOs.
  */
 #if !defined(CH_CFG_FACTORY_OBJ_FIFOS)
-#define CH_CFG_FACTORY_OBJ_FIFOS             TRUE_IF_DTRACE
+#define CH_CFG_FACTORY_OBJ_FIFOS            TRUE_IF_DTRACE
 #endif
 
 /**
  * @brief   Enables factory for Pipes.
  */
 #if !defined(CH_CFG_FACTORY_PIPES) || defined(__DOXYGEN__)
-#define CH_CFG_FACTORY_PIPES                 TRUE_IF_DTRACE
+#define CH_CFG_FACTORY_PIPES                TRUE_IF_DTRACE
 #endif
 
 /** @} */
@@ -592,7 +595,7 @@
  * @note    The default is @p FALSE.
  */
 #if !defined(CH_DBG_SYSTEM_STATE_CHECK)
-#define CH_DBG_SYSTEM_STATE_CHECK            TRUE_IF_DTRACE
+#define CH_DBG_SYSTEM_STATE_CHECK           TRUE_IF_DTRACE
 #endif
 
 /**
@@ -603,7 +606,7 @@
  * @note    The default is @p FALSE.
  */
 #if !defined(CH_DBG_ENABLE_CHECKS)
-#define CH_DBG_ENABLE_CHECKS                 TRUE_IF_DTRACE
+#define CH_DBG_ENABLE_CHECKS                TRUE_IF_DTRACE
 #endif
 
 /**
@@ -615,7 +618,7 @@
  * @note    The default is @p FALSE.
  */
 #if !defined(CH_DBG_ENABLE_ASSERTS)
-#define CH_DBG_ENABLE_ASSERTS                TRUE_IF_DTRACE
+#define CH_DBG_ENABLE_ASSERTS               TRUE_IF_DTRACE
 #endif
 
 /**
@@ -647,13 +650,9 @@
  * @note    The default failure mode is to halt the system with the global
  *          @p panic_msg variable set to @p NULL.
  */
-
-
 #if !defined(CH_DBG_ENABLE_STACK_CHECK)
 #define CH_DBG_ENABLE_STACK_CHECK           TRUE
 #endif
-#define PORT_ENABLE_GUARD_PAGES             FALSE
-
 
 /**
  * @brief   Debug option, stacks initialization.
@@ -664,7 +663,7 @@
  * @note    The default is @p FALSE.
  */
 #if !defined(CH_DBG_FILL_THREADS)
-#define CH_DBG_FILL_THREADS                  TRUE_IF_DTRACE
+#define CH_DBG_FILL_THREADS                 TRUE_IF_DTRACE
 #endif
 
 /**
