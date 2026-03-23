@@ -51,7 +51,7 @@ RELEASE ?= $(DEBUG_g)
 GCCVERSIONGTEQ10 := $(shell expr `arm-none-eabi-gcc -dumpversion | cut -f1 -d.` \>= 10)
 GCC_DIAG =  -Werror -Wno-error=unused-variable -Wno-error=format \
 	    -Wno-error=cpp -Wno-error=type-limits \
-            -Wno-error=unused-function  \
+            -Wno-error=unused-function \
             -Wunused -Wpointer-arith \
             -Werror=sign-compare \
             -Wshadow -Wparentheses -fmax-errors=5 \
@@ -94,7 +94,6 @@ ifeq ($(RELEASE),$(OPT_SPEED))
          -DCH_DBG_SYSTEM_STATE_CHECK=0 -DCH_DBG_ENABLE_CHECKS=0 \
          -DCH_DBG_ENABLE_ASSERTS=0 -DCH_DBG_ENABLE_STACK_CHECK=0 \
          -DCH_DBG_FILL_THREADS=0 \
-         -Wno-error=maybe-uninitialized  -Wno-maybe-uninitialized \
           $(GCC_DIAG)
   USE_LTO = yes
 endif

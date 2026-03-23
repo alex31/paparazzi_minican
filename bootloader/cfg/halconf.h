@@ -1,5 +1,5 @@
 /*
-    ChibiOS - Copyright (C) 2006..2020 Giovanni Di Sirio
+    ChibiOS - Copyright (C) 2006-2026 Giovanni Di Sirio.
 
     Licensed under the Apache License, Version 2.0 (the "License");
     you may not use this file except in compliance with the License.
@@ -29,10 +29,9 @@
 #define HALCONF_H
 
 #define _CHIBIOS_HAL_CONF_
-#define _CHIBIOS_HAL_CONF_VER_9_0_
+#define _CHIBIOS_HAL_CONF_VER_9_1_
 
 #include "mcuconf.h"
-
 /**
  * @brief   Enables the DMA subsystem.
  */
@@ -54,6 +53,29 @@
 
 #define   STM32_DMA_REQUIRED        TRUE
 #undef STM32_DMA_DRIVER_EXT_INIT_HOOK
+
+/**
+ * @brief   Enables the EFlash subsystem erase an program function HOOK.
+ * @note    Useful to run function in RAM for single bank device
+ */
+#if !defined(HAL_EFL_SECTION_HOOK) || defined(__DOXYGEN__)
+#undef HAL_EFL_SECTION_HOOK 
+#endif
+
+#define GPT_DRIVER_EXT_FIELDS void *user_data;
+
+#define XSNOR_USE_WSPI FALSE
+#define WSPI_SUPPORTS_MEMMAP  FALSE
+#define XSNOR_BUFFER_SIZE     512U
+#define MFS_CFG_MAX_RECORDS   1024U
+#define MFS_CFG_BUFFER_SIZE   512U
+
+/**
+ * @brief   Enables the HAL safety subsystem.
+ */
+#if !defined(HAL_USE_SAFETY) || defined(__DOXYGEN__)
+#define HAL_USE_SAFETY                      FALSE
+#endif
 
 /**
  * @brief   Enables the PAL subsystem.
@@ -98,21 +120,12 @@
 #endif
 
 /**
- * @brief   Enables the EFlash subsystem erase an program function HOOK.
- * @note    Useful to run function in RAM for single bank device
- */
-#if !defined(HAL_EFL_SECTION_HOOK) || defined(__DOXYGEN__)
-#undef HAL_EFL_SECTION_HOOK 
-#endif
-
-/**
  * @brief   Enables the GPT subsystem.
  */
 #if !defined(HAL_USE_GPT) || defined(__DOXYGEN__)
 #define HAL_USE_GPT                         FALSE
 #endif
 
-#define GPT_DRIVER_EXT_FIELDS void *user_data;
 /**
  * @brief   Enables the I2C subsystem.
  */
@@ -173,11 +186,7 @@
  * @brief   Enables the SERIAL subsystem.
  */
 #if !defined(HAL_USE_SERIAL) || defined(__DOXYGEN__)
-#ifdef TRACE
-#define HAL_USE_SERIAL                      TRUE
-#else
 #define HAL_USE_SERIAL                      FALSE
-#endif
 #endif
 
 /**
@@ -339,6 +348,14 @@
 /*===========================================================================*/
 /* I2C driver related settings.                                              */
 /*===========================================================================*/
+
+/**
+ * @brief   Slave mode API enable switch.
+ * @note    The low level driver must support this capability.
+ */
+#if !defined(I2C_ENABLE_SLAVE_MODE)
+#define I2C_ENABLE_SLAVE_MODE               FALSE
+#endif
 
 /**
  * @brief   Enables the mutual exclusion APIs on the I2C bus.
@@ -583,10 +600,6 @@
 #define WSPI_USE_MUTUAL_EXCLUSION           TRUE
 #endif
 
-#define XSNOR_USE_WSPI FALSE
-#define WSPI_SUPPORTS_MEMMAP  FALSE
-#define XSNOR_BUFFER_SIZE     512U
-#define MFS_CFG_MAX_RECORDS   1024U
-#define MFS_CFG_BUFFER_SIZE   512U
-/** @} */
 #endif /* HALCONF_H */
+
+/** @} */
