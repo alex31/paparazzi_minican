@@ -88,7 +88,7 @@ endif
 
 ifeq ($(RELEASE),$(OPT_SPEED)) 
   NANO_OPT = -fipa-pta --specs=nano.specs -Wl,-u,_printf_float
-  USE_OPT =  -O$(RELEASE) -ggdb3 -flto -Wall -Wextra \
+  USE_OPT =  -O$(RELEASE) -ggdb3 -flto=auto -Wall -Wextra \
          -falign-functions=16 -fomit-frame-pointer \
 	 $(NANO_OPT) \
          -DCH_DBG_SYSTEM_STATE_CHECK=0 -DCH_DBG_ENABLE_CHECKS=0 \
@@ -99,7 +99,7 @@ ifeq ($(RELEASE),$(OPT_SPEED))
 endif
 
 ifeq ($(RELEASE),$(OPT_SIZE)) 
-  USE_OPT =  -O$(RELEASE) -flto  -Wall -Wextra \
+  USE_OPT =  -O$(RELEASE) -flto=auto  -Wall -Wextra \
 	$(NANO_OPT) \
 	-falign-functions=16 -fomit-frame-pointer \
         -DCH_DBG_SYSTEM_STATE_CHECK=0 -DCH_DBG_ENABLE_CHECKS=0 \
