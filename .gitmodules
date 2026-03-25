@@ -1,7 +1,7 @@
 [submodule "ext/ChibiOS_21.11_stable"]
 	path = ext/ChibiOS_21.11_stable
-	url = https://github.com/alex31/ChibiOS_mirror.git
-	branch = stable_21.11.x_with_ext_and_local_fixes_mdma_fixes
+	url = https://github.com/alex31/chibios_svn_mirror.git
+	branch = stable_21.11.x_with_ext_and_local_fixes_mdma_static_check
 [submodule "ext/etl"]
 	path = ext/etl
 	url = https://github.com/alex31/etl.git
@@ -21,4 +21,8 @@
 [submodule "ext/UAVCAN/dronecan_dsdlc"]
 	path = ext/UAVCAN/dronecan_dsdlc
 	url = https://github.com/dronecan/dronecan_dsdlc.git
+	branch = master
+[submodule "ext/GLOBAL_COMMON/various"]
+	path = ext/GLOBAL_COMMON/various
+	url = https://github.com/alex31/chibios_enac_various_common.git
 	branch = master

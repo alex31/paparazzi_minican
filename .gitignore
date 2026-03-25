@@ -7,5 +7,5 @@ build
 *~
 microcan/cfg/.boardgen_*.stamp
 microcan/cfg/values.txt
-
+.venv_dsdlc/
 

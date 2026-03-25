@@ -203,7 +203,6 @@ CHIBIOS  := ../ext/ChibiOS_21.11_stable
 CONFDIR  := ./cfg
 BUILDDIR := ./build_$(PLATFORM)
 DEPDIR   := ./.dep
-STMSRC = ../ext/GLOBAL_COMMON/stm
 VARIOUS = ../ext/GLOBAL_COMMON/various
 ETL_LIB = ../ext/etl/include
 FROZEN_LIB := ../ext/frozen/include
@@ -239,7 +238,7 @@ include $(CHIBIOS)/test/mfs/mfs_test.mk
 LDSCRIPT= $(CONFDIR)/STM32G491xE.ld
 
 DSDL := ../ext/UAVCAN/DSDL
-DSDLC := ../ext/UAVCAN/dronecan_dsdlc
+DSDLC := ../generated/dronecan_dsdlc
 DSDL_ROOTS_PART := $(sort $(dir $(wildcard $(DSDL)/*/)))
 DSDL_ROOTS := $(filter-out $(DSDL)/tests/,$(DSDL_ROOTS_PART))
 DSDLC_CSRC := $(wildcard $(DSDLC)/src/*.c)
@@ -377,15 +376,24 @@ $(OBJS): $(CONFDIR)/board.h
 
 LD = $(TRGT)g++
 
-PY := python3
+DSDLC_VENV := ../.venv_dsdlc
+PY ?= $(DSDLC_VENV)/bin/python3
 PERL := perl
 ELF_OVERLAP_CHECKER := ../tools/check_elf_overlap.pl
 CHECK_ELF_OVERLAP ?= yes
 
 .PHONY: build_dsdlc
 
-build_dsdlc:
+$(DSDLC_VENV)/.deps-stamp:
+	test -x $(DSDLC_VENV)/bin/python3 || python3 -m venv $(DSDLC_VENV)
+	$(DSDLC_VENV)/bin/pip install -r ../ext/UAVCAN/dronecan_dsdlc/requirements.txt
+	$(DSDLC_VENV)/bin/pip install dronecan
+	touch $@
+
+build_dsdlc: $(DSDLC_VENV)/.deps-stamp
 	@echo Generating dsdl code from $(DSDL_ROOTS) to $(DSDLC)
+	@mkdir -p $(DSDLC)
+	@rm -rf $(DSDLC)/include $(DSDLC)/src
 	$(PY) ../ext/UAVCAN/dronecan_dsdlc/dronecan_dsdlc.py -O $(DSDLC) $(DSDL_ROOTS)
 	@echo Done
 
