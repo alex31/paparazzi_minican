@@ -1,15 +1,11 @@
 CODÉ MAIS PAS TESTÉ :
-  ° tester l'entrée bootloader serial du root makefile sur microcan qui a un pad boot0 accessible
-
-  ° tester : utilisation du vendor specific code pour envoyer des log d'erreur/warning
 
   ° tester roleUbxGps en mode configuration
 
 
-  °  Utiliser le specific code application pour remonter des infos :
+  °  Tester : le specific code application pour remonter des infos :
     - code si il y a des pb d'alim ou autre
     - tester si on boote après un watchdog reset en provoquant un panic avec la commande panic du shell
-    - n° de blocs transféré pendant un firmware update => DONE
 ---
 
 A DEBUGGER:

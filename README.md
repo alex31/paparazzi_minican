@@ -42,6 +42,9 @@ make flash       # flashes both images using bmpflash
 
 You can also build `bootloader` or `microcan` individually by invoking `make -C bootloader` or `make -C microcan`.
 
+For the very first flash over the STM32 ROM UART bootloader with a 3.3 V USB to
+serial adapter, see [docs/software/build_flash.md](docs/software/build_flash.md).
+
 ## License
 
 This project includes ChibiOS components released under the Apache License 2.0. The rest of the code is provided without any specific license.
