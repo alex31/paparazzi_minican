@@ -57,7 +57,7 @@
  * @note    The default is @p TRUE.
  */
 #if !defined(CH_CFG_USE_MEMCHECKS)
-#define CH_CFG_USE_MEMCHECKS                 TRUE_IF_DTRACE
+#define CH_CFG_USE_MEMCHECKS                TRUE_IF_DTRACE
 #endif
 
 #define PORT_ENABLE_GUARD_PAGES             FALSE

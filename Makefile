@@ -15,10 +15,10 @@ PROPAGATE_FLAGS := $(foreach v,$(PROPAGATE_VARS),$(if $(value $(v)),$v=$(value $
 CUBECLI ?= /usr/local/STMicroelectronics/STM32Cube/STM32CubeProgrammer/bin/STM32_Programmer_CLI
 DEV ?= /dev/ttyUSB0
 CUBECLI_BR ?= 115200
-CUBECLI_PARITY ?= even
+CUBECLI_PARITY ?= EVEN
 
 define CUBECLI_WRITE
-$(CUBECLI) -c port=$(DEV) br=$(CUBECLI_BR) parity=$(CUBECLI_PARITY) -w $(1) -v
+$(CUBECLI) -c port=$(DEV) br=$(CUBECLI_BR) P=$(CUBECLI_PARITY) -w $(1) -v
 endef
 
 
