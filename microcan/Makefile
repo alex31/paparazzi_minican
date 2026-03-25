@@ -203,7 +203,6 @@ CHIBIOS  := $(RELATIVE)/$(notdir $(MY_DIRNAME))
 CONFDIR  := ./cfg
 BUILDDIR := ./build_$(PLATFORM)
 DEPDIR   := ./.dep
-STMSRC = $(RELATIVE)/COMMON/stm
 VARIOUS = $(RELATIVE)/COMMON/various
 ETL_LIB = ../../../../../etl/include
 FROZEN_LIB := ../../../../../frozen/include
