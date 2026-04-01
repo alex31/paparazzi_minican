@@ -128,8 +128,6 @@ static const SerialConfig ftdiConfig =  {
 
 
 #define MAX_CPU_INFO_ENTRIES 20
-
-/** @brief Thread CPU usage snapshot data. */
 typedef struct _ThreadCpuInfo {
   float    ticks[MAX_CPU_INFO_ENTRIES];
   float    cpu[MAX_CPU_INFO_ENTRIES];
@@ -144,17 +142,90 @@ typedef struct _ThreadCpuInfo {
     totalISRTicks = 0.0f;
   }
 } ThreadCpuInfo ;
-  
+
+struct tty_console_cpu_window {
+  rttime_t thread_time[MAX_CPU_INFO_ENTRIES];
+  thread_t *thread_ref[MAX_CPU_INFO_ENTRIES];
+  rttime_t prev_thread_time[MAX_CPU_INFO_ENTRIES];
+  thread_t *prev_thread_ref[MAX_CPU_INFO_ENTRIES];
+  uint32_t prev_thread_count;
+  rttime_t prev_isr_time;
+  uint8_t prev_stats_valid;
+};
+
+static struct tty_console_cpu_window cpu_window;
+
 #if CH_DBG_STATISTICS
-/** @brief Sample per-thread and ISR CPU usage counters. */
-static void stampThreadCpuInfo (ThreadCpuInfo *ti);
-/** @brief Return CPU usage percentage for a thread index. */
-static float stampThreadGetCpuPercent (const ThreadCpuInfo *ti, const uint32_t idx);
-/** @brief Return CPU usage percentage attributed to ISRs. */
-static float stampISRGetCpuPercent (const ThreadCpuInfo *ti);
+static void stampThreadCpuInfo (ThreadCpuInfo *ti)
+{
+  const thread_t *tp =  chRegFirstThread();
+  uint32_t idx=0;
+  uint32_t threadCount = 0;
+  
+  ti->totalTicks =0;
+  do {
+    rttime_t current_time = tp->stats.cumulative;
+    ti->ticks[idx] = cpu_window.prev_stats_valid ?
+      (float)get_thread_delta(tp, current_time) : (float)current_time;
+    ti->totalTicks += ti->ticks[idx];
+    cpu_window.thread_ref[idx] = (thread_t *)tp;
+    cpu_window.thread_time[idx] = current_time;
+    tp = chRegNextThread ((thread_t *)tp);
+    idx++;
+    threadCount++;
+  } while ((tp != NULL) && (idx < MAX_CPU_INFO_ENTRIES));
+  ti->totalISRTicks = cpu_window.prev_stats_valid ?
+    (float)(currcore->kernel_stats.m_crit_isr.cumulative - cpu_window.prev_isr_time) :
+    (float)currcore->kernel_stats.m_crit_isr.cumulative;
+  ti->totalTicks += ti->totalISRTicks;
+  tp =  chRegFirstThread();
+  idx=0;
+  do {
+    ti->cpu[idx] = (ti->totalTicks > 0.f) ? ((ti->ticks[idx]*100.f) / ti->totalTicks) : 0.f;
+    tp = chRegNextThread ((thread_t *)tp);
+    idx++;
+  } while ((tp != NULL) && (idx < MAX_CPU_INFO_ENTRIES));
+
+  for (idx = 0; idx < threadCount; idx++) {
+    cpu_window.prev_thread_ref[idx] = cpu_window.thread_ref[idx];
+    cpu_window.prev_thread_time[idx] = cpu_window.thread_time[idx];
+  }
+  cpu_window.prev_thread_count = threadCount;
+  cpu_window.prev_isr_time = currcore->kernel_stats.m_crit_isr.cumulative;
+  cpu_window.prev_stats_valid = 1;
+}
+
+static float stampThreadGetCpuPercent (const ThreadCpuInfo *ti, const uint32_t idx)
+{
+  if (idx >= MAX_CPU_INFO_ENTRIES) 
+    return -1.f;
+
+  return ti->cpu[idx];
+}
+
+static float stampISRGetCpuPercent (const ThreadCpuInfo *ti)
+{
+  return (ti->totalTicks > 0.f) ? (ti->totalISRTicks * 100.0f / ti->totalTicks) : 0.f;
+}
+
+static rttime_t get_thread_delta(const thread_t *tp, rttime_t current_time)
+{
+  uint32_t idx;
+
+  if (!cpu_window.prev_stats_valid) {
+    return 0;
+  }
+
+  for (idx = 0; idx < cpu_window.prev_thread_count; idx++) {
+    if (cpu_window.prev_thread_ref[idx] == tp) {
+      return current_time - cpu_window.prev_thread_time[idx];
+    }
+  }
+
+  return 0;
+}
 #endif
 
-/** @brief Console command: print unique device ID. */
 static void cmd_uid(BaseSequentialStream *lchp, int argc,const char* const argv[]) {
   (void)argv;
   if (argc > 0) {
@@ -212,40 +283,40 @@ static void cmd_threads(BaseSequentialStream *lchp, int argc,const char * const 
   
   stampThreadCpuInfo (&threadCpuInfo);
   
-  chprintf (lchp, "    addr    stack  frestk prio refs  state        time \t percent        name\r\n");
+  chprintf (lchp, "    addr    stack  frestk prio refs  state        time 	 percent        name\r\n");
   uint32_t idx=0;
-  do {
+   do {
 #if defined(CH_DBG_SYSTEM_STATE_CHECK) &&  CH_DBG_SYSTEM_STATE_CHECK    
-    chprintf (lchp, "%.8lx %.8lx %6lu %4lu %4lu %9s %9lu   %.2f%%    \t%s\r\n",
-	      (uint32_t)tp, (uint32_t)tp->ctx.sp,
-	      get_stack_free(tp),
-	      (uint32_t)tp->hdr.pqueue.prio, (uint32_t)(tp->refs - 1),
-	      states[tp->state],
-	      (uint32_t)RTC2MS(STM32_SYSCLK, tp->stats.cumulative),
-	      stampThreadGetCpuPercent (&threadCpuInfo, idx),
-	      chRegGetThreadNameX(tp));
+    chprintf (lchp, "%.8lx %.8lx %6lu %4lu %4lu %9s %9lu   %.2f%%    	%s\r\n",
+              (uint32_t)tp, (uint32_t)tp->ctx.sp,
+              get_stack_free(tp),
+              (uint32_t)tp->hdr.pqueue.prio, (uint32_t)(tp->refs - 1),
+              states[tp->state],
+              (uint32_t)RTC2MS(STM32_SYSCLK, tp->stats.cumulative),
+              stampThreadGetCpuPercent (&threadCpuInfo, idx),
+              chRegGetThreadNameX(tp));
 #else
-    chprintf (lchp, "%.8lx %.8lx %4lu %4lu %9s %9lu   %.2f%%    \t%s\r\n",
-	      (uint32_t)tp, (uint32_t)tp->ctx.sp,
-	      (uint32_t)tp->hdr.pqueue.prio, (uint32_t)(tp->refs - 1),
-	      states[tp->state],
-	      (uint32_t)RTC2MS(STM32_SYSCLK, tp->stats.cumulative),
-	      stampThreadGetCpuPercent (&threadCpuInfo, idx),
-	      chRegGetThreadNameX(tp));
+    chprintf (lchp, "%.8lx %.8lx %4lu %4lu %9s %9lu   %.2f%%    	%s\r\n",
+              (uint32_t)tp, (uint32_t)tp->ctx.sp,
+              (uint32_t)tp->hdr.pqueue.prio, (uint32_t)(tp->refs - 1),
+              states[tp->state],
+              (uint32_t)RTC2MS(STM32_SYSCLK, tp->stats.cumulative),
+              stampThreadGetCpuPercent (&threadCpuInfo, idx),
+              chRegGetThreadNameX(tp));
 
 #endif
-    totalTicks+= (float)tp->stats.cumulative;
+    totalTicks = threadCpuInfo.totalTicks;
     if (strcmp(chRegGetThreadNameX(tp), "idle") == 0)
-    idleTicks = (float)tp->stats.cumulative;
+    idleTicks = threadCpuInfo.ticks[idx];
     tp = chRegNextThread((thread_t *)tp);
     idx++;
   } while (tp != NULL);
 
-  const float idlePercent = (idleTicks*100.f)/totalTicks;
+  const float idlePercent = (totalTicks > 0.f) ? ((idleTicks*100.f)/totalTicks) : 0.f;
   const float cpuPercent = 100.f - idlePercent;
-  chprintf (lchp, "Interrupt Service Routine \t\t     %9lu   %.2f%%    \tISR\r\n",
-	    (uint32_t)RTC2MS(STM32_SYSCLK,threadCpuInfo.totalISRTicks),
-	    stampISRGetCpuPercent(&threadCpuInfo));
+  chprintf (lchp, "Interrupt Service Routine 		     %9lu   %.2f%%    	ISR\r\n",
+            (uint32_t)RTC2MS(STM32_SYSCLK,threadCpuInfo.totalISRTicks),
+            stampISRGetCpuPercent(&threadCpuInfo));
   chprintf (lchp, "\r\ncpu load = %.2f%%\r\n", cpuPercent);
 }
 #endif
