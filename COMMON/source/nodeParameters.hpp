@@ -33,13 +33,15 @@
 
 #if USE_SERVO_ROLE
       {"ROLE.servo.pwm", {.v = false}},
-      {"role.servo.pwm.frequency", {.min=50, .max=560, .v = 50}},
-      {"role.servo.pwm.pulse_half_width", {.v = false}},
+      {"role.servo.pwm.ch1-4.frequency", {.min=50, .max=1000, .v = 50}},
+      {"role.servo.pwm.ch1-4.shot125", {.v = false}},
+      {"role.servo.pwm.ch5-7.frequency", {.min=50, .max=1000, .v = 50}},
+      {"role.servo.pwm.ch5-7.shot125", {.v = false}},
       {"role.servo.pwm.map_index1", {.min=0, .max=124, .v = 0}},
       // when pins are shared between timer and other peripherals, select
       // the channels that are in use, other will be free
-      // mask is : msb CH4 CH3 CH2 CH1 lsb
-      {"role.servo.pwm.channel_mask", {.min=0b0001, .max=0b1111, .v = 0b1111}},
+      // bit0=PA08, bit1=PA09, bit2=PA10, bit3=PA11, bit4=PB04, bit5=PA04, bit6=PB07
+      {"role.servo.pwm.channel_mask", {.min=0b0000001, .max=0b1111111, .v = 0b0001111}},
 	
       {"ROLE.servo.smart", {.v = false}},
       {"role.servo.smart.map_index1", {.min=0, .max=124, .v = 0}},
