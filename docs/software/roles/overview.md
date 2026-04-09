@@ -18,10 +18,13 @@ Receives uavcan.equipment.actuator.ArrayCommand and routes to PWM or smart servo
 backend.
 
 PWM params:
-- role.servo.pwm.frequency
-- role.servo.pwm.pulse_half_width
+- role.servo.pwm.ch1-4.frequency
+- role.servo.pwm.ch1-4.shot125
+- role.servo.pwm.ch5-7.frequency
+- role.servo.pwm.ch5-7.shot125
 - role.servo.pwm.map_index1
 - role.servo.pwm.channel_mask
+  Bit mapping: bit0=PA08, bit1=PA09, bit2=PA10, bit3=PA11, bit4=PB04, bit5=PA04, bit6=PB07.
 
 Smart servo params:
 - role.servo.smart.map_index1
@@ -32,8 +35,17 @@ Outputs:
 - uavcan.equipment.actuator.Status (smart servo status only)
 
 Wiring:
-- PWM on TIM1 CH1..CH4 (PA08..PA11)
+- PWM CH1..CH4 on TIM1 (PA08..PA11)
+- PWM CH5..CH7 on TIM3 (PB04, PA04, PB07)
 - Smart servos use UART (USART2 on MicroCAN)
+
+Resource notes:
+- Enabling any of CH5..CH7 reserves TIM3 for ServoPWM.
+- CH5 on PB04 conflicts with USART2 RX (`UART_RX`).
+- CH6 on PA04 conflicts with SPI peripheral chip select (`SPI_PERIPH_CS`).
+- CH7 on PB07 conflicts with I2C1 SDA and with roles already documented on TIM3_CH4
+  (LED strip, voltmeter).
+- If only CH1..CH4 are enabled, ServoPWM stays on TIM1 and does not reserve TIM3.
 
 ### EscDshot (ROLE.esc.dshot)
 Receives uavcan.equipment.esc.RawCommand and drives DShot on TIM1 CH1..CH4.

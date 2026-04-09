@@ -4,7 +4,9 @@ Roles UAVCAN – messages reçus / envoyés
 - ServoRole (`ROLE.servo.pwm`, `ROLE.servo.smart`)
   - Reçoit : `uavcan.equipment.actuator.ArrayCommand` (broadcast), pour piloter PWM ou SmartServo selon le type de commande.
   - Envoie : `uavcan.equipment.actuator.Status` uniquement pour SmartServo et si `role.servo.smart.status_frequency` > 0.
-  - Paramètres PWM : `role.servo.pwm.frequency`, `role.servo.pwm.pulse_half_width` (mi-largeur us), `role.servo.pwm.map_index1` (premier servo), `role.servo.pwm.channel_mask` (canaux actifs CH1..CH4).
+  - Paramètres PWM : `role.servo.pwm.ch1-4.frequency`, `role.servo.pwm.ch1-4.shot125`, `role.servo.pwm.ch5-7.frequency`, `role.servo.pwm.ch5-7.shot125` (impulsions `125..250 us` au lieu de `1000..2000 us`), `role.servo.pwm.map_index1` (premier servo), `role.servo.pwm.channel_mask` (canaux actifs CH1..CH7).
+  - Masque PWM : bit0=`PA08`, bit1=`PA09`, bit2=`PA10`, bit3=`PA11`, bit4=`PB04`, bit5=`PA04`, bit6=`PB07`.
+  - Conflits matériels : activer `CH5..CH7` réserve `TIM3`; `CH5` partage `PB04` avec `UART_RX`, `CH6` partage `PA04` avec `SPI_PERIPH_CS`, `CH7` partage `PB07` avec `I2C1_SDA`, `ROLE.led2812` et `ROLE.voltmeter`.
   - Paramètres Smart : `role.servo.smart.map_index1`, `role.servo.smart.num_servos`, `role.servo.smart.status_frequency` (Hz, 0 = pas de retour).
 
 - Baro_MPL3115A2_Role (`ROLE.i2c.barometer.mpl3115a2`)
