@@ -378,7 +378,8 @@ LD = $(TRGT)g++
 
 PY := python3
 PERL := perl
-ELF_OVERLAP_CHECKER := ../tools/check_elf_overlap.pl
+ELF_OVERLAP_CHECKER := $(VARIOUS)/TOOLS/check_elf_overlap.pl
+
 CHECK_ELF_OVERLAP ?= yes
 
 .PHONY: build_dsdlc
