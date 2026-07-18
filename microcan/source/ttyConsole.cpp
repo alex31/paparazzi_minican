@@ -550,6 +550,31 @@ void consoleInit (void)
 }
 
 
+/**
+ * @brief Disable all serial RX sources while retaining DebugTrace on TX.
+ *
+ * The IMAV role reuses the console RX pin as an analog input.  The ChibiOS
+ * serial LLD unconditionally enables the receiver and its error interrupts,
+ * so changing only the GPIO mode would otherwise leave an interrupt source
+ * reacting to the microphone signal.
+ */
+void consoleSetTxOnly (void)
+{
+#if CONSOLE_DEV_USB == 0
+  USART_TypeDef * const usart = CONSOLE_DEV_SD.usart;
+
+  chSysLock();
+  usart->CR1 &= ~(USART_CR1_RE | USART_CR1_RXNEIE | USART_CR1_PEIE);
+  usart->CR2 &= ~(USART_CR2_LBDIE | USART_CR2_LINEN);
+  usart->CR3 &= ~USART_CR3_EIE;
+  usart->RQR = USART_RQR_RXFRQ;
+  usart->ICR = USART_ICR_PECF | USART_ICR_FECF | USART_ICR_NECF |
+               USART_ICR_ORECF | USART_ICR_LBDCF;
+  chSysUnlock();
+#endif
+}
+
+
 /** @brief Launch the console worker thread. */
 void consoleLaunch (void)
 {

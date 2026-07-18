@@ -9,6 +9,7 @@
 #include "deviceResource.hpp"
 #include "UAVCanSlave.hpp"
 #include "hardwareConf.hpp"
+#include "roleConf.h"
 
 
 namespace {
@@ -49,6 +50,10 @@ void _init_chibios() {
 /** @brief Main application entry point. */
 int main(void)
 {
+  bool imavEnabled = false;
+  bool identificationMode = false;
+  bool imavAcquisition = false;
+
   /*
    * System initializations.
    * - HAL initialization, this also initializes the configured device drivers
@@ -64,7 +69,6 @@ int main(void)
   
 #ifdef TRACE
   consoleInit();
-  consoleLaunch();
 #endif
   
   RgbLed::setColor(HSV{0.3, 1, 0.1});
@@ -72,6 +76,9 @@ int main(void)
 
   if (mfs_error_t status = MFS::start(); status != MFS_NO_ERROR) {
     DebugTrace("MFS::start has failed with code %d", status);
+#ifdef TRACE
+    consoleLaunch();
+#endif
     RgbLed::setMotif(200, 0b10101010);
     RgbLed::setColor(HSV{0.6, 1, 0.2});
     goto end;
@@ -80,15 +87,38 @@ int main(void)
 
   if (not Ressource::storage.start()) {
     DebugTrace ("storage start *FAILED*");
+#ifdef TRACE
+    consoleLaunch();
+#endif
     RgbLed::setMotif(200, 0b10101010);
     RgbLed::setColor(HSV{0.8, 1, 0.2});
     goto end;
   }
 
-  // depend on Ressource::storage.start()
-  Adc::start();
+#if USE_IMAV_ROLE
+  imavEnabled = param_cget<"ROLE.imav.beacon">();
+#endif
+  identificationMode = param_cget<"ROLE.identification">();
+  imavAcquisition = imavEnabled && (not identificationMode);
+
+#ifdef TRACE
+  // PA3 is the console RX and the first IMAV microphone input. Keep the
+  // serial driver for DebugTrace on PA2, but do not start a shell that can no
+  // longer receive once PA3 is switched to analog mode.
+  if (not imavAcquisition) {
+    consoleLaunch();
+  } else {
+    consoleSetTxOnly();
+  }
+#endif
+
+  // Depends on Ressource::storage.start(). In IMAV mode ADC1 is left ready
+  // after the initial health sample; the IMAV acquisition thread owns all
+  // subsequent audio and health conversions.
+  Adc::start(nullptr, imavAcquisition
+		      ? Adc::Mode::OnDemand : Adc::Mode::Continuous);
   
-  if (param_cget<"ROLE.identification">() == true) {
+  if (identificationMode) {
     // mode identification
     DebugTrace ("passage en mode identification");
     RgbLed::setMotif(150, 0b1010100000000000);
@@ -101,6 +131,13 @@ int main(void)
     DebugTrace("paramètre nodeid = %d", nodeId);
     if (const DeviceStatus status =
 	CANSlave::start(nodeId, param_cget<"uavcan.dynid.fd">()); not status) {
+      // ADC1 was prepared for exclusive IMAV ownership. If any role prevents
+      // the node from starting, restore the legacy board-health acquisition
+      // rather than leaving VIN and temperature frozen at their boot values.
+      if (imavAcquisition) {
+	Adc::start(nullptr, Adc::Mode::Continuous);
+	DebugTrace("IMAV start failed: ADC health restored to continuous mode");
+      }
       if (status.err == DeviceStatus::CONFLICT) {
 	RgbLed::setMotif(100, 0b110011000);
 	RgbLed::setColor(HSV{0.0, 1, 0.5});

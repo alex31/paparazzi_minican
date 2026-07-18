@@ -58,7 +58,8 @@ GCC_DIAG =  -Werror -Wno-error=unused-variable -Wno-error=format \
             -ftrack-macro-expansion=2 -Wno-error=strict-overflow -Wstrict-overflow=2 \
             -Wvla-larger-than=128 -Wduplicated-branches -Wdangling-else \
 	    -Wmisleading-indentation -Wduplicated-cond -Wduplicated-branches \
-            -Wlogical-op -Wformat-overflow=2 -fdiagnostics-color=always
+            -Wlogical-op -Wformat-overflow=2 -fdiagnostics-color=always \
+            -Wno-error=maybe-uninitialized
 
 G++_DIAG =   -Wnon-virtual-dtor -Woverloaded-virtual
 
@@ -293,6 +294,7 @@ CPPSRC = $(ALLCPPSRC) \
 	$(COMMON)/rgbLedRole.cpp \
 	$(COMMON)/voltmeterRole.cpp \
 	$(COMMON)/templateRole.cpp \
+	$(COMMON)/imavRole.cpp \
 	$(COMMON)/deviceResource.cpp \
 	$(COMMON)/MFS.cpp \
 	$(COMMON)/firmwareUpdate.cpp \

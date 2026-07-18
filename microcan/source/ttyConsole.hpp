@@ -11,6 +11,8 @@
 #ifdef CONSOLE_DEV_SD
 /** @brief Initialize the console subsystem. */
 void consoleInit (void);
+/** @brief Keep console transmission enabled while disabling its receiver. */
+void consoleSetTxOnly (void);
 /** @brief Launch the console thread. */
 void consoleLaunch (void);
 

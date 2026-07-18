@@ -33,6 +33,7 @@ namespace {
 
   /** @brief ADC channel indices within the sample buffer. */
   enum class AdcChannel{
+    dummy,
     psBat,
     coreTemp, vref, nbChannels};
 
@@ -46,12 +47,15 @@ namespace {
   /** @brief Convert ADC sample value to voltage. */
   float adc2volts(adcsample_t sample);
   /** @brief Perform a one-shot ADC conversion. */
-  void convert();
+  msg_t convert();
   /** @brief Start continuous ADC conversion with thresholds. */
   void startConversion();
   /** @brief Handle ADC watchdog errors in thread context. */
   void adcErrorCb(adcerror_t err);
+  /** @brief Report cached values when they are outside accepted limits. */
+  void reportHealthIfOutOfRange();
   Adc::Callback_t *errorCb;
+  Adc::Mode adcMode = Adc::Mode::Continuous;
 
   constexpr ADCConversionGroup adcgrpcfgNoThreshold = {
     .circular     = false,
@@ -70,8 +74,13 @@ namespace {
       ADC_SMPR2_SMP_AN16(ADC_SMPR_SMP_640P5) | ADC_SMPR2_SMP_AN18(ADC_SMPR_SMP_640P5)
     },
     .sqr          = {
-      ADC_SQR1_SQ1_N(ADC_CHANNEL_IN1) |
-      ADC_SQR1_SQ2_N(ADC_CHANNEL_IN16) | ADC_SQR1_SQ3_N(ADC_CHANNEL_IN18),
+      // ES0523 2.6.8: the first conversion following a one-shot DMA EOT or
+      // software restart can be invalid. Consume it on an otherwise unused
+      // VREF slot, before all three public measurements.
+      ADC_SQR1_SQ1_N(ADC_CHANNEL_IN18) |
+      ADC_SQR1_SQ2_N(ADC_CHANNEL_IN1) |
+      ADC_SQR1_SQ3_N(ADC_CHANNEL_IN16) |
+      ADC_SQR1_SQ4_N(ADC_CHANNEL_IN18),
       0U,
       0U,
       0U
@@ -83,14 +92,17 @@ namespace {
 
 namespace Adc {
   /** @brief Start ADC sampling and optional error callback reporting. */
-  void start(Callback_t *cb)
+  void start(Callback_t *cb, Mode mode)
   {
     errorCb = cb;
+    adcMode = mode;
     adcStart(&ADCD1, nullptr);
     adcSTM32EnableVREF(&ADCD1);
     adcSTM32EnableTS(&ADCD1);
     chThdSleepMilliseconds(1); // wait for stability
-    convert();
+    // The leading dummy channel in each scan absorbs the first-conversion
+    // erratum; all public channels in this buffer are therefore usable.
+    (void) convert();
 
  
     // no ps voltage detected, must run connected to a probe for debug
@@ -101,6 +113,10 @@ namespace Adc {
 		 "assuming run attached to swd probe", psBat);
     }
 			   
+    if (adcMode == Mode::OnDemand) {
+      return;
+    }
+
     const adcsample_t psBatMinSample = volts2adc(psBatMin);
     const adcsample_t psBatMaxSample = volts2adc(psBatMax);
     const adcsample_t coreTempMinSample = calculate_tsval(coreTempMin);
@@ -125,6 +141,21 @@ namespace Adc {
     adcgrpcfgWithThreshold.awd2cr = 1 << ADC_CHANNEL_IN16;
     // start continuous conversion
     startConversion();
+  }
+
+  /** @brief Refresh slow board-health channels from the owning thread. */
+  bool sampleOnce()
+  {
+    if (adcMode != Mode::OnDemand) {
+      return false;
+    }
+
+    if (convert() != MSG_OK) {
+      return false;
+    }
+
+    reportHealthIfOutOfRange();
+    return true;
   }
   
   /** @brief Register an error callback for ADC watchdog events. */
@@ -206,10 +237,10 @@ namespace {
   }
 
   /** @brief Perform a blocking ADC conversion. */
-  void convert()
+  msg_t convert()
   {
-    adcConvert(&ADCD1, &adcgrpcfgNoThreshold,
-	       adcSamples.data(), adcSamples.depth());
+    return adcConvert(&ADCD1, &adcgrpcfgNoThreshold,
+	              adcSamples.data(), adcSamples.depth());
   }
 
   /** @brief Start continuous ADC conversion with thresholds enabled. */
@@ -225,19 +256,26 @@ namespace {
   void adcErrorCb(adcerror_t err)
   {
     if (err & (ADC_ERR_AWD1 | ADC_ERR_AWD2)) {
-      if (errorCb != nullptr) {
-	const float psBat = Adc::getPsBat();
-	const float coreTemp = Adc::getCoreTemp();
-	// if one of average value is out of range, then invoque
-	// error callback
-	if ((std::clamp(psBat, psBatMin, psBatMax) != psBat) or
-	    (std::clamp(coreTemp, coreTempMin, coreTempMax) != coreTemp)) {
-	  errorCb(Adc::getPsBat(), Adc::getCoreTemp());
-	}
-	//convert();
-      }
+      reportHealthIfOutOfRange();
     }
-    chThdSleepMilliseconds(10);
-    startConversion();
+    if (adcMode == Adc::Mode::Continuous) {
+      chThdSleepMilliseconds(10);
+      startConversion();
+    }
+  }
+
+  /** @brief Invoke the registered health callback for invalid cached values. */
+  void reportHealthIfOutOfRange()
+  {
+    if (errorCb == nullptr) {
+      return;
+    }
+
+    const float psBat = Adc::getPsBat();
+    const float coreTemp = Adc::getCoreTemp();
+    if ((std::clamp(psBat, psBatMin, psBatMax) != psBat) or
+	(std::clamp(coreTemp, coreTempMin, coreTempMax) != coreTemp)) {
+      errorCb(psBat, coreTemp);
+    }
   }
 }

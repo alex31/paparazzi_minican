@@ -30,6 +30,9 @@
 #endif
 #if USE_TEMPLATE_ROLE
 #endif
+#if USE_IMAV_ROLE
+#include "imavRole.hpp"
+#endif
 #if USE_GPS_UBX_ROLE
 #include "gpsUbxRole.hpp"
 #endif
@@ -375,6 +378,11 @@ namespace CANSlave {
 				  processFirmwareUpdateRequest>();
 
     bool rolesOk = true;
+#if USE_IMAV_ROLE
+    // Start IMAV first so ADC2 reserves its dynamically selected DMA stream
+    // before optional roles allocate their own DMA channels.
+    rolesOk = rolesOk && addRole<ImavRole, FixedString("ROLE.imav.beacon")>();
+#endif
 #if USE_SERVO_ROLE
     rolesOk = rolesOk && addRole<ServoRole, FixedString("ROLE.servo.pwm"),  FixedString("ROLE.servo.smart")>();
 #endif
@@ -405,7 +413,6 @@ namespace CANSlave {
 #if USE_TEMPLATE_ROLE
     rolesOk = rolesOk && addRole<TemplateRole, FixedString("ROLE.template")>();
 #endif
-
     if (not rolesOk) {
       node.setStatusMode(UAVCAN_PROTOCOL_NODESTATUS_MODE_OFFLINE);
       return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::NB_ROLE_TOO_LARGE);

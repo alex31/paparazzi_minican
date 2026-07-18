@@ -103,6 +103,13 @@
       {"role.template.log_every", {.min = 0, .max = 1000, .v = 0}},
 #endif
 
+#if USE_IMAV_ROLE
+      {"ROLE.imav.beacon", {.v = false}},
+      {"role.imav.light.i2c_address", {.min = 0x44, .max = 0x47, .v = 0x44}},
+      // Temporary bring-up telemetry: nine single-frame KeyValue messages/s.
+      {"role.imav.debug.publish", {.v = true}},
+#endif
+
 #if USE_VOLTMETER_ROLE
       {"ROLE.voltmeter", {.v = false}},
       {"role.voltmeter.cells", {.min = 2, .max = 6, .v = 4}},

@@ -15,3 +15,4 @@
 #define USE_LED2812_ROLE         true
 #define USE_VOLTMETER_ROLE       true
 #define USE_TEMPLATE_ROLE        false
+#define USE_IMAV_ROLE            true
