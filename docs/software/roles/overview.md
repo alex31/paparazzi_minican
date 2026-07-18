@@ -148,4 +148,24 @@ optionally logs every N messages.
 Params:
 - role.template.log_every (0 disables logging)
 
+### IMAV beacon (ROLE.imav.beacon)
+
+Detects the sound and red flashes of the IMAV 2026 mannequin beacon.
+
+Params:
+- `role.imav.light.i2c_address` (0x44..0x47)
+- `role.imav.debug.publish` (temporary 1 Hz `uavcan.protocol.debug.KeyValue` telemetry)
+
+Wiring and resources:
+- microphone 0: PA3 / ADC1_IN4
+- microphone 1: PA4 / ADC2_IN17
+- common 23.9977 kHz trigger: TIM6
+- OPT4048: shared I2C1 on PA15/PB07
+- PA2 remains TX-only debug; the PA3 console receiver is disabled
+
+The role stores only two 1024-sample circular DMA buffers. It computes Hann/Goertzel
+spectral scores, burst cadence, stereo balance and an independent color-normalized
+flash score. Current thresholds and debug messages are for sensor bring-up and must
+be calibrated with the real beacon.
+
 See [docs/software/adding_roles.md](../adding_roles.md) for the full new role checklist.

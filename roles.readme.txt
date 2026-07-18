@@ -75,6 +75,17 @@ Roles UAVCAN – messages reçus / envoyés
   - Paramètres : `role.template.log_every` (0 = pas de log, sinon log 1/N messages).
   - Notes : rôle squelette pour copier/coller et remplacer le message UAVCAN, les ressources et les paramètres.
 
+- ImavRole (`ROLE.imav.beacon`)
+  - Reçoit : rien.
+  - Envoie : pendant le bring-up, `uavcan.protocol.debug.KeyValue` à environ 1 Hz avec les clés `a0`, `a1`, `p0`, `p1`, `aud`, `frq`, `cad`, `bal` et `lit`.
+  - Paramètres : `role.imav.light.i2c_address` (0x44..0x47), `role.imav.debug.publish`.
+  - Audio : deux IM68A130 analogiques sur PA3/ADC1_IN4 et PA4/ADC2_IN17, ADC indépendants déclenchés ensemble par TIM6 à 23 997,74 Hz, DMA circulaires et oversampling x4/shift1.
+  - DSP : Hann sans table, grille Goertzel 2,55..3,05 kHz, bandes latérales, clipping, score stéréo et reconnaissance provisoire d'une cadence proche de trois salves/s.
+  - Lumière : OPT4048 sur I2C1, lecture 4 canaux avec CRC/compteurs, retrait du fond et score de flash rouge indépendant du son.
+  - Ressources : PA3, PA4, ADC1, ADC2 et TIM6. I2C1 reste partageable ; les resets du bus sont sérialisés.
+  - Debug : PA2 conserve `DBG_TX`; le récepteur LPUART, ses interruptions et le shell sont coupés lorsque le rôle est actif.
+  - Notes : les seuils sont provisoires jusqu'aux mesures sur la vraie balise. Le rôle n'impose pas un `son ET lumière` rigide.
+
 Services/protocoles gérés par le nœud (pubSub/UAVCanSlave)
 -----------------------------------------------------------
 - Diffusion périodique : `uavcan.protocol.NodeStatus`.
