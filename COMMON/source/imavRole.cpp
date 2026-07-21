@@ -11,32 +11,19 @@
 #include "adcSurvey.hpp"
 #include "hardwareConf.hpp"
 #include "I2C_periph.hpp"
+#include "imavLightRange.hpp"
 #include "resourceManager.hpp"
 #include "UAVCAN/dsdlStringUtils.hpp"
 
 #include <algorithm>
 #include <array>
+#include <new>
 
 namespace {
   constexpr size_t audioBufferDepth = 1024U;
   constexpr size_t audioHalfDepth = audioBufferDepth / 2U;
   constexpr gptcnt_t audioTimerInterval = 1771U;
   constexpr sysinterval_t healthPeriod = TIME_MS2I(1000U);
-  constexpr sysinterval_t opticalRetryPeriod = TIME_MS2I(5000U);
-  constexpr uint16_t opt4048DeviceIdMask = 0xFFF0U;
-  constexpr uint16_t opt4048DeviceId = 0x0820U;
-  constexpr uint8_t opt4048RegChannels = 0x00U;
-  constexpr uint8_t opt4048RegConfig = 0x0AU;
-  constexpr uint8_t opt4048RegInterrupt = 0x0BU;
-  constexpr uint8_t opt4048RegStatus = 0x0CU;
-  constexpr uint8_t opt4048RegDeviceId = 0x11U;
-  constexpr uint16_t opt4048ConfigContinuous1ms =
-    (12U << 10U) |  // Automatic full-scale range.
-    (1U << 6U) |    // 1 ms conversion time per channel.
-    (3U << 4U);     // Continuous four-channel conversion.
-  constexpr uint16_t opt4048InterruptBurst = 0x8011U;
-  constexpr uint16_t opt4048StatusOverload = 1U << 3U;
-  constexpr uint8_t opticalFrameAttempts = 4U;
 
   struct GoertzelBin {
     float coefficient;
@@ -150,31 +137,7 @@ struct ImavAudioState {
   uint16_t mean = 0U;
   uint16_t meanAbsoluteDeviation = 0U;
   AudioDetector detector;
-  uint8_t opticalAddress = 0x44U;
-  uint8_t opticalTx[3] = {};
-  uint8_t opticalRx[16] = {};
-  uint16_t opticalDeviceId = 0U;
-  uint16_t opticalStatus = 0U;
-  bool opticalAvailable = false;
-  bool opticalBackgroundValid = false;
-  uint8_t opticalCounter[4] = {};
-  uint32_t opticalRaw[4] = {};
-  uint32_t opticalBackground[4] = {};
-  float opticalRelativeAc[4] = {};
-  float opticalNoiseFloor = 0.0f;
-  float opticalFlashHold = 0.0f;
-  float opticalFlashScore = 0.0f;
-  uint32_t opticalPositiveAc = 0U;
-  uint32_t opticalPulseCount = 0U;
-  uint32_t opticalValidFrames = 0U;
-  systime_t opticalLastValidSample = 0U;
-  uint32_t opticalReadErrors = 0U;
-  uint32_t opticalBusRecoveries = 0U;
-  uint32_t opticalCrcErrors = 0U;
-  uint32_t opticalTornFrames = 0U;
-  uint8_t opticalConsecutiveTransportErrors = 0U;
-  bool opticalNoiseFloorValid = false;
-  bool opticalPulseActive = false;
+  ImavLightRange *lightRange = nullptr;
   bool publishDebug = true;
 };
 
@@ -516,15 +479,12 @@ DeviceStatus ImavRole::start(UAVCAN::Node& node)
   };
 
   audio->adcGroup = &adcAudioGroup;
-  audio->opticalAddress = static_cast<uint8_t>(
-    param_cget<"role.imav.light.i2c_address">());
   audio->publishDebug = param_cget<"role.imav.debug.publish">();
 
-  // OPT4048 supports Standard/Fast mode up to 400 kHz. Its advertised
-  // 2.6 MHz mode requires an I2C High-Speed controller code that this driver
-  // does not emit; Fast-mode Plus at 1 MHz is therefore not interchangeable.
+  // The 8 ksample/s FIFO stream needs at least Fast mode. Both the TCS3410
+  // and VL53L4CX also support the STM32G4 Fast-mode Plus setting at 1 MHz.
   const uint32_t i2cFrequencyKhz = param_cget<"bus.i2c.frequency_khz">();
-  if (i2cFrequencyKhz >= 1000U) {
+  if ((i2cFrequencyKhz < 400U) || (i2cFrequencyKhz > 1000U)) {
     return DeviceStatus(DeviceStatus::IMAV_ROLE,
 			DeviceStatus::I2C_FREQ_INVALID,
 			static_cast<uint16_t>(i2cFrequencyKhz));
@@ -534,9 +494,20 @@ DeviceStatus ImavRole::start(UAVCAN::Node& node)
   if (not i2cStatus) {
     return i2cStatus;
   }
-  audio->opticalAvailable = initializeOpticalSensor();
-  const bool opticalInitiallyAvailable = audio->opticalAvailable;
-  const uint16_t initialOpticalDeviceId = audio->opticalDeviceId;
+
+  void * const sensorMemory = malloc_m(sizeof(ImavLightRange));
+  if (sensorMemory == nullptr) {
+    return DeviceStatus(DeviceStatus::IMAV_ROLE, DeviceStatus::HEAP_FULL);
+  }
+  audio->lightRange = new (sensorMemory) ImavLightRange(
+    node,
+    static_cast<uint8_t>(
+      param_cget<"role.imav.light.i2c_address">()),
+    static_cast<uint32_t>(
+      param_cget<"role.imav.tof.period_ms">()));
+  audio->lightRange->initialize();
+  const ImavLightRangeSnapshot initialSensors =
+    audio->lightRange->snapshot();
 
   palSetLineMode(LINE_DBG_RX, PAL_MODE_INPUT_ANALOG);
   if (gptStart(&GPTD6, &audioTimerConfig) != MSG_OK) {
@@ -554,20 +525,25 @@ DeviceStatus ImavRole::start(UAVCAN::Node& node)
 
   startAudioAcquisition();
   audio->opticalWorker = chThdCreateFromHeap(
-    nullptr, THD_WORKING_AREA_SIZE(768U), "imav light", NORMALPRIO - 1,
+    nullptr, THD_WORKING_AREA_SIZE(2048U), "imav sensors", NORMALPRIO - 1,
     &Trampoline<&ImavRole::opticalThread>::fn, this);
   if (audio->opticalWorker == nullptr) {
-    audio->opticalAvailable = false;
-    node.infoCb("IMAV light worker unavailable: heap full");
+    node.infoCb("IMAV sensor worker unavailable: heap full");
   }
 
   node.infoCb("IMAV audio started: PA3/ADC1, 24kHz, OVS x4");
-  if (opticalInitiallyAvailable) {
-    node.infoCb("IMAV light started: OPT4048 addr=0x%02x id=0x%04x",
-		audio->opticalAddress, initialOpticalDeviceId);
+  if (initialSensors.lightAvailable) {
+    node.infoCb("IMAV light started: TCS3410 addr=0x%02x id=0x%02x 8ksps",
+		initialSensors.lightAddress, initialSensors.lightDeviceId);
   } else {
-    node.infoCb("IMAV light unavailable: OPT4048 addr=0x%02x",
-		audio->opticalAddress);
+    node.infoCb("IMAV light unavailable: TCS3410 addr=0x%02x/0x%02x",
+		0x39U, 0x49U);
+  }
+  if (initialSensors.rangeAvailable) {
+    node.infoCb("IMAV range started: VL53L4CX id=0x%04lx",
+		static_cast<unsigned long>(initialSensors.rangeDeviceId));
+  } else {
+    node.infoCb("IMAV range unavailable: VL53L4CX addr=0x29");
   }
   return DeviceStatus(DeviceStatus::IMAV_ROLE);
 }
@@ -642,22 +618,14 @@ void ImavRole::processAudioHalf(size_t offset, bool discontinuity)
   }
 
   if ((audio->processedBlocks % 47U) == 0U) {
-    uint32_t opticalPositiveAc;
-    uint16_t opticalStatus;
-    float opticalFlashScore;
-    systime_t opticalLastValidSample;
-    chSysLock();
-    opticalPositiveAc = audio->opticalPositiveAc;
-    opticalStatus = audio->opticalStatus;
-    opticalFlashScore = audio->opticalFlashScore;
-    opticalLastValidSample = audio->opticalLastValidSample;
-    chSysUnlock();
+    const ImavLightRangeSnapshot sensors = audio->lightRange != nullptr
+      ? audio->lightRange->snapshot() : ImavLightRangeSnapshot{};
 
     const systime_t now = chVTGetSystemTimeX();
-    const bool opticalFresh = (opticalLastValidSample != 0U) &&
-      (chTimeDiffX(opticalLastValidSample, now) < TIME_MS2I(200U));
-    const uint16_t lightScore = opticalFresh
-      ? static_cast<uint16_t>(1000.0f * opticalFlashScore) : 0U;
+    const bool lightFresh = (sensors.lightLastSample != 0U) &&
+      (chTimeDiffX(sensors.lightLastSample, now) < TIME_MS2I(200U));
+    const uint16_t lightScore = lightFresh
+      ? static_cast<uint16_t>(1000.0f * sensors.lightFlashScore) : 0U;
 
     const uint16_t blockScore = static_cast<uint16_t>(
 	1000.0f * audio->detector.channel.blockScore);
@@ -675,10 +643,14 @@ void ImavRole::processAudioHalf(size_t offset, bool discontinuity)
     m_node->infoCb("IMAV dc=%u mad=%u clip=%u sdb10=%d",
 		   audio->mean, audio->meanAbsoluteDeviation,
 		   audio->detector.channel.clippedSamples, spectralDb10);
-    m_node->infoCb("IMAV drop=%lu gap=%lu light=%lu/%u ovl=%u",
+    m_node->infoCb("IMAV drop=%lu agap=%lu light=%u/%u sat=%lu fifo=%lu",
 		   audio->droppedBlocks, audio->discontinuities,
-		   opticalPositiveAc, lightScore,
-		   (opticalStatus & opt4048StatusOverload) != 0U ? 1U : 0U);
+		   sensors.lightRaw, lightScore,
+		   sensors.lightSaturations,
+		   sensors.lightFifoOverflows);
+    m_node->infoCb("IMAV tof=%u valid=%u lgap=%lu err=%lu",
+		   sensors.rangeMm, sensors.rangeValid ? 1U : 0U,
+		   sensors.lightGaps, sensors.rangeErrors);
     publishDebugValues();
   }
 }
@@ -690,17 +662,16 @@ void ImavRole::publishDebugValues()
     return;
   }
 
-  float opticalFlashScore;
-  systime_t opticalLastValidSample;
-  chSysLock();
-  opticalFlashScore = audio->opticalFlashScore;
-  opticalLastValidSample = audio->opticalLastValidSample;
-  chSysUnlock();
+  const ImavLightRangeSnapshot sensors = audio->lightRange != nullptr
+    ? audio->lightRange->snapshot() : ImavLightRangeSnapshot{};
+  float lightFlashScore = sensors.lightFlashScore;
   const systime_t now = chVTGetSystemTimeX();
-  if ((opticalLastValidSample == 0U) ||
-      (chTimeDiffX(opticalLastValidSample, now) >= TIME_MS2I(200U))) {
-    opticalFlashScore = 0.0f;
+  if ((sensors.lightLastSample == 0U) ||
+      (chTimeDiffX(sensors.lightLastSample, now) >= TIME_MS2I(200U))) {
+    lightFlashScore = 0.0f;
   }
+  const float rangeMetres = sensors.rangeValid
+    ? static_cast<float>(sensors.rangeMm) * 0.001f : -1.0f;
 
   uavcan_protocol_debug_KeyValue message = {};
   const auto publish = [this, &message](const char *key, float value) {
@@ -714,271 +685,9 @@ void ImavRole::publishDebugValues()
   publish("aud", audio->detector.audioScore);
   publish("frq", audio->detector.dominantFrequencyHz);
   publish("cad", audio->detector.cadenceHz);
-  publish("lit", opticalFlashScore);
-}
-
-/** @brief Execute an OPT4048 transaction using DMA-accessible buffers. */
-msg_t ImavRole::opticalTransfer(size_t txLength, size_t rxLength)
-{
-  i2cAcquireBus(&ExternalI2CD);
-  const msg_t result = i2cMasterTransmitTimeout(
-    &ExternalI2CD, audio->opticalAddress,
-    audio->opticalTx, txLength,
-    audio->opticalRx, rxLength,
-    TIME_MS2I(10U));
-
-  if (result != MSG_OK) {
-    ++audio->opticalReadErrors;
-    const i2cflags_t errors = i2cGetErrors(&ExternalI2CD);
-    // A missing optional sensor normally returns ACK_FAILURE and must not
-    // disturb the other roles on the shared bus. Recover only from a timeout
-    // or an actual electrical/protocol fault. Recovery changes the peripheral
-    // and pins, so it remains inside the I2C mutex.
-    if ((result == MSG_TIMEOUT) ||
-	((errors & ~static_cast<i2cflags_t>(I2C_ACK_FAILURE)) != I2C_NO_ERROR)) {
-      ++audio->opticalBusRecoveries;
-      I2CPeriph::resetLocked();
-    }
-  }
-  i2cReleaseBus(&ExternalI2CD);
-  return result;
-}
-
-/** @brief Read one big-endian 16-bit OPT4048 register. */
-bool ImavRole::readOpticalRegister(uint8_t reg, uint16_t& value)
-{
-  audio->opticalTx[0] = reg;
-  if (opticalTransfer(1U, 2U) != MSG_OK) {
-    return false;
-  }
-  value = static_cast<uint16_t>(audio->opticalRx[0]) << 8U |
-          static_cast<uint16_t>(audio->opticalRx[1]);
-  return true;
-}
-
-/** @brief Write one big-endian 16-bit OPT4048 register. */
-bool ImavRole::writeOpticalRegister(uint8_t reg, uint16_t value)
-{
-  audio->opticalTx[0] = reg;
-  audio->opticalTx[1] = static_cast<uint8_t>(value >> 8U);
-  audio->opticalTx[2] = static_cast<uint8_t>(value);
-  return opticalTransfer(3U, 0U) == MSG_OK;
-}
-
-/** @brief Probe and configure the OPT4048 for continuous burst reads. */
-bool ImavRole::initializeOpticalSensor()
-{
-  uint16_t id = 0U;
-  if (not readOpticalRegister(opt4048RegDeviceId, id)) {
-    return false;
-  }
-  audio->opticalDeviceId = id;
-  // Datasheet revisions and available breakout libraries report 0x0820 and
-  // 0x0821. The low nibble is treated as a silicon revision.
-  if ((id & opt4048DeviceIdMask) != opt4048DeviceId) {
-    return false;
-  }
-  if (not writeOpticalRegister(opt4048RegInterrupt,
-			       opt4048InterruptBurst)) {
-    return false;
-  }
-  if (not writeOpticalRegister(opt4048RegConfig,
-			       opt4048ConfigContinuous1ms)) {
-    return false;
-  }
-
-  chThdSleepMilliseconds(5U);
-  audio->opticalBackgroundValid = false;
-  audio->opticalNoiseFloorValid = false;
-  audio->opticalPulseActive = false;
-  audio->opticalFlashHold = 0.0f;
-  chSysLock();
-  audio->opticalFlashScore = 0.0f;
-  audio->opticalLastValidSample = 0U;
-  chSysUnlock();
-  return true;
-}
-
-/** @brief Calculate the four-bit check code described in the OPT4048 data sheet. */
-static uint8_t opt4048Crc(uint8_t exponent, uint32_t mantissa,
-			  uint8_t counter)
-{
-  uint8_t x0 = 0U;
-  for (uint8_t bit = 0U; bit < 4U; ++bit) {
-    x0 ^= static_cast<uint8_t>((exponent >> bit) & 1U);
-    x0 ^= static_cast<uint8_t>((counter >> bit) & 1U);
-  }
-  for (uint8_t bit = 0U; bit < 20U; ++bit) {
-    x0 ^= static_cast<uint8_t>((mantissa >> bit) & 1U);
-  }
-
-  uint8_t x1 = static_cast<uint8_t>(((counter >> 1U) ^
-				     (counter >> 3U) ^
-				     (exponent >> 1U) ^
-				     (exponent >> 3U)) & 1U);
-  for (uint8_t bit = 1U; bit < 20U; bit += 2U) {
-    x1 ^= static_cast<uint8_t>((mantissa >> bit) & 1U);
-  }
-
-  uint8_t x2 = static_cast<uint8_t>(((counter >> 3U) ^
-				     (exponent >> 3U)) & 1U);
-  for (uint8_t bit = 3U; bit < 20U; bit += 4U) {
-    x2 ^= static_cast<uint8_t>((mantissa >> bit) & 1U);
-  }
-
-  const uint8_t x3 = static_cast<uint8_t>(
-    ((mantissa >> 3U) ^ (mantissa >> 11U) ^ (mantissa >> 19U)) & 1U);
-  return static_cast<uint8_t>((x3 << 3U) | (x2 << 2U) |
-			      (x1 << 1U) | x0);
-}
-
-/** @brief Read, validate and linearize the four OPT4048 channels. */
-bool ImavRole::readOpticalSensor()
-{
-  uint32_t samples[4] = {};
-  uint8_t counters[4] = {};
-  bool frameValid = false;
-
-  for (uint8_t attempt = 0U; attempt < opticalFrameAttempts; ++attempt) {
-    audio->opticalTx[0] = opt4048RegChannels;
-    if (opticalTransfer(1U, sizeof(audio->opticalRx)) != MSG_OK) {
-      return false;
-    }
-
-    bool crcValid = true;
-    for (size_t channel = 0U; channel < 4U; ++channel) {
-      const size_t offset = channel * 4U;
-      const uint8_t exponent = audio->opticalRx[offset] >> 4U;
-      const uint32_t mantissa =
-	(static_cast<uint32_t>(audio->opticalRx[offset] & 0x0FU) << 16U) |
-	(static_cast<uint32_t>(audio->opticalRx[offset + 1U]) << 8U) |
-	static_cast<uint32_t>(audio->opticalRx[offset + 2U]);
-      const uint8_t counter = audio->opticalRx[offset + 3U] >> 4U;
-      const uint8_t receivedCrc = audio->opticalRx[offset + 3U] & 0x0FU;
-      if (opt4048Crc(exponent, mantissa, counter) != receivedCrc) {
-	++audio->opticalCrcErrors;
-	crcValid = false;
-	break;
-      }
-
-      samples[channel] = mantissa << exponent;
-      counters[channel] = counter;
-    }
-
-    bool countersEqual = crcValid;
-    for (size_t channel = 1U; countersEqual && (channel < 4U); ++channel) {
-      countersEqual = counters[channel] == counters[0];
-    }
-    if (crcValid && (not countersEqual)) {
-      ++audio->opticalTornFrames;
-    }
-
-    if (crcValid && countersEqual) {
-      frameValid = true;
-      break;
-    }
-
-    if ((attempt + 1U) < opticalFrameAttempts) {
-      chThdSleepMicroseconds(700U);
-    }
-  }
-
-  // Invalid CRC/counter alignment is transient and does not mean that the
-  // sensor disappeared. Ignore this poll after bounded, phase-shifting retries.
-  if (not frameValid) {
-    return true;
-  }
-
-  const bool hadBackground = audio->opticalBackgroundValid;
-  uint32_t positiveAc = 0U;
-  float relativeAc[4] = {};
-  for (size_t channel = 0U; channel < 4U; ++channel) {
-    const uint32_t sample = samples[channel];
-    audio->opticalRaw[channel] = sample;
-    audio->opticalCounter[channel] = counters[channel];
-    if (not hadBackground) {
-      audio->opticalBackground[channel] = sample;
-      continue;
-    }
-
-    const uint32_t background = audio->opticalBackground[channel];
-    const int64_t delta = static_cast<int64_t>(sample) -
-			  static_cast<int64_t>(background);
-    audio->opticalBackground[channel] = static_cast<uint32_t>(
-      static_cast<int64_t>(background) + delta / 16);
-    if ((delta > 0) && (static_cast<uint64_t>(delta) > positiveAc)) {
-      positiveAc = static_cast<uint32_t>(delta);
-    }
-    if (delta > 0) {
-      relativeAc[channel] = static_cast<float>(delta) /
-	(static_cast<float>(background) + 1.0f);
-    }
-  }
-  audio->opticalBackgroundValid = true;
-
-  float flashScore = 0.0f;
-  if (hadBackground) {
-    // OPT4048 channels are CIE X, Y, Z and wideband. A red flash raises X/Y
-    // much more than Z; normalizing each delta by its own background rejects
-    // common illumination changes such as clouds and vehicle shadows.
-    const float redAmplitude = std::max(relativeAc[0], relativeAc[1]);
-    const float redExcess = std::max(
-      0.0f, 0.5f * (relativeAc[0] + relativeAc[1]) - relativeAc[2]);
-    const float colorConfidence = std::clamp(
-      redExcess / (redAmplitude + 0.000001f), 0.0f, 1.0f);
-    const float redActivity = redAmplitude *
-      (0.25f + 0.75f * colorConfidence);
-
-    if (not audio->opticalNoiseFloorValid) {
-      audio->opticalNoiseFloor = std::min(redActivity, 0.001f);
-      audio->opticalNoiseFloorValid = true;
-    } else if (not audio->opticalPulseActive) {
-      const float alpha = redActivity < audio->opticalNoiseFloor
-	? 1.0f / 8.0f : 1.0f / 128.0f;
-      audio->opticalNoiseFloor +=
-	(redActivity - audio->opticalNoiseFloor) * alpha;
-    }
-
-    const float absoluteScore = knee(redActivity, 0.002f, 0.08f);
-    const float riseScore = knee(
-      redActivity / (audio->opticalNoiseFloor + 0.00001f), 2.0f, 8.0f);
-    const float instantScore = absoluteScore * riseScore *
-      (0.25f + 0.75f * colorConfidence);
-    if (audio->opticalPulseActive) {
-      if (instantScore <= 0.25f) {
-	audio->opticalPulseActive = false;
-      }
-    } else if (instantScore >= 0.65f) {
-      audio->opticalPulseActive = true;
-      ++audio->opticalPulseCount;
-    }
-
-    audio->opticalFlashHold = std::max(
-      instantScore, audio->opticalFlashHold * 0.85f);
-    flashScore = audio->opticalFlashHold;
-  } else {
-    audio->opticalFlashHold = 0.0f;
-  }
-
-  ++audio->opticalValidFrames;
-  const systime_t sampleTime = chVTGetSystemTimeX();
-  chSysLock();
-  audio->opticalPositiveAc = positiveAc;
-  for (size_t channel = 0U; channel < 4U; ++channel) {
-    audio->opticalRelativeAc[channel] = relativeAc[channel];
-  }
-  audio->opticalFlashScore = flashScore;
-  audio->opticalLastValidSample = sampleTime;
-  chSysUnlock();
-
-  uint16_t status = 0U;
-  if (not readOpticalRegister(opt4048RegStatus, status)) {
-    return false;
-  }
-  chSysLock();
-  audio->opticalStatus = status;
-  chSysUnlock();
-  return true;
+  publish("lit", lightFlashScore);
+  publish("rng", rangeMetres);
+  publish("rsg", sensors.rangeSignalKcps);
 }
 
 /** @brief Own ADC1, process DMA halves and periodically refresh health. */
@@ -1066,35 +775,14 @@ void ImavRole::audioThread(void *)
   }
 }
 
-/** @brief Poll the OPT4048 independently so I2C latency cannot stall audio DSP. */
+/** @brief Drain the light FIFO and schedule exclusive ToF measurements. */
 void ImavRole::opticalThread(void *)
 {
-  systime_t lastRetry = chVTGetSystemTimeX();
-
+  if (audio->lightRange != nullptr) {
+    audio->lightRange->run();
+  }
   while (true) {
-    if (audio->opticalAvailable) {
-      if (not readOpticalSensor()) {
-	if (++audio->opticalConsecutiveTransportErrors >= 3U) {
-	  audio->opticalAvailable = false;
-	  audio->opticalConsecutiveTransportErrors = 0U;
-	  lastRetry = chVTGetSystemTimeX();
-	}
-      } else {
-	audio->opticalConsecutiveTransportErrors = 0U;
-      }
-    } else {
-      const systime_t now = chVTGetSystemTimeX();
-      if (chTimeDiffX(lastRetry, now) >= opticalRetryPeriod) {
-	audio->opticalAvailable = initializeOpticalSensor();
-	lastRetry = now;
-	if (audio->opticalAvailable) {
-	  m_node->infoCb("IMAV light recovered: id=0x%04x",
-			 audio->opticalDeviceId);
-	}
-      }
-    }
-
-    chThdSleepMilliseconds(10U);
+    chThdSleepMilliseconds(1000U);
   }
 }
 

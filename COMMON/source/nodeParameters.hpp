@@ -105,7 +105,12 @@
 
 #if USE_IMAV_ROLE
       {"ROLE.imav.beacon", {.v = false}},
-      {"role.imav.light.i2c_address", {.min = 0x44, .max = 0x47, .v = 0x44}},
+      // TCS3410 ordering options are 0x39 and 0x49. Intermediate values are
+      // rejected at runtime and fall back to probing these two addresses.
+      {"role.imav.light.i2c_address", {.min = 0x39, .max = 0x49, .v = 0x39}},
+      // Nominal VL53L4CX one-shot period. Small deterministic jitter is added
+      // so a periodic beacon flash cannot always fall in the ToF light gap.
+      {"role.imav.tof.period_ms", {.min = 100, .max = 1000, .v = 200}},
       // Temporary bring-up telemetry: nine single-frame KeyValue messages/s.
       {"role.imav.debug.publish", {.v = true}},
 #endif

@@ -30,17 +30,20 @@ Cette note rassemble les conclusions techniques nécessaires pour reprendre le t
 
 La première conclusion est simple : **la MicroCAN v5 et ses 112 Kio de RAM suffisent très largement pour reconnaître l'alarme**, car l'audio n'est jamais enregistré intégralement. Un DMA circulaire contient seulement 20 à 40 ms de signal, le bloc est traité, puis immédiatement écrasé par le bloc suivant.
 
-La deuxième conclusion est liée au matériel existant et aux décisions prises après l'étude initiale : **le MVP utilise deux microphones analogiques IM68A130(A), directement reliés à PA3/ADC1_IN4 et PA4/ADC2_IN17, sans amplificateur opérationnel, ainsi qu'un OPT4048 sur I2C1**. PA2 reste disponible pour une trace UART TX minimale. Les deux ADC sont déclenchés par le même timer et chaque voie possède son propre DMA ; un unique thread possède les ADC, interrompt ponctuellement l'audio, réalise les mesures lentes VIN/température/VREF, puis relance les deux voies audio.
+La deuxième conclusion est liée au matériel existant et aux décisions prises après l'étude initiale : **le MVP utilise un seul microphone analogique IM68A130(A), directement relié à PA3/ADC1_IN4, un TCS3410 orienté vers le sol pour les flashs et un VL53L4CX pour la hauteur du module**. PA4 est de nouveau libre. Le TCS3410 échantillonne à 8 kéch/s dans sa FIFO ; sa mesure est explicitement arrêtée pendant chaque mesure ponctuelle du télémètre 940 nm.
 
 Les décisions suivantes font foi lorsqu'une section historique du document semble encore présenter une variante antérieure :
 
-- deux microphones, pas un seul ;
-- PA3 = ADC1_IN4 et PA4 = ADC2_IN17 ;
+- un microphone unique sur PA3 = ADC1_IN4 ;
+- PA4 libre pour une autre fonction ;
 - PA2 conservée pour `DBG_TX` ;
 - pas d'OPAMP interne ni externe dans le premier prototype ;
-- liaison continue en tension entre la sortie déjà polarisée de chaque IM68A130(A) et l'ADC, avec seulement découplage et petit réseau RC passif identique sur les deux voies ;
+- liaison continue en tension entre la sortie déjà polarisée de l'IM68A130(A) et l'ADC, avec seulement découplage et petit réseau RC passif ;
 - suréchantillonnage matériel ADC envisagé en x4 ou x16, sans augmentation de la taille des tampons DMA ;
-- pas de canaux injectés : un seul thread arbitre explicitement audio et mesures lentes.
+- un seul TCS3410 sous le drone, sans sectorisation optique ;
+- VL53L4CX piloté par le composant officiel ST provenant du sous-module `STMicroelectronics/x-cube-tof1` ;
+- pas de canaux injectés : un seul thread arbitre explicitement audio et mesures lentes ;
+- acquisition lumière et mesure ToF strictement exclusives.
 
 ## 2. Exigences du règlement IMAV 2026
 
@@ -1236,25 +1239,25 @@ La branche active est `imav2026`. Un premier rôle fonctionnel `ImavRole` est ma
 
 ### 25.1 Acquisition et partage des ressources
 
-- PA3/ADC1_IN4 et PA4/ADC2_IN17 sont acquis avec ADC1, ADC2 et TIM6 par le gestionnaire de ressources ; un conflit empêche proprement le démarrage du rôle.
-- ADC1 et ADC2 ont chacun une conversion régulière circulaire d'un canal, un DMA de 1024 mots et un callback minimal.
-- TIM6 fournit le TRGO commun à `42,5 MHz / 1771 = 23 997,74 Hz` ; son prescaler `/4` respecte le contournement de l'errata avec l'horloge ADC AHB/4.
+- PA3/ADC1_IN4 est acquis avec ADC1 et TIM6 par le gestionnaire de ressources ; PA4 et ADC2 ne sont pas utilisés par IMAV.
+- ADC1 utilise une conversion régulière circulaire d'un canal, un DMA de 1024 mots et un callback minimal.
+- TIM6 fournit le TRGO à `42,5 MHz / 1771 = 23 997,74 Hz` ; son prescaler `/4` respecte le contournement de l'errata avec l'horloge ADC AHB/4.
 - Le suréchantillonnage est x4 avec shift 1 : sortie 13 bits, débit DMA inchangé.
-- Le thread n'accepte une moitié que lorsque les compteurs ADC1 et ADC2 correspondent. Un watchdog relance l'acquisition si aucun couple complet ne progresse pendant 100 ms, même si un seul ADC continue à interrompre.
-- Toutes les secondes, le thread arrête le trigger puis les deux ADC, réalise la séquence lente de santé et relance l'audio. La séquence lente commence par un VREF dummy qui absorbe le premier résultat invalide décrit par ES0523 ; VIN, température et VREF utiles suivent dans la même séquence.
-- Après chaque reprise, la première moitié audio est jetée et la suivante porte un marqueur de discontinuité.
+- Un watchdog relance l'acquisition si aucun demi-buffer ne progresse pendant 100 ms.
+- Toutes les secondes, le thread arrête le trigger puis ADC1, réalise la séquence lente de santé et relance l'audio. La séquence lente commence par un VREF dummy qui absorbe le premier résultat invalide décrit par ES0523 ; VIN, température et VREF utiles suivent dans la même séquence.
+- Après chaque reprise, le premier demi-buffer audio est jeté et le suivant porte un marqueur de discontinuité.
 - Si le démarrage du nœud ou d'un rôle échoue, ADC1 revient au mode historique continu afin que la santé carte ne reste pas figée.
 
 PA2 reste utilisable pour `DebugTrace`. En mode IMAV, le shell n'est pas créé et le récepteur LPUART est réellement désactivé (`RE`, RXNE/error/LIN interrupts et FIFO RX), avant de passer PA3 en analogique.
 
 ### 25.2 DSP audio actuel
 
-Chaque bloc stéréo de 512 échantillons est consommé immédiatement, sans historique brut :
+Chaque bloc mono de 512 échantillons est consommé immédiatement, sans historique brut :
 
 1. moyenne, écart absolu moyen, minimum, maximum et clipping ;
 2. fenêtre de Hann générée par récurrence, donc sans table RAM ;
-3. quinze Goertzel sur chaque microphone : références à 2,25/2,35 et 3,25/3,40 kHz, puis grille de 50 Hz entre 2,55 et 3,05 kHz ;
-4. puissance de bande, proéminence sur les références, concentration tonale, fréquence dominante et balance stéréo ;
+3. quinze Goertzel : références à 2,25/2,35 et 3,25/3,40 kHz, puis grille de 50 Hz entre 2,55 et 3,05 kHz ;
+4. puissance de bande, proéminence sur les références, concentration tonale et fréquence dominante ;
 5. plancher lent adaptatif et score continu par voie ;
 6. machine `Unarmed/Off/On` à deux blocs avec hystérésis ;
 7. six horodatages de fronts au maximum et score continu de cadence autour de trois salves par seconde.
@@ -1263,50 +1266,60 @@ L'état `Unarmed` est réimposé après une discontinuité. Il faut ensuite obse
 
 Les seuils numériques actuels sont volontairement des valeurs de bring-up. Ils doivent être recalés sur des enregistrements de la vraie balise et du drone, en conservant les scores continus plutôt qu'un simple booléen.
 
-### 25.3 OPT4048 et lumière
+### 25.3 TCS3410, VL53L4CX et exclusion temporelle
 
-- Adresse paramétrable 0x44..0x47, gamme automatique, 1 ms par canal, mode continu et auto-incrément burst.
-- Le rôle refuse le réglage global I2C 1 MHz : l'OPT4048 accepte 400 kHz en Fast mode et son mode 2,6 MHz exigerait la séquence High-Speed que le driver ChibiOS n'émet pas.
-- Lecture des quatre canaux CIE X/Y/Z/W, validation du CRC quatre bits et linéarisation mantisse/exposant.
-- Le burst I2C ne figeant pas les quatre registres, leurs compteurs doivent être identiques. Une trame déchirée est ignorée puis relue jusqu'à quatre fois avec 700 microsecondes de déphasage ; elle n'est pas assimilée à une panne du capteur.
-- Trois erreurs de transport consécutives rendent le capteur indisponible. Le reprobe a lieu toutes les cinq secondes.
-- Un NACK de l'OPT4048 absent ne réinitialise pas le bus partagé. Seuls un timeout ou une vraie faute de bus déclenchent la récupération.
-- La récupération I2C est désormais sérialisée pour IMAV, QMC5883 et MPL3115A2 : aucun rôle ne peut stopper I2C1 au milieu du transfert d'un autre.
-- Le score de flash utilise les variations X/Y normalisées par leur fond et leur excès par rapport à Z. Il possède un plancher adaptatif, une hystérésis et une durée de validité de 200 ms. Aucune cadence lumineuse n'est encore supposée.
+- Un unique TCS3410 orienté vers le sol est recherché aux adresses 0x39 et 0x49.
+- Les deux photodiodes à filtre `F` sont reliées au modulateur 0, à gain fixe 16x. La mesure ALS lente et les résidus sont désactivés.
+- `SAMPLE_TIME=89` produit 8 kéch/s ; les échantillons 16 bits sont écrits en continu dans la FIFO de 512 octets.
+- Le thread lit la FIFO toutes les 4 ms, jusqu'à 128 octets par transfert, et vérifie débordement, sous-débordement et parité du nombre d'octets.
+- Le score de flash compare la composante positive à un fond et à un bruit adaptatifs. Une rémanence d'environ 0,6 s rend visible un flash d'un seul échantillon dans la télémétrie lente.
+- Le VL53L4CX utilise sans modification le composant officiel ST du sous-module `third_party/x-cube-tof1`, épinglé sur X-CUBE-TOF1 v3.4.3 (cœur VL53LX 1.2.13). Seuls les callbacks I2C/temps sont adaptés à ChibiOS.
+- Il fonctionne en profil longue distance, budget de 30 ms et one-shot asynchrone borné à 100 ms. Le résultat valide le plus proche est publié.
+- Avant chaque one-shot ou réinitialisation ToF, `FDEN` est mis à zéro et acquitté par le TCS3410. La FIFO est vidée, la mesure ST est effectuée, puis la FIFO est effacée et `FDEN` réactivé.
+- La période nominale vaut 200 ms et est paramétrable. Un petit jitter déterministe déplace la phase des trous afin de ne pas masquer systématiquement une balise périodique.
+- I2C Fast mode 400 kHz et Fast-mode Plus 1 MHz sont acceptés ; 100 kHz est refusé car insuffisant pour le flux FIFO.
+- Un NACK d'un capteur absent ne réinitialise pas le bus partagé. Seuls un timeout ou une faute électrique/protocolaire déclenchent la récupération sérialisée.
+
+La distance est publiée à chaque mesure dans `uavcan.equipment.range_sensor.Measurement` (`sensor_id=0`, type LIDAR, champ de vue 18°). L'orientation de corps est laissée indéfinie car le module est suspendu ; le contrôleur de vol configure lui-même l'orientation du télémètre vers le bas.
 
 La lumière et le son restent deux preuves indépendantes. Il n'y a pas de condition rigide `son ET lumière`, notamment à cause de l'avis MSA 2026 sur des alarmes sonores potentiellement défaillantes.
 
 ### 25.4 RAM, threads et télémétrie
 
-Mesures contrôlées sur les builds `-Og` et `RELEASE=fast` :
+Mesures contrôlées sur le build `-Og` :
 
-- `sizeof(ImavAudioState) = 4 800` octets, alloués seulement si le rôle démarre, sur le heap DMA de 12 288 octets ; ce total contient les 4 096 octets des deux buffers audio ;
-- thread audio : demande ChibiOS de 2 016 octets pour une pile utile configurée à 1 536 octets ;
-- thread lumière : demande de 1 248 octets pour une pile utile de 768 octets ;
-- BSS du firmware : 100 088 octets en `-Og` et 100 736 octets en `RELEASE=fast`, heaps réservés inclus ;
+- `sizeof(ImavAudioState) = 2 396` octets sur le heap DMA de 12 288 octets ; ce total contient le buffer audio mono de 2 048 octets ;
+- `sizeof(ImavLightRange) = 10 304` octets sur le heap standard de 20 480 octets ; ce total contient le contexte officiel ST de 9 480 octets et les tampons I2C ;
+- thread audio : pile utile configurée à 1 536 octets ;
+- thread capteurs : pile utile configurée à 2 048 octets ;
+- firmware : 273 872 octets de texte et 100 048 octets de BSS, heaps réservés inclus ;
 - le shell de 2 000 octets n'est pas alloué en mode IMAV.
 
 La télémétrie temporaire `uavcan.protocol.debug.KeyValue`, activable par `role.imav.debug.publish`, diffuse environ une fois par seconde :
 
 | Clé | Valeur |
 |---|---|
-| `a0`, `a1` | scores spectraux instantanés des deux microphones |
-| `p0`, `p1` | amplitudes RMS estimées de la tonalité dominante, en comptes ADC 13 bits, pour la cartographie spatiale |
+| `a0` | score spectral instantané du microphone |
+| `p0` | amplitude RMS estimée de la tonalité dominante, en comptes ADC 13 bits |
+| `sdb` | rapport en dB entre l'énergie de la bande balise et l'énergie globale de la fenêtre |
 | `aud` | score audio avec cadence |
 | `frq` | fréquence dominante en hertz |
 | `cad` | cadence de salves estimée en hertz |
-| `bal` | balance stéréo signée au bin dominant |
-| `lit` | score de flash rouge frais, zéro après 200 ms sans mesure valide |
+| `lit` | score de flash large bande frais, zéro après 200 ms sans nouvel échantillon |
+| `rng` | distance en mètres, -1 si la dernière mesure n'est pas valide |
+| `rsg` | signal VL53L4CX en kcps/SPAD |
 
 Les clés font trois caractères afin que chaque message tienne dans une seule trame CAN classique.
 
 ### 25.5 Validation encore nécessaire
 
 - mesurer le temps CPU maximum du DSP sur cible en `-Og` puis en `RELEASE=fast` ;
-- injecter des sinus/salves connus sur PA3 et PA4 et vérifier fréquence, cadence, clipping et reprise après pause santé ;
-- mesurer le signe de `bal` avec les deux microphones dans leur géométrie définitive ;
+- injecter des sinus/salves connus sur PA3 et vérifier fréquence, cadence, clipping et reprise après pause santé ;
 - enregistrer la vraie forme temporelle du motionSCOUT et ajuster les seuils/profils de cadence ;
-- tester l'OPT4048 au soleil, à l'ombre, devant des LED rouges parasites et avec plusieurs orientations ;
-- définir le message opérationnel horodaté et son association à la pose du drone ; les `KeyValue` actuels ne sont que du bring-up ;
+- mesurer la largeur réelle des flashs et vérifier au compteur FIFO qu'un flash bref produit au moins un échantillon ;
+- tester le TCS3410 au soleil, à l'ombre, devant des LED parasites et avec le diffuseur mécanique définitif ;
+- observer `FDEN` et l'émission 940 nm pour confirmer sur cible qu'il n'existe aucun recouvrement lumière/ToF ;
+- qualifier le VL53L4CX vers 1 m au-dessus de sols clairs et sombres, en extérieur, avec le verre de protection et le balancement du fil ;
+- configurer l'orientation vers le bas dans le contrôleur de vol et valider la consommation de `uavcan.equipment.range_sensor.Measurement` ;
 - décider la fusion et les durées de confirmation monomodales/bimodales après ces essais ;
 - surveiller les heaps dans la configuration exacte de mission avant d'envisager une désactivation statique d'autres rôles.

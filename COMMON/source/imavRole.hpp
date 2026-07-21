@@ -29,11 +29,6 @@ private:
   void stopAudioAcquisition();
   void processAudioHalf(size_t offset, bool discontinuity);
   void publishDebugValues();
-  bool initializeOpticalSensor();
-  bool readOpticalSensor();
-  bool readOpticalRegister(uint8_t reg, uint16_t& value);
-  bool writeOpticalRegister(uint8_t reg, uint16_t value);
-  msg_t opticalTransfer(size_t txLength, size_t rxLength);
 
   ImavAudioState *audio = nullptr;
 };

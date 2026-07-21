@@ -210,6 +210,16 @@ FROZEN_LIB := ../../../../../frozen/include
 COMMON := ../COMMON/source
 COMMON_CFG := $(COMMON)/../cfg
 SRCDIR = ./source
+VL53L4CX := ../third_party/x-cube-tof1/Drivers/BSP/Components/vl53l4cx
+VL53L4CX_CSRC := $(wildcard $(VL53L4CX)/modules/*.c) \
+                 $(wildcard $(VL53L4CX)/porting/*.c) \
+                 $(VL53L4CX)/vl53l4cx.c
+VL53L4CX_OBJS := $(addprefix $(BUILDDIR)/obj/, \
+                  $(notdir $(VL53L4CX_CSRC:.c=.o)))
+
+# Keep the official ST sources byte-for-byte unchanged. Their upstream warning
+# profile is not identical to this project's -Werror policy.
+$(VL53L4CX_OBJS): CFLAGS += -Wno-error
 
 # Licensing files.
 include $(CHIBIOS)/os/license/license.mk
@@ -261,7 +271,8 @@ CSRC = $(ALLCSRC) \
        $(VARIOUS)/timerDmaCache.c \
        $(VARIOUS)/dshot_erps.c \
        $(VARIOUS)/dshot_rpmCapture.c \
-       $(VARIOUS)/hal_stm32_crc_v1.c
+       $(VARIOUS)/hal_stm32_crc_v1.c \
+       $(VL53L4CX_CSRC)
 
 
 
@@ -295,6 +306,7 @@ CPPSRC = $(ALLCPPSRC) \
 	$(COMMON)/voltmeterRole.cpp \
 	$(COMMON)/templateRole.cpp \
 	$(COMMON)/imavRole.cpp \
+	$(COMMON)/imavLightRange.cpp \
 	$(COMMON)/deviceResource.cpp \
 	$(COMMON)/MFS.cpp \
 	$(COMMON)/firmwareUpdate.cpp \
@@ -311,6 +323,7 @@ ASMXSRC = $(ALLXASMSRC)
 # Inclusion directories.
 INCDIR = $(CONFDIR) $(ALLINC) $(CHIBIOS)/os/various $(VARIOUS) \
 	 $(VARIOUS)/M95P $(EXTLIB) $(ETL_LIB) $(FROZEN_LIB) $(COMMON) \
+	 $(VL53L4CX) $(VL53L4CX)/modules $(VL53L4CX)/porting \
          $(RELATIVE)/../UAVCAN/libcanard $(DSDLC)/include ../canard_chutils \
 	 $(TESTINC) $(COMMON_CFG)
  

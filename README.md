@@ -36,6 +36,7 @@ Related references:
 A GNU Arm embedded toolchain and ChibiOS 21.11 are required. The Makefiles expect this repository to reside next to a `ChibiOS_21.11_stable` folder. Run:
 
 ```bash
+git submodule update --init --recursive
 make            # builds bootloader and firmware
 make flash       # flashes both images using bmpflash
 ```
