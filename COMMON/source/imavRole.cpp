@@ -70,6 +70,7 @@ namespace {
   constexpr float hannSinStep = 0.01229555183f;
   constexpr uint16_t audioClipLow = 82U;
   constexpr uint16_t audioClipHigh = 8108U;
+  constexpr float minimumSpectralRatio = 1.0e-6f;
 
   constexpr eventmask_t audioReadyEvent = EVENT_MASK(0);
   constexpr eventmask_t audioErrorEvent = EVENT_MASK(1);
@@ -94,6 +95,7 @@ struct AudioChannelScore {
   float referencePower = 0.0f;
   float noiseFloor = 0.0f;
   float concentration = 0.0f;
+  float spectralRatioDb = -60.0f;
   float prominence = 0.0f;
   float blockScore = 0.0f;
   float toneRms = 0.0f;
@@ -111,12 +113,11 @@ enum class AudioBurstState : uint8_t {
 };
 
 struct AudioDetector {
-  float q1[2][goertzelBins.size()] = {};
-  float q2[2][goertzelBins.size()] = {};
-  float power[2][goertzelBins.size()] = {};
-  AudioChannelScore channel[2];
+  float q1[goertzelBins.size()] = {};
+  float q2[goertzelBins.size()] = {};
+  float power[goertzelBins.size()] = {};
+  AudioChannelScore channel;
   float dominantFrequencyHz = 0.0f;
-  float stereoBalance = 0.0f;
   float blockScore = 0.0f;
   float burstPeakScore = 0.0f;
   float recentBurstStrength = 0.0f;
@@ -133,24 +134,21 @@ struct AudioDetector {
   bool detected = false;
 };
 
-/** @brief DMA-backed state shared by the two ADC callbacks and worker. */
+/** @brief DMA-backed state shared by the ADC callback and worker. */
 struct ImavAudioState {
-  adcsample_t mic1[audioBufferDepth];
-  adcsample_t mic2[audioBufferDepth];
-  const ADCConversionGroup *adc1Group = nullptr;
-  const ADCConversionGroup *adc2Group = nullptr;
+  adcsample_t samples[audioBufferDepth];
+  const ADCConversionGroup *adcGroup = nullptr;
   thread_t *worker = nullptr;
   thread_t *opticalWorker = nullptr;
-  volatile uint32_t adc1Sequence = 0U;
-  volatile uint32_t adc2Sequence = 0U;
+  volatile uint32_t adcSequence = 0U;
   volatile adcerror_t errors = 0U;
   uint32_t processedBlocks = 0U;
   uint32_t droppedBlocks = 0U;
   uint32_t stalledBlocks = 0U;
   uint32_t acquisitionRestarts = 0U;
   uint32_t discontinuities = 0U;
-  uint16_t mean[2] = {};
-  uint16_t meanAbsoluteDeviation[2] = {};
+  uint16_t mean = 0U;
+  uint16_t meanAbsoluteDeviation = 0U;
   AudioDetector detector;
   uint8_t opticalAddress = 0x44U;
   uint8_t opticalTx[3] = {};
@@ -189,51 +187,41 @@ namespace {
     return std::clamp((value - low) / (high - low), 0.0f, 1.0f);
   }
 
-  /** @brief Analyze one synchronized stereo block without retaining samples. */
+  /** @brief Analyze one audio block without retaining samples. */
   void analyzeAudioBlock(ImavAudioState& state, size_t offset,
-			 uint16_t mean1, uint16_t mean2)
+			 uint16_t mean)
   {
     AudioDetector& detector = state.detector;
-    for (size_t microphone = 0U; microphone < 2U; ++microphone) {
-      for (size_t bin = 0U; bin < goertzelBins.size(); ++bin) {
-	detector.q1[microphone][bin] = 0.0f;
-	detector.q2[microphone][bin] = 0.0f;
-      }
+    for (size_t bin = 0U; bin < goertzelBins.size(); ++bin) {
+      detector.q1[bin] = 0.0f;
+      detector.q2[bin] = 0.0f;
     }
 
-    float windowedEnergy[2] = {};
-    uint16_t minimum[2] = {UINT16_MAX, UINT16_MAX};
-    uint16_t maximum[2] = {};
-    uint16_t clipped[2] = {};
+    float windowedEnergy = 0.0f;
+    uint16_t minimum = UINT16_MAX;
+    uint16_t maximum = 0U;
+    uint16_t clipped = 0U;
     float cosine = 1.0f;
     float sine = 0.0f;
 
     for (size_t index = 0U; index < audioHalfDepth; ++index) {
-      const uint16_t raw[2] = {
-	state.mic1[offset + index], state.mic2[offset + index]
-      };
+      const uint16_t raw = state.samples[offset + index];
       const float window = 0.5f * (1.0f - cosine);
-      const float sample[2] = {
-	(static_cast<float>(raw[0]) - mean1) * window,
-	(static_cast<float>(raw[1]) - mean2) * window,
-      };
+      const float sample = (static_cast<float>(raw) - mean) * window;
 
-      for (size_t microphone = 0U; microphone < 2U; ++microphone) {
-	minimum[microphone] = std::min(minimum[microphone], raw[microphone]);
-	maximum[microphone] = std::max(maximum[microphone], raw[microphone]);
-	if ((raw[microphone] <= audioClipLow) ||
-	    (raw[microphone] >= audioClipHigh)) {
-	  ++clipped[microphone];
-	}
-	windowedEnergy[microphone] += sample[microphone] * sample[microphone];
+      minimum = std::min(minimum, raw);
+      maximum = std::max(maximum, raw);
+      if ((raw <= audioClipLow) || (raw >= audioClipHigh)) {
+	++clipped;
+      }
+      windowedEnergy += sample * sample;
 
-	for (size_t bin = 0U; bin < goertzelBins.size(); ++bin) {
-	  const float q0 = sample[microphone] +
-	    goertzelBins[bin].coefficient * detector.q1[microphone][bin] -
-	    detector.q2[microphone][bin];
-	  detector.q2[microphone][bin] = detector.q1[microphone][bin];
-	  detector.q1[microphone][bin] = q0;
-	}
+      for (size_t bin = 0U; bin < goertzelBins.size(); ++bin) {
+	const float q0 = sample +
+	  goertzelBins[bin].coefficient * detector.q1[bin] -
+	  detector.q2[bin];
+	detector.q2[bin] = detector.q1[bin];
+	detector.q1[bin] = q0;
       }
 
       const float nextCosine = cosine * hannCosStep - sine * hannSinStep;
@@ -241,86 +229,83 @@ namespace {
       cosine = nextCosine;
     }
 
-    for (size_t microphone = 0U; microphone < 2U; ++microphone) {
-      AudioChannelScore& score = detector.channel[microphone];
-      float bandPower = 0.0f;
-      float peakPower = 0.0f;
-      size_t peakBin = firstAlarmBin;
+    AudioChannelScore& score = detector.channel;
+    float bandPower = 0.0f;
+    float peakPower = 0.0f;
+    size_t peakBin = firstAlarmBin;
 
-      for (size_t bin = 0U; bin < goertzelBins.size(); ++bin) {
-	const float q1 = detector.q1[microphone][bin];
-	const float q2 = detector.q2[microphone][bin];
-	const float rawPower = q1 * q1 + q2 * q2 -
-	  goertzelBins[bin].coefficient * q1 * q2;
-	const float power = std::max(rawPower, 0.0f);
-	detector.power[microphone][bin] = power;
-	if ((bin >= firstAlarmBin) && (bin <= lastAlarmBin)) {
-	  bandPower += power;
-	  if (power > peakPower) {
-	    peakPower = power;
-	    peakBin = bin;
-	  }
+    for (size_t bin = 0U; bin < goertzelBins.size(); ++bin) {
+      const float q1 = detector.q1[bin];
+      const float q2 = detector.q2[bin];
+      const float rawPower = q1 * q1 + q2 * q2 -
+	goertzelBins[bin].coefficient * q1 * q2;
+      const float power = std::max(rawPower, 0.0f);
+      detector.power[bin] = power;
+      if ((bin >= firstAlarmBin) && (bin <= lastAlarmBin)) {
+	bandPower += power;
+	if (power > peakPower) {
+	  peakPower = power;
+	  peakBin = bin;
 	}
       }
-
-      const float referencePower =
-	(detector.power[microphone][0] +
-	 detector.power[microphone][1] +
-	 detector.power[microphone][13] +
-	 detector.power[microphone][14]) * 0.25f;
-      bandPower /= static_cast<float>(alarmBinCount);
-
-      if (not score.floorValid) {
-	score.noiseFloor = bandPower;
-	score.floorValid = true;
-      } else if (detector.burstState != AudioBurstState::On) {
-	const float alpha = bandPower < score.noiseFloor ? 1.0f / 16.0f
-						      : 1.0f / 256.0f;
-	score.noiseFloor += (bandPower - score.noiseFloor) * alpha;
-      }
-
-      score.bandPower = bandPower;
-      score.peakPower = peakPower;
-      score.referencePower = referencePower;
-      score.concentration = std::clamp(
-	3.0f * peakPower /
-	  (static_cast<float>(audioHalfDepth) * windowedEnergy[microphone] + 1.0f),
-	0.0f, 1.0f);
-      score.prominence = bandPower / (referencePower + 1.0f);
-      // Hann coherent gain gives A_rms ~= sqrt(Goertzel power) * sqrt(8) / N.
-      score.toneRms = __builtin_sqrtf(peakPower) * 0.005524272f;
-      const float prominenceScore = knee(score.prominence, 1.5f, 5.0f);
-      const float riseScore = knee(
-	bandPower / (score.noiseFloor + 1.0f), 1.8f, 6.0f);
-      const float tonalityScore = knee(score.concentration, 0.03f, 0.25f);
-      score.blockScore = tonalityScore *
-	std::max(prominenceScore, 0.8f * riseScore);
-      if (clipped[microphone] >= 5U) {
-	score.blockScore *= 0.8f;
-      }
-      score.peakFrequencyHz = goertzelBins[peakBin].frequencyHz;
-      score.minimum = minimum[microphone];
-      score.maximum = maximum[microphone];
-      score.clippedSamples = clipped[microphone];
     }
+
+    const float referencePower =
+      (detector.power[0] + detector.power[1] +
+       detector.power[13] + detector.power[14]) * 0.25f;
+    bandPower /= static_cast<float>(alarmBinCount);
+
+    if (not score.floorValid) {
+      score.noiseFloor = bandPower;
+      score.floorValid = true;
+    } else if (detector.burstState != AudioBurstState::On) {
+      const float alpha = bandPower < score.noiseFloor ? 1.0f / 16.0f
+						    : 1.0f / 256.0f;
+      score.noiseFloor += (bandPower - score.noiseFloor) * alpha;
+    }
+
+    score.bandPower = bandPower;
+    score.peakPower = peakPower;
+    score.referencePower = referencePower;
+    // The factor 3 compensates the Hann window's coherent/power gains, so a
+    // pure tone centered on a candidate frequency approaches 0 dB.
+    score.concentration = std::clamp(
+      3.0f * peakPower /
+	(static_cast<float>(audioHalfDepth) * windowedEnergy + 1.0f),
+      0.0f, 1.0f);
+    score.spectralRatioDb = 10.0f * __builtin_log10f(
+      std::max(score.concentration, minimumSpectralRatio));
+    score.prominence = bandPower / (referencePower + 1.0f);
+    // Hann coherent gain gives A_rms ~= sqrt(Goertzel power) * sqrt(8) / N.
+    score.toneRms = __builtin_sqrtf(peakPower) * 0.005524272f;
+    const float prominenceScore = knee(score.prominence, 1.5f, 5.0f);
+    const float riseScore = knee(
+      bandPower / (score.noiseFloor + 1.0f), 1.8f, 6.0f);
+    const float tonalityScore = knee(score.spectralRatioDb, -15.0f, -6.0f);
+    score.blockScore = tonalityScore *
+      std::max(prominenceScore, 0.8f * riseScore);
+    if (clipped >= 5U) {
+      score.blockScore *= 0.8f;
+    }
+    score.peakFrequencyHz = goertzelBins[peakBin].frequencyHz;
+    score.minimum = minimum;
+    score.maximum = maximum;
+    score.clippedSamples = clipped;
 
     float strongestPower = 0.0f;
     size_t strongestBin = firstAlarmBin;
     for (size_t bin = firstAlarmBin; bin <= lastAlarmBin; ++bin) {
-      const float combined = detector.power[0][bin] + detector.power[1][bin];
-      if (combined > strongestPower) {
-	strongestPower = combined;
+      if (detector.power[bin] > strongestPower) {
+	strongestPower = detector.power[bin];
 	strongestBin = bin;
       }
     }
 
     float binOffset = 0.0f;
     if ((strongestBin > firstAlarmBin) && (strongestBin < lastAlarmBin)) {
-      const float left = detector.power[0][strongestBin - 1U] +
-			 detector.power[1][strongestBin - 1U];
+      const float left = detector.power[strongestBin - 1U];
       const float center = strongestPower;
-      const float right = detector.power[0][strongestBin + 1U] +
-			  detector.power[1][strongestBin + 1U];
+      const float right = detector.power[strongestBin + 1U];
       const float denominator = left - 2.0f * center + right;
       if (denominator < -1.0f) {
 	binOffset = std::clamp(0.5f * (left - right) / denominator,
@@ -330,15 +315,7 @@ namespace {
     detector.dominantFrequencyHz =
       static_cast<float>(goertzelBins[strongestBin].frequencyHz) +
       50.0f * binOffset;
-    detector.stereoBalance =
-      (detector.power[0][strongestBin] - detector.power[1][strongestBin]) /
-      (strongestPower + 1.0f);
-    const float maximumScore = std::max(detector.channel[0].blockScore,
-					 detector.channel[1].blockScore);
-    const float minimumScore = std::min(detector.channel[0].blockScore,
-					 detector.channel[1].blockScore);
-    detector.blockScore = std::clamp(maximumScore + 0.1f * minimumScore,
-				     0.0f, 1.0f);
+    detector.blockScore = score.blockScore;
   }
 
   /** @brief Drop cadence evidence after a long gap without inventing an edge. */
@@ -497,8 +474,7 @@ DeviceStatus ImavRole::start(UAVCAN::Node& node)
   m_node = &node;
 
   using HR = HWResource;
-  if (not boardResource.tryAcquire(HR::PA03, HR::PA04, HR::ADC_1,
-				   HR::ADC_2, HR::TIM_6)) {
+  if (not boardResource.tryAcquire(HR::PA03, HR::ADC_1, HR::TIM_6)) {
     return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT,
 			std::to_underlying(HR::ADC_1));
   }
@@ -514,7 +490,7 @@ DeviceStatus ImavRole::start(UAVCAN::Node& node)
     return status;
   }
 
-  static const ADCConversionGroup adc1AudioGroup = {
+  static const ADCConversionGroup adcAudioGroup = {
     .circular = true,
     .num_channels = 1U,
     .end_cb = &Trampoline<&ImavRole::audioDmaCallback>::fn,
@@ -539,33 +515,7 @@ DeviceStatus ImavRole::start(UAVCAN::Node& node)
     },
   };
 
-  static const ADCConversionGroup adc2AudioGroup = {
-    .circular = true,
-    .num_channels = 1U,
-    .end_cb = &Trampoline<&ImavRole::audioDmaCallback>::fn,
-    .error_cb = &Trampoline<&ImavRole::audioErrorCallback>::fn,
-    .cfgr = ADC_CFGR_OVRMOD | ADC_CFGR_EXTSEL_SRC(13U) |
-	    ADC_CFGR_EXTEN_RISING,
-    .cfgr2 = oversamplingX4Keep13Bits,
-    .tr1 = ADC_TR_DISABLED,
-    .tr2 = ADC_TR_DISABLED,
-    .tr3 = ADC_TR_DISABLED,
-    .awd2cr = 0U,
-    .awd3cr = 0U,
-    .smpr = {
-      0U,
-      ADC_SMPR2_SMP_AN17(ADC_SMPR_SMP_47P5),
-    },
-    .sqr = {
-      ADC_SQR1_SQ1_N(ADC_CHANNEL_IN17),
-      0U,
-      0U,
-      0U,
-    },
-  };
-
-  audio->adc1Group = &adc1AudioGroup;
-  audio->adc2Group = &adc2AudioGroup;
+  audio->adcGroup = &adcAudioGroup;
   audio->opticalAddress = static_cast<uint8_t>(
     param_cget<"role.imav.light.i2c_address">());
   audio->publishDebug = param_cget<"role.imav.debug.publish">();
@@ -589,25 +539,6 @@ DeviceStatus ImavRole::start(UAVCAN::Node& node)
   const uint16_t initialOpticalDeviceId = audio->opticalDeviceId;
 
   palSetLineMode(LINE_DBG_RX, PAL_MODE_INPUT_ANALOG);
-  palSetLineMode(LINE_SPI_PERIPH_CS, PAL_MODE_INPUT_ANALOG);
-
-  // ADCv3 asserts instead of returning an error when its dynamically chosen
-  // stream is exhausted. IMAV is started before optional roles; this explicit
-  // preflight therefore turns the remaining failure case into DeviceStatus.
-  const stm32_dma_stream_t * const dmaProbe = dmaStreamAlloc(
-    STM32_ADC_ADC2_DMA_STREAM, STM32_ADC_ADC2_DMA_IRQ_PRIORITY,
-    nullptr, nullptr);
-  if (dmaProbe == nullptr) {
-    return DeviceStatus(DeviceStatus::IMAV_ROLE,
-			DeviceStatus::DMA_UNAVAILABLE,
-			std::to_underlying(HR::ADC_2));
-  }
-  dmaStreamFree(dmaProbe);
-
-  if (adcStart(&ADCD2, nullptr) != MSG_OK) {
-    return DeviceStatus(DeviceStatus::IMAV_ROLE, DeviceStatus::NOT_RESPONDING,
-			std::to_underlying(HR::ADC_2));
-  }
   if (gptStart(&GPTD6, &audioTimerConfig) != MSG_OK) {
     return DeviceStatus(DeviceStatus::IMAV_ROLE, DeviceStatus::NOT_RESPONDING,
 			std::to_underlying(HR::TIM_6));
@@ -630,7 +561,7 @@ DeviceStatus ImavRole::start(UAVCAN::Node& node)
     node.infoCb("IMAV light worker unavailable: heap full");
   }
 
-  node.infoCb("IMAV audio started: PA3/ADC1 + PA4/ADC2, 24kHz, OVS x4");
+  node.infoCb("IMAV audio started: PA3/ADC1, 24kHz, OVS x4");
   if (opticalInitiallyAvailable) {
     node.infoCb("IMAV light started: OPT4048 addr=0x%02x id=0x%04x",
 		audio->opticalAddress, initialOpticalDeviceId);
@@ -641,28 +572,24 @@ DeviceStatus ImavRole::start(UAVCAN::Node& node)
   return DeviceStatus(DeviceStatus::IMAV_ROLE);
 }
 
-/** @brief Start both ADC DMA streams before enabling their common trigger. */
+/** @brief Start the ADC DMA stream before enabling its timer trigger. */
 void ImavRole::startAudioAcquisition()
 {
   chSysLock();
-  audio->adc1Sequence = 0U;
-  audio->adc2Sequence = 0U;
+  audio->adcSequence = 0U;
   audio->errors = 0U;
   chSysUnlock();
 
-  adcStartConversion(&ADCD1, audio->adc1Group, audio->mic1,
-		     audioBufferDepth);
-  adcStartConversion(&ADCD2, audio->adc2Group, audio->mic2,
+  adcStartConversion(&ADCD1, audio->adcGroup, audio->samples,
 		     audioBufferDepth);
   gptStartContinuous(&GPTD6, audioTimerInterval);
 }
 
-/** @brief Stop the trigger first, then return both ADCs to READY state. */
+/** @brief Stop the trigger first, then return ADC1 to READY state. */
 void ImavRole::stopAudioAcquisition()
 {
   gptStopTimer(&GPTD6);
   adcStopConversion(&ADCD1);
-  adcStopConversion(&ADCD2);
 }
 
 /** @brief Minimal ISR callback: count half-buffers and wake the worker. */
@@ -670,9 +597,7 @@ void ImavRole::audioDmaCallback(ADCDriver *adcp)
 {
   chSysLockFromISR();
   if (adcp == &ADCD1) {
-    ++audio->adc1Sequence;
-  } else if (adcp == &ADCD2) {
-    ++audio->adc2Sequence;
+    ++audio->adcSequence;
   }
   if (audio->worker != nullptr) {
     chEvtSignalI(audio->worker, audioReadyEvent);
@@ -694,31 +619,22 @@ void ImavRole::audioErrorCallback(ADCDriver *, adcerror_t error)
 /** @brief Compute cheap bring-up statistics without copying the DMA block. */
 void ImavRole::processAudioHalf(size_t offset, bool discontinuity)
 {
-  uint32_t sum1 = 0U;
-  uint32_t sum2 = 0U;
+  uint32_t sum = 0U;
   for (size_t i = 0U; i < audioHalfDepth; ++i) {
-    sum1 += audio->mic1[offset + i];
-    sum2 += audio->mic2[offset + i];
+    sum += audio->samples[offset + i];
   }
 
-  const uint16_t mean1 = static_cast<uint16_t>(sum1 / audioHalfDepth);
-  const uint16_t mean2 = static_cast<uint16_t>(sum2 / audioHalfDepth);
-  uint32_t deviation1 = 0U;
-  uint32_t deviation2 = 0U;
+  const uint16_t mean = static_cast<uint16_t>(sum / audioHalfDepth);
+  uint32_t deviation = 0U;
   for (size_t i = 0U; i < audioHalfDepth; ++i) {
-    const uint16_t sample1 = audio->mic1[offset + i];
-    const uint16_t sample2 = audio->mic2[offset + i];
-    deviation1 += sample1 >= mean1 ? sample1 - mean1 : mean1 - sample1;
-    deviation2 += sample2 >= mean2 ? sample2 - mean2 : mean2 - sample2;
+    const uint16_t sample = audio->samples[offset + i];
+    deviation += sample >= mean ? sample - mean : mean - sample;
   }
 
-  audio->mean[0] = mean1;
-  audio->mean[1] = mean2;
-  audio->meanAbsoluteDeviation[0] =
-    static_cast<uint16_t>(deviation1 / audioHalfDepth);
-  audio->meanAbsoluteDeviation[1] =
-    static_cast<uint16_t>(deviation2 / audioHalfDepth);
-  analyzeAudioBlock(*audio, offset, mean1, mean2);
+  audio->mean = mean;
+  audio->meanAbsoluteDeviation =
+    static_cast<uint16_t>(deviation / audioHalfDepth);
+  analyzeAudioBlock(*audio, offset, mean);
   updateAudioCadence(audio->detector, discontinuity, chVTGetSystemTimeX());
   ++audio->processedBlocks;
   if (discontinuity) {
@@ -743,25 +659,22 @@ void ImavRole::processAudioHalf(size_t offset, bool discontinuity)
     const uint16_t lightScore = opticalFresh
       ? static_cast<uint16_t>(1000.0f * opticalFlashScore) : 0U;
 
-    const uint16_t score0 = static_cast<uint16_t>(
-      1000.0f * audio->detector.channel[0].blockScore);
-    const uint16_t score1 = static_cast<uint16_t>(
-      1000.0f * audio->detector.channel[1].blockScore);
+    const uint16_t blockScore = static_cast<uint16_t>(
+	1000.0f * audio->detector.channel.blockScore);
     const uint16_t frequency = static_cast<uint16_t>(
       audio->detector.dominantFrequencyHz);
     const uint16_t cadence = static_cast<uint16_t>(
       1000.0f * audio->detector.cadenceHz);
     const uint16_t audioScore = static_cast<uint16_t>(
       1000.0f * audio->detector.audioScore);
-    m_node->infoCb("IMAV a=%u/%u f=%u c=%u s=%u d=%u",
-		   score0, score1, frequency, cadence, audioScore,
+    m_node->infoCb("IMAV a=%u f=%u c=%u s=%u d=%u",
+		   blockScore, frequency, cadence, audioScore,
 		   audio->detector.detected ? 1U : 0U);
-    m_node->infoCb("IMAV dc=%u/%u mad=%u/%u clip=%u/%u",
-		   audio->mean[0], audio->mean[1],
-		   audio->meanAbsoluteDeviation[0],
-		   audio->meanAbsoluteDeviation[1],
-		   audio->detector.channel[0].clippedSamples,
-		   audio->detector.channel[1].clippedSamples);
+    const int16_t spectralDb10 = static_cast<int16_t>(
+	10.0f * audio->detector.channel.spectralRatioDb);
+    m_node->infoCb("IMAV dc=%u mad=%u clip=%u sdb10=%d",
+		   audio->mean, audio->meanAbsoluteDeviation,
+		   audio->detector.channel.clippedSamples, spectralDb10);
     m_node->infoCb("IMAV drop=%lu gap=%lu light=%lu/%u ovl=%u",
 		   audio->droppedBlocks, audio->discontinuities,
 		   opticalPositiveAc, lightScore,
@@ -795,14 +708,12 @@ void ImavRole::publishDebugValues()
     UAVCAN::dsdlAssign(message.key, key);
     m_node->sendBroadcast(message, CANARD_TRANSFER_PRIORITY_LOW);
   };
-  publish("a0", audio->detector.channel[0].blockScore);
-  publish("a1", audio->detector.channel[1].blockScore);
-  publish("p0", audio->detector.channel[0].toneRms);
-  publish("p1", audio->detector.channel[1].toneRms);
+  publish("a0", audio->detector.channel.blockScore);
+  publish("p0", audio->detector.channel.toneRms);
+  publish("sdb", audio->detector.channel.spectralRatioDb);
   publish("aud", audio->detector.audioScore);
   publish("frq", audio->detector.dominantFrequencyHz);
   publish("cad", audio->detector.cadenceHz);
-  publish("bal", audio->detector.stereoBalance);
   publish("lit", opticalFlashScore);
 }
 
@@ -1070,53 +981,47 @@ bool ImavRole::readOpticalSensor()
   return true;
 }
 
-/** @brief Own ADC1/ADC2, pair DMA halves and periodically refresh health. */
+/** @brief Own ADC1, process DMA halves and periodically refresh health. */
 void ImavRole::audioThread(void *)
 {
   uint32_t lastSequence = 0U;
   bool discardNextBlock = true;
   bool discontinuity = true;
   systime_t lastHealth = chVTGetSystemTimeX();
-  systime_t lastPairedBlock = lastHealth;
+  systime_t lastBlock = lastHealth;
 
   while (true) {
     const eventmask_t events =
       chEvtWaitAnyTimeout(allAudioEvents, TIME_MS2I(100U));
     const bool adcError = (events & audioErrorEvent) != 0U;
 
-    uint32_t adc1Sequence;
-    uint32_t adc2Sequence;
+    uint32_t adcSequence;
     chSysLock();
-    adc1Sequence = audio->adc1Sequence;
-    adc2Sequence = audio->adc2Sequence;
+    adcSequence = audio->adcSequence;
     chSysUnlock();
 
-    // The DMA IRQ order is not deterministic. Process only after both ADCs
-    // reached the same half-buffer generation.
     if ((not adcError) && (events != 0U) &&
-	(adc1Sequence == adc2Sequence) && (adc1Sequence > lastSequence)) {
-      if (adc1Sequence > (lastSequence + 1U)) {
-        audio->droppedBlocks += adc1Sequence - lastSequence - 1U;
+	(adcSequence > lastSequence)) {
+      if (adcSequence > (lastSequence + 1U)) {
+        audio->droppedBlocks += adcSequence - lastSequence - 1U;
         discontinuity = true;
       }
 
-      const size_t half = (adc1Sequence - 1U) & 1U;
+      const size_t half = (adcSequence - 1U) & 1U;
       if (discardNextBlock) {
         discardNextBlock = false;
       } else {
         processAudioHalf(half * audioHalfDepth, discontinuity);
         discontinuity = false;
       }
-      lastSequence = adc1Sequence;
-      lastPairedBlock = chVTGetSystemTimeX();
+      lastSequence = adcSequence;
+      lastBlock = chVTGetSystemTimeX();
     }
 
     const systime_t now = chVTGetSystemTimeX();
-    // A lone ADC can continue generating events forever, so the event timeout
-    // alone is insufficient. Also watchdog progress of actual paired halves.
-    const bool pairingStalled =
-      chTimeDiffX(lastPairedBlock, now) >= TIME_MS2I(100U);
-    if (adcError || (events == 0U) || pairingStalled) {
+    const bool acquisitionStalled =
+      chTimeDiffX(lastBlock, now) >= TIME_MS2I(100U);
+    if (adcError || (events == 0U) || acquisitionStalled) {
       adcerror_t errors;
       chSysLock();
       errors = audio->errors;
@@ -1140,7 +1045,7 @@ void ImavRole::audioThread(void *)
       lastSequence = 0U;
       discardNextBlock = true;
       discontinuity = true;
-      lastPairedBlock = chVTGetSystemTimeX();
+      lastBlock = chVTGetSystemTimeX();
       continue;
     }
 
@@ -1153,7 +1058,7 @@ void ImavRole::audioThread(void *)
       discardNextBlock = true;
       discontinuity = true;
       lastHealth = now;
-      lastPairedBlock = chVTGetSystemTimeX();
+      lastBlock = chVTGetSystemTimeX();
       if (not healthOk) {
         m_node->infoCb("IMAV: ADC health sampling failed");
       }

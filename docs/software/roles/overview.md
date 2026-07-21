@@ -158,14 +158,14 @@ Params:
 
 Wiring and resources:
 - microphone 0: PA3 / ADC1_IN4
-- microphone 1: PA4 / ADC2_IN17
-- common 23.9977 kHz trigger: TIM6
+- 23.9977 kHz trigger: TIM6
 - OPT4048: shared I2C1 on PA15/PB07
 - PA2 remains TX-only debug; the PA3 console receiver is disabled
+- PA4 remains available to other roles
 
-The role stores only two 1024-sample circular DMA buffers. It computes Hann/Goertzel
-spectral scores, burst cadence, stereo balance and an independent color-normalized
-flash score. Current thresholds and debug messages are for sensor bring-up and must
-be calibrated with the real beacon.
+The role stores one 1024-sample circular DMA buffer. It computes Hann/Goertzel
+spectral scores, the candidate-tone/global-energy ratio in dB (`sdb`), burst cadence
+and an independent color-normalized flash score. Current thresholds and debug
+messages are for sensor bring-up and must be calibrated with the real beacon.
 
 See [docs/software/adding_roles.md](../adding_roles.md) for the full new role checklist.

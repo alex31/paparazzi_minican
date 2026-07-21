@@ -379,8 +379,8 @@ namespace CANSlave {
 
     bool rolesOk = true;
 #if USE_IMAV_ROLE
-    // Start IMAV first so ADC2 reserves its dynamically selected DMA stream
-    // before optional roles allocate their own DMA channels.
+    // Start IMAV first so its ADC1/TIM6 ownership is established before the
+    // optional roles acquire their resources.
     rolesOk = rolesOk && addRole<ImavRole, FixedString("ROLE.imav.beacon")>();
 #endif
 #if USE_SERVO_ROLE
