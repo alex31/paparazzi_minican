@@ -30,7 +30,7 @@ Cette note rassemble les conclusions techniques nécessaires pour reprendre le t
 
 La première conclusion est simple : **la MicroCAN v5 et ses 112 Kio de RAM suffisent très largement pour reconnaître l'alarme**, car l'audio n'est jamais enregistré intégralement. Un DMA circulaire contient seulement 20 à 40 ms de signal, le bloc est traité, puis immédiatement écrasé par le bloc suivant.
 
-La deuxième conclusion est liée au matériel existant et aux décisions prises après l'étude initiale : **le MVP utilise un seul microphone analogique IM68A130(A), directement relié à PA3/ADC1_IN4, un TCS3410 orienté vers le sol pour les flashs et un VL53L4CX pour la hauteur du module**. PA4 est de nouveau libre. Le TCS3410 échantillonne à 8 kéch/s dans sa FIFO ; sa mesure est explicitement arrêtée pendant chaque mesure ponctuelle du télémètre 940 nm.
+La deuxième conclusion est liée au matériel existant et aux décisions prises après l'étude initiale : **le MVP utilise un seul microphone analogique IM68A130(A), directement relié à PA3/ADC1_IN4, un OPT4060 orienté vers le sol pour les flashs et un VL53L4CX pour la hauteur du module**. PA4 est de nouveau libre. L'OPT4060 fournit les quatre voies RGBW à environ 100 Hz, sans FIFO ; sa mesure est explicitement arrêtée pendant chaque mesure ponctuelle du télémètre 940 nm.
 
 Les décisions suivantes font foi lorsqu'une section historique du document semble encore présenter une variante antérieure :
 
@@ -40,7 +40,7 @@ Les décisions suivantes font foi lorsqu'une section historique du document semb
 - pas d'OPAMP interne ni externe dans le premier prototype ;
 - liaison continue en tension entre la sortie déjà polarisée de l'IM68A130(A) et l'ADC, avec seulement découplage et petit réseau RC passif ;
 - suréchantillonnage matériel ADC envisagé en x4 ou x16, sans augmentation de la taille des tampons DMA ;
-- un seul TCS3410 sous le drone, sans sectorisation optique ;
+- un seul OPT4060 sous le drone, sans sectorisation optique ;
 - VL53L4CX piloté par le composant officiel ST provenant du sous-module `STMicroelectronics/x-cube-tof1` ;
 - pas de canaux injectés : un seul thread arbitre explicitement audio et mesures lentes ;
 - acquisition lumière et mesure ToF strictement exclusives.
@@ -1274,18 +1274,18 @@ L'état `Unarmed` est réimposé après une discontinuité. Il faut ensuite obse
 
 Les seuils numériques actuels sont volontairement des valeurs de bring-up. Ils doivent être recalés sur des enregistrements de la vraie balise et du drone, en conservant les scores continus plutôt qu'un simple booléen.
 
-### 25.3 TCS3410, VL53L4CX et exclusion temporelle
+### 25.3 OPT4060, VL53L4CX et exclusion temporelle
 
-- Un unique TCS3410 orienté vers le sol est recherché aux adresses 0x39 et 0x49.
-- Les deux photodiodes à filtre `F` sont reliées au modulateur 0, à gain fixe 16x. La mesure ALS lente et les résidus sont désactivés.
-- `SAMPLE_TIME=89` produit 8 kéch/s ; les échantillons 16 bits sont écrits en continu dans la FIFO de 512 octets.
-- Le thread lit la FIFO toutes les 4 ms, jusqu'à 128 octets par transfert, et vérifie débordement, sous-débordement et parité du nombre d'octets.
-- Le score de flash compare la composante positive à un fond et à un bruit adaptatifs. Une rémanence d'environ 0,6 s rend visible un flash d'un seul échantillon dans la télémétrie lente.
+- Un unique OPT4060 orienté vers le sol est recherché aux adresses 0x44 à 0x47 ; `ADDR=GND` et l'adresse 0x44 sont les valeurs nominales.
+- Le registre de configuration vaut `0x30B8` en acquisition : plage automatique, 1,8 ms par voie, mode continu et quatre voies séquentielles. Un cycle RGBW typique dure donc 7,2 ms.
+- Le thread lit toutes les 10 ms les huit registres de résultat par un unique transfert burst. Exposant et mantisse sont linéarisés en codes ADC 26 bits ; les compteurs de conversion empêchent de mélanger un cycle incomplet et permettent de détecter un capteur bloqué.
+- Les coefficients TI `R=2,4×CH0`, `G=CH1` et `B=1,3×CH2` sont appliqués avant de calculer la dominance rouge de la variation. Le score instantané combine amplitude absolue, variation relative, élévation au-dessus du bruit et chromaticité rouge.
+- Deux mesures hautes puis deux mesures basses valident les fronts. Six fronts au maximum alimentent un score de cadence centré sur trois allumages par seconde ; un flash isolé ou la LED d'état rouge à 1 Hz ne suffit pas à produire le score final `lit`.
 - Le VL53L4CX utilise sans modification le composant officiel ST du sous-module `third_party/x-cube-tof1`, épinglé sur X-CUBE-TOF1 v3.4.3 (cœur VL53LX 1.2.13). Seuls les callbacks I2C/temps sont adaptés à ChibiOS.
 - Il fonctionne en profil longue distance, budget de 30 ms et one-shot asynchrone borné à 100 ms. Le résultat valide le plus proche est publié.
-- Avant chaque one-shot ou réinitialisation ToF, `FDEN` est mis à zéro et acquitté par le TCS3410. La FIFO est vidée, la mesure ST est effectuée, puis la FIFO est effacée et `FDEN` réactivé.
+- Avant chaque one-shot ou réinitialisation ToF, le mode de l'OPT4060 passe à `Power-down` par une écriture I²C acquittée. La mesure ST est effectuée, puis le mode continu est rétabli ; aucun résultat optique de cette fenêtre n'est utilisé.
 - La période nominale vaut 200 ms et est paramétrable. Un petit jitter déterministe déplace la phase des trous afin de ne pas masquer systématiquement une balise périodique.
-- I2C Fast mode 400 kHz et Fast-mode Plus 1 MHz sont acceptés ; 100 kHz est refusé car insuffisant pour le flux FIFO.
+- I2C standard 100 kHz et Fast mode 400 kHz sont acceptés ; 400 kHz reste recommandé. Le Fast-mode Plus 1 MHz est refusé car l'OPT4060 passe directement du Fast mode au protocole High-Speed 2,6 MHz, non activé ici.
 - Un NACK d'un capteur absent ne réinitialise pas le bus partagé. Seuls un timeout ou une faute électrique/protocolaire déclenchent la récupération sérialisée.
 
 La distance est publiée à chaque mesure dans `uavcan.equipment.range_sensor.Measurement` (`sensor_id=0`, type LIDAR, champ de vue 18°). L'orientation de corps est laissée indéfinie car le module est suspendu ; le contrôleur de vol configure lui-même l'orientation du télémètre vers le bas.
@@ -1296,11 +1296,11 @@ La lumière et le son restent deux preuves indépendantes. Il n'y a pas de condi
 
 Mesures contrôlées sur le build `-Og` :
 
-- `sizeof(ImavAudioState) = 2 396` octets sur le heap DMA de 12 288 octets ; ce total contient le buffer audio mono de 2 048 octets ;
+- `sizeof(ImavAudioState) = 2 620` octets sur le heap DMA de 12 288 octets ; ce total contient le buffer audio mono de 2 048 octets ;
 - `sizeof(ImavLightRange) = 10 304` octets sur le heap standard de 20 480 octets ; ce total contient le contexte officiel ST de 9 480 octets et les tampons I2C ;
 - thread audio : pile utile configurée à 1 536 octets ;
 - thread capteurs : pile utile configurée à 2 048 octets ;
-- firmware : 273 872 octets de texte et 100 048 octets de BSS, heaps réservés inclus ;
+- firmware : 276 184 octets de texte et 100 056 octets de BSS, heaps réservés inclus ;
 - le shell de 2 000 octets n'est pas alloué en mode IMAV.
 
 La télémétrie temporaire `uavcan.protocol.debug.KeyValue`, activable par `role.imav.debug.publish`, diffuse environ une fois par seconde :
@@ -1313,7 +1313,7 @@ La télémétrie temporaire `uavcan.protocol.debug.KeyValue`, activable par `rol
 | `aud` | score audio avec cadence |
 | `frq` | fréquence dominante en hertz |
 | `cad` | cadence de salves estimée en hertz |
-| `lit` | score de flash large bande frais, zéro après 200 ms sans nouvel échantillon |
+| `lit` | score de flash rouge qualifié par la cadence de 3 Hz, zéro après 200 ms sans nouvel échantillon |
 | `rng` | distance en mètres, -1 si la dernière mesure n'est pas valide |
 | `rsg` | signal VL53L4CX en kcps/SPAD |
 
@@ -1324,9 +1324,9 @@ Les clés font trois caractères afin que chaque message tienne dans une seule t
 - mesurer le temps CPU maximum du DSP sur cible en `-Og` puis en `RELEASE=fast` ;
 - injecter des sinus/salves connus sur PA3 et vérifier fréquence, cadence, clipping et reprise après pause santé ;
 - enregistrer la vraie forme temporelle du motionSCOUT et ajuster les seuils/profils de cadence ;
-- mesurer la largeur réelle des flashs et vérifier au compteur FIFO qu'un flash bref produit au moins un échantillon ;
-- tester le TCS3410 au soleil, à l'ombre, devant des LED parasites et avec le diffuseur mécanique définitif ;
-- observer `FDEN` et l'émission 940 nm pour confirmer sur cible qu'il n'existe aucun recouvrement lumière/ToF ;
+- mesurer la largeur réelle des flashs et vérifier qu'un allumage produit plusieurs cycles RGBW complets ;
+- tester l'OPT4060 au soleil, à l'ombre, devant des LED parasites et avec l'ouverture mécanique définitive ;
+- observer les écritures `Power-down` et l'émission 940 nm pour confirmer sur cible qu'il n'existe aucun recouvrement lumière/ToF ;
 - qualifier le VL53L4CX vers 1 m au-dessus de sols clairs et sombres, en extérieur, avec le verre de protection et le balancement du fil ;
 - configurer l'orientation vers le bas dans le contrôleur de vol et valider la consommation de `uavcan.equipment.range_sensor.Measurement` ;
 - décider la fusion et les durées de confirmation monomodales/bimodales après ces essais ;

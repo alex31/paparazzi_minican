@@ -65,7 +65,17 @@ alarme complète. Cette LED est uniquement un témoin destiné à l'utilisateur 
 elle ne fait pas partie du dispositif d'alerte et ne doit jamais contribuer à
 la décision de détection. Le signal optique utile provient exclusivement des
 deux LED rouges d'alarme. Le fabricant ne donne pas leur cadence, la durée de
-leurs éclairs ou leur intensité.
+leurs allumages ou leur intensité.
+
+Une
+[vidéo de démonstration de la motionSCOUT](https://www.youtube.com/shorts/VTjL53YFpTA)
+montre les deux LED d'alarme allumées simultanément pendant des impulsions de
+l'ordre de 100 ms, avec des cadences voisines de 1, puis 2, puis 3 allumages par
+seconde au cours de la séquence. Cette durée est assez longue pour une
+acquisition couleur périodique sans FIFO. La vidéo ne documente toutefois ni la
+référence exacte ni les conditions de prise de vue : ces valeurs sont des
+indications pour le prototype, pas des caractéristiques garanties de la balise
+de compétition.
 
 La brochure MSA indique une bande de 2,6 à 3,0 kHz, comme le règlement, tandis
 que le manuel donne une bande plus large de 2,0 à 3,0 kHz. Le firmware utilise
@@ -90,13 +100,16 @@ Sources fabricant :
 et
 [avis de service de février 2026](https://assetlibrary.msasafety.com/m/1daafc2b15a7c2a5/original/Avis-de-service-Dispositif-MSA-motionSCOUT-PASS-Fevrier-2026.pdf).
 
+Source d'observation complémentaire :
+[vidéo YouTube de démonstration](https://www.youtube.com/shorts/VTjL53YFpTA).
+
 ### 1.3 Points à confirmer sur la balise de compétition
 
 Le règlement et les documents MSA ne définissent pas :
 
 - l'orientation et la fixation de la balise sur le mannequin ;
-- la largeur, la cadence et la puissance optique des éclairs, leur diagramme
-  angulaire, ni leur synchronisation éventuelle avec le son ;
+- la largeur, la cadence et la puissance optique garanties des allumages, leur
+  diagramme angulaire, ni leur synchronisation éventuelle avec le son ;
 - la forme d'onde sonore, ses harmoniques, ses tolérances et les conditions de
   mesure des 95 dB ;
 - l'état des piles et les conditions réelles de soleil, de bruit, de vent et
@@ -119,8 +132,9 @@ bon fonctionnement avant l'épreuve.
 - La voie audio utilisera par défaut l'énergie dans la bande 2,6–3,0 kHz, mais
   sa borne basse pourra être abaissée jusqu'à 2,0 kHz pour les essais. La
   cadence caractéristique de trois signaux par seconde reste indispensable.
-- La voie optique cherchera des variations rapides et répétées sans supposer
-  une durée d'éclair connue.
+- La voie optique cherchera des variations rouges rapides et répétées. Une
+  acquisition voisine de 100 Hz donnera environ dix mesures pendant un
+  allumage de 100 ms observé dans la vidéo, sans imposer de FIFO.
 - La LED d'état à 1 Hz n'est pas un indice de présence de la balise. Son
   éventuelle contribution au signal du capteur est un parasite qui ne doit pas
   déclencher la détection.
@@ -156,26 +170,25 @@ encore une spécification de fabrication définitive.
 | Fonction | Composant retenu | Interface | Motivation principale |
 |---|---|---|---|
 | Son | Infineon IM68A130A | PA3 / ADC1_IN4 | microphone analogique sensible, un seul canal ADC |
-| Flash | ams OSRAM TCS34103M | I²C, adresse 0x39 | acquisition continue rapide et FIFO 512 octets |
+| Flash | Texas Instruments OPT4060DTSR | I²C, adresse 0x44 | RGBW, forte réjection IR, plage automatique et alimentation directe en 3,3 V |
 | Distance au sol | ST VL53L4CXV0DH/1 | I²C, adresse 0x29 | portée suffisante autour de 1 m et pilote officiel ST |
 
 Décisions déjà raisonnablement établies :
 
 - un seul microphone et un seul capteur de flash ;
-- TCS3410 et VL53L4CX orientés vers le sol ;
+- OPT4060 et VL53L4CX orientés vers le sol ;
 - microphone relié directement à l'ADC, sans amplificateur externe ;
-- TCS3410 et VL53L4CX sur le même bus I²C ;
+- OPT4060 et VL53L4CX sur le même bus I²C ;
 - bus à 400 kHz pour le premier prototype ;
 - pull-up I²C de 2,2 kΩ déjà présentes sur la MicroCAN ;
 - aucune mesure de lumière pendant une mesure ToF ;
-- alimentation générale 3,3 V, avec un petit rail 1,8 V uniquement pour le
-  cœur du TCS3410 ;
-- aucun traducteur de niveau I²C : les entrées/sorties du TCS3410 acceptent les
-  pull-up à 3,3 V.
+- tous les capteurs alimentés directement par le rail 3,3 V ;
+- acquisition du capteur de lumière par lecture périodique, sans FIFO ;
+- sortie d'interruption de l'OPT4060 facultative pour le premier prototype.
 
-Le TCS34103M est en phase « Last Time Buy », mais cela n'est pas considéré comme
-bloquant pour une compétition ponctuelle. Il faut simplement acheter assez de
-pièces pour les prototypes et les reprises de montage.
+Ce choix supprime le régulateur 1,8 V et la dépendance au TCS34103M en phase
+« Last Time Buy ». Il conserve une information de couleur utile pour distinguer
+les LED rouges de variations générales de l'éclairage ambiant.
 
 ## 4. Utilisation envisagée des capteurs
 
@@ -210,34 +223,42 @@ préalarme à 2 Hz ne doit pas être notre état nominal de recherche.
 
 ### 4.2 Flash
 
-Le TCS3410 possède des canaux RGB, Clear et un canal Flicker très sensible. Le
-logiciel actuel utilise le canal Flicker, et non les rapports RGB :
+L'OPT4060 fonctionne directement sous 3,3 V et fournit quatre voies : rouge,
+verte, bleue et large bande. Les voies RGB possèdent une forte réjection du
+proche infrarouge. La sélection automatique de plage doit faciliter le passage
+de l'ombre au soleil sans réglage permanent du gain.
 
-- 8 kéch/s actuellement, soit un échantillon toutes les 125 µs ;
-- possibilité de tester jusqu'à 14 kéch/s ;
-- acquisition continue vers une FIFO de 512 octets ;
-- détection d'une variation rapide par rapport à l'éclairage ambiant.
+Pour le premier prototype, la configuration proposée est :
 
-Un flash plus court que 125 µs n'est pas automatiquement raté : son énergie est
-intégrée dans un échantillon, ou partagée entre deux échantillons s'il tombe sur
-leur frontière. La limite réelle dépendra surtout de l'énergie lumineuse reçue,
-du soleil, de la fenêtre optique et du gain choisi.
+- temps de conversion de 1,8 ms par voie, soit 7,2 ms pour un cycle RGBW ;
+- mode continu et lecture périodique proche de 100 Hz sur l'I²C à 400 kHz ;
+- plage automatique activée ;
+- pas de FIFO et pas d'interruption obligatoire.
 
-Les canaux RGB pourraient être exploités plus tard pour mieux reconnaître les
-LED rouges annoncées par MSA, mais ils ne sont pas nécessaires pour le premier
-essai.
+À 100 Hz, un allumage d'environ 100 ms observé dans la vidéo produit une dizaine
+de mesures. La détection pourra combiner :
+
+- une variation positive de la voie rouge par rapport à un fond ambiant lent ;
+- un seuil minimal absolu pour rejeter le bruit de mesure ;
+- une chromaticité dominée par le rouge, comparée aux voies verte, bleue et
+  large bande ;
+- la répétition temporelle attendue de l'alarme complète, voisine de 3 Hz.
+
+La LED d'état rouge à 1 Hz ne devra jamais suffire à valider la détection. Les
+seuils et les rapports de couleur seront déterminés à partir de mesures sur la
+vraie balise, en intérieur puis en plein soleil.
 
 ### 4.3 Distance au sol
 
-Le VL53L4CX effectuera une mesure ponctuelle, typiquement toutes les 200 ms. Le
-TCS3410 sera arrêté avant l'émission infrarouge 940 nm, puis redémarré après la
-mesure.
+Le VL53L4CX effectuera une mesure ponctuelle, typiquement toutes les 200 ms.
+L'acquisition de l'OPT4060 sera suspendue avant l'émission infrarouge 940 nm,
+puis reprise après la mesure. Les échantillons optiques présents autour de cette
+fenêtre seront ignorés.
 
 Cette stratégie simplifie l'électronique et évite les interactions optiques,
 mais crée une fenêtre aveugle de plusieurs dizaines de millisecondes pour les
-flashs. Le caractère clignotant de l'alarme visuelle est confirmé, mais pas sa
-cadence : l'acceptabilité de cette fenêtre devra donc être vérifiée sur la vraie
-balise.
+flashs. Les allumages assez longs visibles dans la vidéo rendent cette stratégie
+plausible, mais son acceptabilité devra être vérifiée sur la vraie balise.
 
 ## 5. Schéma électrique minimal proposé
 
@@ -249,16 +270,19 @@ balise.
   +-- 22 Ω -- IM68A130A VDD                                        |
   |             +-- 1 µF + 100 nF vers GND                         |
   |                                                                |
-  +-- TPS7A2018 1,8 V -- 22 Ω -- TCS3410 VDD                       |
-  |          +-- 4,7 µF          +-- 1 µF vers GND                 |
+  +---------------------------- OPT4060 VDD                         |
+  |                              +-- 100 nF vers GND                |
   |                                                                |
   +---------------------------- VL53L4CX AVDD + AVDDVCSEL           |
                                  +-- 100 nF + 4,7 µF vers GND       |
                                                                    |
 IM68A130A OUT -- 100 Ω -- MIC_ADC -- PA3 / ADC1_IN4                |
                                                                    |
-MicroCAN SDA ------------------- TCS3410 SDA + VL53L4CX SDA         |
-MicroCAN SCL ------------------- TCS3410 SCL + VL53L4CX SCL         |
+OPT4060 ADDR ------------------------------------------------ GND   |
+OPT4060 INT ------------------------------------------ point de test|
+                                                                   |
+MicroCAN SDA ------------------- OPT4060 SDA + VL53L4CX SDA         |
+MicroCAN SCL ------------------- OPT4060 SCL + VL53L4CX SCL         |
 GND ------------------------------------------------ plan continu --+
 ~~~
 
@@ -269,8 +293,8 @@ Points à conserver dans le schéma du premier prototype :
 | Entrée 3,3 V | 10 µF + 100 nF près du connecteur |
 | Microphone | alimentation via 22 Ω, 1 µF + 100 nF, sortie via 100 Ω |
 | Filtre ADC optionnel | empreinte 47 à 100 pF, non montée initialement |
-| LDO 1,8 V | TPS7A2018PDBVR, 1 µF en entrée et 4,7 µF en sortie |
-| TCS3410 | 22 Ω puis 1 µF au plus près de VDD |
+| OPT4060 | VDD sur 3,3 V, 100 nF au plus près, ADDR à GND pour l'adresse 0x44 |
+| OPT4060 INT | point de test ou broche optionnelle, non nécessaire au fonctionnement initial |
 | VL53L4CX | 100 nF + 4,7 µF, XSHUT tiré à 3,3 V par 10 kΩ |
 | SDA/SCL | résistances série 0 Ω ; pull-up locales prévues mais non montées |
 
@@ -299,7 +323,7 @@ fonction des connecteurs réellement montés sur la MicroCAN.
 
 ## 7. Implantation mécanique proposée
 
-- TCS3410 et VL53L4CX sur la face inférieure, orientés vers le sol.
+- OPT4060 et VL53L4CX sur la face inférieure, orientés vers le sol.
 - Cloison noire entre les deux capteurs optiques.
 - Microphone sur l'autre face avec un trou acoustique non métallisé de 0,6 mm
   vers le sol, sous réserve de validation de la variante exacte du microphone.
@@ -323,10 +347,11 @@ une référence impossible à acheter en petite quantité.
 |---|---|---|
 | [IM68A130AXTMA1](https://www.digikey.fr/fr/products/detail/infineon-technologies/IM68A130AXTMA1/20115168) | actif, mais stock nul chez Mouser et DigiKey lors de la vérification | vérifier un autre distributeur ou la variante V01 |
 | [IM68A130V01XTMA1](https://www.mouser.fr/ProductDetail/Infineon-Technologies/IM68A130V01XTMA1) | actif et préféré, environ 4 100 pièces chez Mouser, vente à l'unité | candidat de remplacement à valider mécaniquement |
-| [TCS34103M / Q65114A1293](https://www.digikey.com/en/products/detail/ams-osram-usa-inc/TCS34103M-OLGA6-LF-T-RDP/14123872) | environ 1 600 pièces chez DigiKey, vente à l'unité, Last Time Buy le 31/03/2027 | acceptable ; acheter 10 à 20 pièces rapidement |
-| [TSL25213M](https://www.mouser.fr/ProductDetail/ams-OSRAM/TSL25213M) | environ 2 700 pièces chez Mouser | solution de repli proche, non retenue actuellement |
+| [OPT4060DTSR](https://www.digikey.com/en/products/detail/texas-instruments/OPT4060DTSR/22116843) | actif, plusieurs milliers de pièces disponibles à l'unité chez DigiKey et Mouser | **choix retenu pour le capteur de flash** |
+| [APDS-9253-001](https://www.digikey.com/en/products/detail/broadcom-limited/APDS-9253-001/10135044) | actif, plusieurs milliers de pièces disponibles à l'unité | repli RGB + IR sous 3,3 V, limité à environ 40 mesures/s |
+| [VEML3328](https://www.mouser.com/ProductDetail/Vishay-Semiconductors/VEML3328) | actif et très largement disponible | repli très simple, mais intégration minimale de 50 ms |
+| [TCS34103M / Q65114A1293](https://www.digikey.com/en/products/detail/ams-osram-usa-inc/TCS34103M-OLGA6-LF-T-RDP/14123872) | disponible mais en phase Last Time Buy | écarté : rail 1,8 V et FIFO devenus inutiles |
 | [VL53L4CXV0DH/1](https://www.mouser.com/ProductDetail/STMicroelectronics/VL53L4CXV0DH-1) | plusieurs milliers de pièces chez Mouser et Farnell | pas de risque immédiat identifié |
-| [TPS7A2018PDBVR](https://www.mouser.fr/ProductDetail/Texas-Instruments/TPS7A2018PDBVR) | plus de 10 000 pièces chez Mouser | pas de risque immédiat identifié |
 
 Le choix fonctionnel du microphone reste la famille IM68A130. Avant de libérer
 le PCB, il faudra confirmer si la qualification automobile de l'IM68A130A est
@@ -336,8 +361,8 @@ comparés sur les fiches techniques officielles avant substitution.
 
 ## 9. Questions à discuter en équipe
 
-1. Quelles sont la largeur, la cadence, la puissance et la directivité réelles
-   des flashs rouges de la balise ?
+1. Retrouve-t-on sur l'exemplaire de compétition les allumages d'environ 100 ms
+   observés dans la vidéo, avec quelle puissance et quelle directivité ?
 2. La balise répète-t-elle assez ses flashs pour accepter les fenêtres aveugles
    créées par les mesures ToF ?
 3. Quel est le spectre réel de la balise et retrouve-t-on bien trois signaux
@@ -356,18 +381,20 @@ comparés sur les fiches techniques officielles avant substitution.
 
 ## 10. Essais proposés avant de figer la carte
 
-- Vérifier les rails 3,3 V et 1,8 V ainsi que les fronts I²C à 400 kHz.
+- Vérifier le rail 3,3 V ainsi que les fronts I²C à 400 kHz.
 - Enregistrer le microphone, moteurs arrêtés puis tournants, pendant l'autotest,
   la préalarme et l'alarme complète de la vraie balise.
-- Filmer ou enregistrer séparément les deux LED d'alarme pendant l'autotest, la
-  préalarme et l'alarme complète.
+- Filmer séparément les deux LED d'alarme pendant l'autotest, la préalarme et
+  l'alarme complète pour mesurer précisément durée, cadence et synchronisation.
 - Vérifier que la LED d'état seule, verte ou rouge à 1 Hz, ne valide jamais une
   détection de flash.
-- Tester le TCS3410 à 8 et 14 kéch/s, à l'ombre puis au soleil, avec plusieurs
-  largeurs de flash et à environ 1 m.
+- Tester l'OPT4060 à 1,8 ms par voie avec une lecture proche de 100 Hz, à
+  l'ombre puis au soleil, avec plusieurs durées d'allumage et à environ 1 m.
+- Enregistrer les quatre voies RGBW pour définir le seuil absolu et le critère
+  de dominance rouge.
 - Mesurer des sols clairs et sombres entre 0,5 et 1,5 m avec le VL53L4CX.
-- Vérifier que le redémarrage du TCS3410 après chaque mesure ToF ne provoque ni
-  faux flash ni perte durable de la FIFO.
+- Vérifier que la reprise de l'OPT4060 après chaque mesure ToF ne provoque ni
+  faux flash ni perte excessive de temps d'acquisition.
 - Faire les essais avec le câble, la suspension et la mécanique représentatifs
   du montage final.
 
@@ -387,6 +414,11 @@ Fiches fabricants :
 
 - [Infineon IM68A130A](https://www.infineon.com/assets/row/public/documents/24/49/infineon-im68a130a-datasheet-en.pdf) ;
 - [Infineon IM68A130V01](https://www.infineon.com/assets/row/public/documents/24/49/infineon-im68a130-datasheet-en.pdf) ;
-- [ams OSRAM TCS3410](https://look.ams-osram.com/m/5b8e2583db0adbb/original/TCS3410-Univers-AL-RGB-Sensor-w-Select-Flicker-Detect-for-Use-Behind-OLED-Displ-or-Aux-to-Cam.pdf) ;
-- [ST VL53L4CX](https://www.st.com/resource/en/datasheet/vl53l4cx.pdf) ;
-- [TI TPS7A20](https://www.ti.com/lit/ds/symlink/tps7a20.pdf).
+- [Texas Instruments OPT4060](https://www.ti.com/lit/ds/symlink/opt4060.pdf) ;
+- [Broadcom APDS-9253-001](https://www.broadcom.com/products/optical-sensors/ambient-light-photo-sensors/apds-9253-001) ;
+- [Vishay VEML3328](https://www.vishay.com/docs/84968/veml3328.pdf) ;
+- [ST VL53L4CX](https://www.st.com/resource/en/datasheet/vl53l4cx.pdf).
+
+Observation vidéo non normative :
+
+- [vidéo YouTube de démonstration de la motionSCOUT](https://www.youtube.com/shorts/VTjL53YFpTA).

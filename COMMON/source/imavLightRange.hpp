@@ -6,6 +6,8 @@
 
 #include "UAVCAN/pubSub.hpp"
 
+#include <array>
+
 extern "C" {
 #include "vl53l4cx.h"
 }
@@ -15,15 +17,20 @@ struct ImavLightRangeSnapshot {
   bool lightAvailable = false;
   bool rangeAvailable = false;
   bool rangeValid = false;
-  uint8_t lightAddress = 0x39U;
-  uint8_t lightDeviceId = 0U;
-  uint16_t lightRaw = 0U;
+  uint8_t lightAddress = 0x44U;
+  uint16_t lightDeviceId = 0U;
+  uint32_t lightRed = 0U;
+  uint32_t lightGreen = 0U;
+  uint32_t lightBlue = 0U;
+  uint32_t lightWide = 0U;
+  float lightRedRatio = 0.0f;
   float lightRelativeAc = 0.0f;
+  float lightInstantScore = 0.0f;
+  float lightCadenceHz = 0.0f;
   float lightFlashScore = 0.0f;
   uint32_t lightSamples = 0U;
   uint32_t lightPulses = 0U;
   uint32_t lightSaturations = 0U;
-  uint32_t lightFifoOverflows = 0U;
   uint32_t lightReadErrors = 0U;
   uint32_t lightBusRecoveries = 0U;
   uint32_t lightGaps = 0U;
@@ -38,7 +45,7 @@ struct ImavLightRangeSnapshot {
 };
 
 /**
- * @brief Owns one TCS3410 and one VL53L4CX on the shared external I2C bus.
+ * @brief Owns one OPT4060 and one VL53L4CX on the shared external I2C bus.
  *
  * Only this worker invokes the sensor APIs. The official ST VL53L4CX driver
  * remains untouched; its platform callbacks are implemented here using the
@@ -70,11 +77,15 @@ private:
   bool initializeLight();
   bool startLight();
   bool stopLight();
-  bool drainLightFifo();
-  void processLightSamples(const uint8_t *bytes, size_t length);
-  bool readLightRegister(uint8_t reg, uint8_t& value);
+  bool sampleLight();
+  void processLightMeasurement(const std::array<uint32_t, 4U>& adcCodes,
+                               bool overloaded, systime_t now);
+  void clearLightCadence();
+  void appendLightOnset(systime_t now);
+  void updateLightCadence(float instantScore, systime_t now);
+  bool readLightRegister(uint8_t reg, uint16_t& value);
   bool readLightBlock(uint8_t reg, size_t length);
-  bool writeLightRegister(uint8_t reg, uint8_t value);
+  bool writeLightRegister(uint8_t reg, uint16_t value);
   msg_t lightTransfer(size_t txLength, size_t rxLength);
 
   bool initializeRange();
@@ -95,8 +106,8 @@ private:
   VL53L4CX_Object_t rangeDevice = {};
 
   // This object is allocated in SRAM1, which is DMA-accessible on STM32G491.
-  alignas(4) uint8_t lightTx[2] = {};
-  alignas(4) uint8_t lightRx[128] = {};
+  alignas(4) uint8_t lightTx[3] = {};
+  alignas(4) uint8_t lightRx[16] = {};
   alignas(4) uint8_t tofTx[260] = {};
   alignas(4) uint8_t tofRx[260] = {};
   uint8_t pendingTofRegister[2] = {};
@@ -108,20 +119,38 @@ private:
   bool lightRestartPending = false;
   bool lightBaselineValid = false;
   bool lightNoiseValid = false;
+  bool lightCountersValid = false;
+  bool lightPulseArmed = false;
   bool lightPulseActive = false;
-  float lightBaseline = 0.0f;
+  bool lightOverloadActive = false;
+  std::array<float, 4U> lightBaseline = {};
+  std::array<uint8_t, 4U> lightCounters = {};
+  std::array<systime_t, 6U> lightOnsets = {};
   float lightNoiseFloor = 0.0f;
-  float lightFlashHold = 0.0f;
-  uint16_t lightRaw = 0U;
+  float lightRedRatio = 0.0f;
   float lightRelativeAc = 0.0f;
+  float lightInstantScore = 0.0f;
+  float lightCadenceHz = 0.0f;
+  float lightCadenceScore = 0.0f;
+  float lightFlashScore = 0.0f;
+  float lightPulsePeakScore = 0.0f;
+  float lightRecentPulseStrength = 0.0f;
+  uint32_t lightRed = 0U;
+  uint32_t lightGreen = 0U;
+  uint32_t lightBlue = 0U;
+  uint32_t lightWide = 0U;
   uint32_t lightSamples = 0U;
   uint32_t lightPulses = 0U;
   uint32_t lightSaturations = 0U;
-  uint32_t lightFifoOverflows = 0U;
   uint32_t lightReadErrors = 0U;
   uint32_t lightBusRecoveries = 0U;
   uint32_t lightGaps = 0U;
   uint8_t lightConsecutiveErrors = 0U;
+  uint8_t lightStalePolls = 0U;
+  uint8_t lightOnsetCount = 0U;
+  uint8_t lightHighSamples = 0U;
+  uint8_t lightLowSamples = 0U;
+  systime_t lightLastOnset = 0U;
   systime_t lightLastSample = 0U;
 
   bool rangeAvailable = false;

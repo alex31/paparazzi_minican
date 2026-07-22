@@ -1,6 +1,6 @@
 /**
  * @file imavLightRange.cpp
- * @brief TCS3410 FIFO flash detection and VL53L4CX ground ranging.
+ * @brief OPT4060 RGBW flash detection and VL53L4CX ground ranging.
  */
 
 #include "roleConf.h"
@@ -18,47 +18,66 @@
 #include <limits>
 
 namespace {
-  constexpr uint8_t tcs3410Address0 = 0x39U;
-  constexpr uint8_t tcs3410Address1 = 0x49U;
-  constexpr uint8_t tcs3410ExpectedId = 0x5CU;
+  constexpr uint8_t opt4060FirstAddress = 0x44U;
+  constexpr uint8_t opt4060LastAddress = 0x47U;
+  constexpr uint16_t opt4060ExpectedId = 0x0821U;
 
-  constexpr uint8_t tcsRegModChannelControl = 0x40U;
-  constexpr uint8_t tcsRegEnable = 0x80U;
-  constexpr uint8_t tcsRegMeasMode1 = 0x82U;
-  constexpr uint8_t tcsRegSampleTime0 = 0x83U;
-  constexpr uint8_t tcsRegSampleTime1 = 0x84U;
-  constexpr uint8_t tcsRegFdSamples0 = 0x87U;
-  constexpr uint8_t tcsRegFdSamples1 = 0x88U;
-  constexpr uint8_t tcsRegId = 0x92U;
-  constexpr uint8_t tcsRegControl = 0xB1U;
-  constexpr uint8_t tcsRegSequencerFd01 = 0xCFU;
-  constexpr uint8_t tcsRegSequencerAlsFd2 = 0xD0U;
-  constexpr uint8_t tcsRegSequencerResidual01 = 0xD2U;
-  constexpr uint8_t tcsRegSequencerResidual2Wait = 0xD3U;
-  constexpr uint8_t tcsRegStep0Gain01 = 0xD4U;
-  constexpr uint8_t tcsRegStep0SmuxLow = 0xDCU;
-  constexpr uint8_t tcsRegStep0SmuxHigh = 0xDDU;
-  constexpr uint8_t tcsRegFifoConfig0 = 0xF9U;
-  constexpr uint8_t tcsRegFifoConfig1 = 0xFAU;
-  constexpr uint8_t tcsRegFifoConfig2 = 0xFBU;
-  constexpr uint8_t tcsRegFifoThreshold = 0xFCU;
-  constexpr uint8_t tcsRegFifoStatus0 = 0xFDU;
-  constexpr uint8_t tcsRegFifoData = 0xFFU;
+  constexpr uint8_t optRegChannel0Msb = 0x00U;
+  constexpr uint8_t optRegConfiguration = 0x0AU;
+  constexpr uint8_t optRegConfiguration2 = 0x0BU;
+  constexpr uint8_t optRegStatus = 0x0CU;
+  constexpr uint8_t optRegDeviceId = 0x11U;
 
-  constexpr uint8_t tcsEnablePower = 1U << 0U;
-  constexpr uint8_t tcsEnableFlicker = 1U << 6U;
-  constexpr uint8_t tcsControlFifoClear = 1U << 1U;
-  constexpr uint8_t tcsFifoOverflow = 1U << 7U;
-  constexpr uint8_t tcsFifoUnderflow = 1U << 6U;
-  constexpr size_t tcsFifoCapacity = 512U;
-  constexpr size_t tcsBytesPerSample = 2U;
-  constexpr uint32_t tcsPollPeriodMs = 4U;
+  constexpr uint16_t optRangeAuto = 0x0CU << 10U;
+  constexpr uint16_t optConversionTime1p8Ms = 2U << 6U;
+  constexpr uint16_t optOperatingContinuous = 3U << 4U;
+  constexpr uint16_t optInterruptLatch = 1U << 3U;
+  constexpr uint16_t optConfigurationPowerDown =
+    optRangeAuto | optConversionTime1p8Ms | optInterruptLatch;
+  constexpr uint16_t optConfigurationContinuous =
+    optConfigurationPowerDown | optOperatingContinuous;
+  // Keep required bits at their reset value, INT as an output and burst reads
+  // enabled. INT_CFG=0 means no data-ready pulses are needed by this design.
+  constexpr uint16_t optConfiguration2 = 0x8011U;
+  constexpr uint16_t optStatusOverload = 1U << 3U;
+  constexpr size_t optChannelCount = 4U;
+  constexpr size_t optResultBytes = optChannelCount * 4U;
+  constexpr uint32_t optPollPeriodMs = 10U;
+  constexpr uint32_t optFirstConversionDelayMs = 8U;
 
-  // SAMPLE_TIME=89 gives 125 us, i.e. 8 ksample/s. Modulator 0 receives
-  // both F-filtered photodiodes (PD0 and PD2). ALS and residual measurements
-  // are disabled, so the FIFO contains only little-endian 16-bit samples.
-  constexpr uint8_t tcsSampleTime8Khz = 89U;
-  constexpr uint8_t tcsStep0Gain16x = 5U;
+  static_assert(optConfigurationPowerDown == 0x3088U);
+  static_assert(optConfigurationContinuous == 0x30B8U);
+
+  struct Opt4060ChannelSample {
+    uint32_t adcCode;
+    uint8_t counter;
+    bool valid;
+  };
+
+  constexpr uint16_t readBigEndian16(const uint8_t *bytes)
+  {
+    return static_cast<uint16_t>(
+      static_cast<uint16_t>(bytes[0]) << 8U | bytes[1]);
+  }
+
+  constexpr Opt4060ChannelSample decodeOpt4060Channel(uint16_t msb,
+                                                       uint16_t lsb)
+  {
+    const uint8_t exponent = static_cast<uint8_t>(msb >> 12U);
+    const uint32_t mantissa =
+      (static_cast<uint32_t>(msb & 0x0FFFU) << 8U) |
+      static_cast<uint32_t>(lsb >> 8U);
+    return {
+      .adcCode = exponent <= 6U ? mantissa << exponent : 0U,
+      .counter = static_cast<uint8_t>((lsb >> 4U) & 0x0FU),
+      .valid = exponent <= 6U,
+    };
+  }
+
+  static_assert(
+    decodeOpt4060Channel(0x3123U, 0x45A0U).adcCode ==
+      (0x12345U << 3U));
+  static_assert(decodeOpt4060Channel(0x3123U, 0x45A0U).counter == 0x0AU);
 
   constexpr uint32_t sensorRetryPeriodMs = 5000U;
   constexpr uint32_t rangeTimingBudgetMs = 30U;
@@ -86,7 +105,7 @@ ImavLightRange::ImavLightRange(UAVCAN::Node& node_, uint8_t address,
 void ImavLightRange::initialize()
 {
   // Ref-SPAD initialization can emit 940 nm light. Configure it before the
-  // TCS3410 starts, so the two sensors are never acquiring simultaneously.
+  // OPT4060 starts, so the two sensors are never acquiring simultaneously.
   rangeAvailable = initializeRange();
   const bool lightOk = initializeLight();
   (void) lightOk;
@@ -110,7 +129,6 @@ void ImavLightRange::publishAvailability()
   published.lightAddress = lightAddress;
   published.lightReadErrors = lightReadErrors;
   published.lightBusRecoveries = lightBusRecoveries;
-  published.lightFifoOverflows = lightFifoOverflows;
   published.lightGaps = lightGaps;
   published.rangeErrors = rangeErrors;
   chSysUnlock();
@@ -119,13 +137,18 @@ void ImavLightRange::publishAvailability()
 void ImavLightRange::publishLightState()
 {
   chSysLock();
-  published.lightRaw = lightRaw;
+  published.lightRed = lightRed;
+  published.lightGreen = lightGreen;
+  published.lightBlue = lightBlue;
+  published.lightWide = lightWide;
+  published.lightRedRatio = lightRedRatio;
   published.lightRelativeAc = lightRelativeAc;
-  published.lightFlashScore = lightFlashHold;
+  published.lightInstantScore = lightInstantScore;
+  published.lightCadenceHz = lightCadenceHz;
+  published.lightFlashScore = lightFlashScore;
   published.lightSamples = lightSamples;
   published.lightPulses = lightPulses;
   published.lightSaturations = lightSaturations;
-  published.lightFifoOverflows = lightFifoOverflows;
   published.lightReadErrors = lightReadErrors;
   published.lightBusRecoveries = lightBusRecoveries;
   published.lightGaps = lightGaps;
@@ -163,13 +186,13 @@ msg_t ImavLightRange::lightTransfer(size_t txLength, size_t rxLength)
   return result;
 }
 
-bool ImavLightRange::readLightRegister(uint8_t reg, uint8_t& value)
+bool ImavLightRange::readLightRegister(uint8_t reg, uint16_t& value)
 {
   lightTx[0] = reg;
-  if (lightTransfer(1U, 1U) != MSG_OK) {
+  if (lightTransfer(1U, 2U) != MSG_OK) {
     return false;
   }
-  value = lightRx[0];
+  value = readBigEndian16(lightRx);
   return true;
 }
 
@@ -183,29 +206,32 @@ bool ImavLightRange::readLightBlock(uint8_t reg, size_t length)
   return lightTransfer(1U, length) == MSG_OK;
 }
 
-bool ImavLightRange::writeLightRegister(uint8_t reg, uint8_t value)
+bool ImavLightRange::writeLightRegister(uint8_t reg, uint16_t value)
 {
   lightTx[0] = reg;
-  lightTx[1] = value;
-  return lightTransfer(2U, 0U) == MSG_OK;
+  lightTx[1] = static_cast<uint8_t>(value >> 8U);
+  lightTx[2] = static_cast<uint8_t>(value);
+  return lightTransfer(3U, 0U) == MSG_OK;
 }
 
 bool ImavLightRange::initializeLight()
 {
   lightAvailable = false;
   const uint8_t preferred =
-    ((lightAddress == tcs3410Address0) || (lightAddress == tcs3410Address1))
-    ? lightAddress : tcs3410Address0;
-  const std::array<uint8_t, 2U> candidates = {
-    preferred,
-    preferred == tcs3410Address0 ? tcs3410Address1 : tcs3410Address0,
-  };
+    ((lightAddress >= opt4060FirstAddress) &&
+     (lightAddress <= opt4060LastAddress))
+    ? lightAddress : opt4060FirstAddress;
 
-  uint8_t id = 0U;
+  uint16_t id = 0U;
   bool found = false;
-  for (const uint8_t candidate : candidates) {
+  for (uint8_t offset = 0U;
+       offset <= (opt4060LastAddress - opt4060FirstAddress); ++offset) {
+    const uint8_t candidate = static_cast<uint8_t>(
+      opt4060FirstAddress +
+      ((preferred - opt4060FirstAddress + offset) % optChannelCount));
     lightAddress = candidate;
-    if (readLightRegister(tcsRegId, id) && (id == tcs3410ExpectedId)) {
+    if (readLightRegister(optRegDeviceId, id) &&
+        ((id & 0x3FFFU) == opt4060ExpectedId)) {
       found = true;
       break;
     }
@@ -215,51 +241,36 @@ bool ImavLightRange::initializeLight()
     return false;
   }
 
-  // Do not claim that acquisition is stopped until the sensor acknowledges
-  // FDEN=0; this invariant gates every ToF measurement.
-  if (not writeLightRegister(tcsRegEnable, 0U)) {
+  // A successful power-down write is the invariant which gates every ToF
+  // measurement. The OPT4060 still responds to I2C in this mode.
+  if (not writeLightRegister(optRegConfiguration,
+                             optConfigurationPowerDown)) {
     publishAvailability();
     return false;
   }
   lightRunning = false;
-  // The sequence follows the public TCS3410 data sheet and AN001059. In
-  // particular, 0x11/0xF0 is ams OSRAM's SMUX setting for both F diodes.
-  const bool configured =
-    writeLightRegister(tcsRegModChannelControl, 0x06U) &&
-    writeLightRegister(tcsRegMeasMode1, 0x0CU) &&
-    writeLightRegister(tcsRegSampleTime0, tcsSampleTime8Khz) &&
-    writeLightRegister(tcsRegSampleTime1, 0U) &&
-    writeLightRegister(tcsRegFdSamples0, 0U) &&
-    writeLightRegister(tcsRegFdSamples1, 0x80U) &&
-    writeLightRegister(tcsRegSequencerFd01, 0x01U) &&
-    writeLightRegister(tcsRegSequencerAlsFd2, 0U) &&
-    writeLightRegister(tcsRegSequencerResidual01, 0U) &&
-    writeLightRegister(tcsRegSequencerResidual2Wait, 0U) &&
-    writeLightRegister(tcsRegStep0Gain01,
-                       static_cast<uint8_t>(0x80U | tcsStep0Gain16x)) &&
-    writeLightRegister(tcsRegStep0SmuxLow, 0x11U) &&
-    writeLightRegister(tcsRegStep0SmuxHigh, 0xF0U) &&
-    writeLightRegister(tcsRegFifoConfig0, 0x0FU) &&
-    writeLightRegister(tcsRegFifoConfig1, 0x0FU) &&
-    writeLightRegister(tcsRegFifoConfig2, 0x0FU) &&
-    writeLightRegister(tcsRegFifoThreshold, 0x1FU) &&
-    writeLightRegister(tcsRegEnable, tcsEnablePower);
-  if (not configured) {
-    publishAvailability();
-    return false;
-  }
-
-  chThdSleepMilliseconds(1U);
-  if (not startLight()) {
+  if (not writeLightRegister(optRegConfiguration2, optConfiguration2)) {
     publishAvailability();
     return false;
   }
 
   lightBaselineValid = false;
   lightNoiseValid = false;
-  lightPulseActive = false;
-  lightFlashHold = 0.0f;
+  lightCountersValid = false;
+  lightOverloadActive = false;
   lightConsecutiveErrors = 0U;
+  lightStalePolls = 0U;
+  lightRedRatio = 0.0f;
+  lightRelativeAc = 0.0f;
+  lightInstantScore = 0.0f;
+  lightLastSample = 0U;
+  clearLightCadence();
+  if (not startLight()) {
+    publishAvailability();
+    return false;
+  }
+  chThdSleepMilliseconds(optFirstConversionDelayMs);
+
   lightAvailable = true;
   chSysLock();
   published.lightAddress = lightAddress;
@@ -272,143 +283,291 @@ bool ImavLightRange::initializeLight()
 
 bool ImavLightRange::startLight()
 {
-  if (not writeLightRegister(tcsRegControl, tcsControlFifoClear)) {
+  if (not writeLightRegister(optRegConfiguration,
+                             optConfigurationContinuous)) {
     return false;
   }
-  if (not writeLightRegister(tcsRegEnable,
-                             tcsEnablePower | tcsEnableFlicker)) {
-    return false;
-  }
+  lightStalePolls = 0U;
   lightRunning = true;
   return true;
 }
 
 bool ImavLightRange::stopLight()
 {
-  if (not writeLightRegister(tcsRegEnable, tcsEnablePower)) {
+  if (not writeLightRegister(optRegConfiguration,
+                             optConfigurationPowerDown)) {
     return false;
   }
   lightRunning = false;
-  // FDEN is already off, which is the safety condition for ranging. A failed
-  // FIFO clear is retried by startLight() before sampling resumes.
-  (void) writeLightRegister(tcsRegControl, tcsControlFifoClear);
   return true;
 }
 
-void ImavLightRange::processLightSamples(const uint8_t *bytes, size_t length)
+void ImavLightRange::clearLightCadence()
 {
-  for (size_t offset = 0U; (offset + 1U) < length;
-       offset += tcsBytesPerSample) {
-    const uint16_t sample =
-      static_cast<uint16_t>(bytes[offset]) |
-      static_cast<uint16_t>(bytes[offset + 1U]) << 8U;
-    lightRaw = sample;
-    ++lightSamples;
+  lightOnsets.fill(0U);
+  lightOnsetCount = 0U;
+  lightLastOnset = 0U;
+  lightPulseArmed = false;
+  lightPulseActive = false;
+  lightHighSamples = 0U;
+  lightLowSamples = 0U;
+  lightPulsePeakScore = 0.0f;
+  lightRecentPulseStrength = 0.0f;
+  lightCadenceHz = 0.0f;
+  lightCadenceScore = 0.0f;
+  lightFlashScore = 0.0f;
+}
 
-    // The TCS3410 encodes analogue saturation as all ones. It means the
-    // optical path is temporarily blind, not that a beacon edge was found.
-    if (sample == std::numeric_limits<uint16_t>::max()) {
-      ++lightSaturations;
-      lightFlashHold *= 0.9998f;
-      continue;
-    }
-
-    if (not lightBaselineValid) {
-      lightBaseline = static_cast<float>(sample);
-      lightBaselineValid = true;
-      continue;
-    }
-
-    const float delta = static_cast<float>(sample) - lightBaseline;
-    const float normalizer = lightBaseline + 16.0f;
-    const float positiveAc = std::max(delta, 0.0f) / normalizer;
-    const float absoluteAc = std::abs(delta) / normalizer;
-    const float noise = lightNoiseValid ? lightNoiseFloor : 0.0005f;
-    const float absoluteScore = knee(positiveAc, 0.015f, 0.30f);
-    const float riseScore = knee(positiveAc / (noise + 0.0005f),
-                                 3.0f, 12.0f);
-    const float instantScore = absoluteScore * riseScore;
-
-    if (lightPulseActive) {
-      if (instantScore <= 0.20f) {
-        lightPulseActive = false;
-      }
-    } else if (instantScore >= 0.65f) {
-      lightPulseActive = true;
-      ++lightPulses;
-    }
-
-    // Do not let a flash pull the slow illumination estimate upward.
-    if ((not lightPulseActive) && (instantScore < 0.20f)) {
-      const float baselineAlpha = delta < 0.0f
-        ? (1.0f / 128.0f) : (1.0f / 2048.0f);
-      lightBaseline =
-        std::max(0.0f, lightBaseline + delta * baselineAlpha);
-      if (not lightNoiseValid) {
-        lightNoiseFloor = absoluteAc;
-        lightNoiseValid = true;
-      } else {
-        const float noiseAlpha = absoluteAc < lightNoiseFloor
-          ? (1.0f / 64.0f) : (1.0f / 1024.0f);
-        lightNoiseFloor +=
-          (absoluteAc - lightNoiseFloor) * noiseAlpha;
-      }
-    }
-
-    // About 0.6 s e-folding at 8 ksample/s: a one-sample flash remains
-    // observable by the lower-rate debug and fusion code.
-    lightFlashHold = std::max(instantScore, lightFlashHold * 0.9998f);
-    lightRelativeAc = positiveAc;
+void ImavLightRange::appendLightOnset(systime_t now)
+{
+  if ((lightLastOnset != 0U) &&
+      (chTimeDiffX(lightLastOnset, now) < TIME_MS2I(120U))) {
+    return;
   }
 
-  lightLastSample = chVTGetSystemTimeX();
+  if (lightOnsetCount < lightOnsets.size()) {
+    lightOnsets[lightOnsetCount++] = now;
+  } else {
+    for (size_t index = 1U; index < lightOnsets.size(); ++index) {
+      lightOnsets[index - 1U] = lightOnsets[index];
+    }
+    lightOnsets.back() = now;
+  }
+  lightLastOnset = now;
+}
+
+void ImavLightRange::updateLightCadence(float instantScore, systime_t now)
+{
+  if ((lightLastSample != 0U) &&
+      (chTimeDiffX(lightLastSample, now) >= TIME_MS2I(250U))) {
+    clearLightCadence();
+  }
+
+  const bool high = instantScore >= 0.62f;
+  const bool low = instantScore <= 0.25f;
+  if (not lightPulseArmed) {
+    lightHighSamples = 0U;
+    lightLowSamples = low ? static_cast<uint8_t>(lightLowSamples + 1U) : 0U;
+    if (lightLowSamples >= 2U) {
+      lightPulseArmed = true;
+      lightLowSamples = 0U;
+    }
+  } else if (not lightPulseActive) {
+    lightLowSamples = 0U;
+    lightHighSamples = high
+      ? static_cast<uint8_t>(lightHighSamples + 1U) : 0U;
+    if (lightHighSamples >= 2U) {
+      lightPulseActive = true;
+      lightHighSamples = 0U;
+      lightPulsePeakScore = instantScore;
+      ++lightPulses;
+      appendLightOnset(now);
+    }
+  } else {
+    lightHighSamples = 0U;
+    lightPulsePeakScore = std::max(lightPulsePeakScore, instantScore);
+    lightLowSamples = low ? static_cast<uint8_t>(lightLowSamples + 1U) : 0U;
+    if (lightLowSamples >= 2U) {
+      lightPulseActive = false;
+      lightLowSamples = 0U;
+      lightRecentPulseStrength = lightPulsePeakScore;
+      lightPulsePeakScore = 0.0f;
+    }
+  }
+
+  if (lightLastOnset == 0U) {
+    lightCadenceHz = 0.0f;
+    lightCadenceScore = 0.0f;
+    lightFlashScore = 0.0f;
+    return;
+  }
+
+  const uint32_t onsetAgeMs = TIME_I2MS(
+    chTimeDiffX(lightLastOnset, now));
+  if (onsetAgeMs >= 1500U) {
+    clearLightCadence();
+    return;
+  }
+
+  const uint8_t intervalCount = lightOnsetCount > 0U
+    ? static_cast<uint8_t>(lightOnsetCount - 1U) : 0U;
+  if (intervalCount == 0U) {
+    lightCadenceHz = 0.0f;
+    lightCadenceScore = 0.0f;
+    lightFlashScore = 0.0f;
+    return;
+  }
+
+  float periodScoreSum = 0.0f;
+  float periodMsSum = 0.0f;
+  for (uint8_t index = 1U; index < lightOnsetCount; ++index) {
+    const float periodMs = static_cast<float>(TIME_I2MS(
+      chTimeDiffX(lightOnsets[index - 1U], lightOnsets[index])));
+    const float error = (periodMs - 333.333f) / 80.0f;
+    periodScoreSum += 1.0f / (1.0f + error * error);
+    periodMsSum += periodMs;
+  }
+
+  const float meanPeriodMs = periodMsSum / intervalCount;
+  lightCadenceHz = 1000.0f / meanPeriodMs;
+  const float support = std::min(
+    static_cast<float>(intervalCount) / 3.0f, 1.0f);
+  const float freshness = onsetAgeMs <= 450U ? 1.0f :
+    std::max(0.0f,
+      (900.0f - static_cast<float>(onsetAgeMs)) / 450.0f);
+  lightCadenceScore =
+    (periodScoreSum / intervalCount) * support * freshness;
+  const float strength = lightPulseActive
+    ? std::max(lightRecentPulseStrength, lightPulsePeakScore)
+    : lightRecentPulseStrength;
+  lightFlashScore =
+    lightCadenceScore * (0.5f + 0.5f * strength);
+}
+
+void ImavLightRange::processLightMeasurement(
+  const std::array<uint32_t, 4U>& adcCodes, bool overloaded,
+  systime_t now)
+{
+  lightRed = adcCodes[0];
+  lightGreen = adcCodes[1];
+  lightBlue = adcCodes[2];
+  lightWide = adcCodes[3];
+  ++lightSamples;
+
+  if (overloaded) {
+    if (not lightOverloadActive) {
+      ++lightSaturations;
+    }
+    lightOverloadActive = true;
+    lightRedRatio = 0.0f;
+    lightRelativeAc = 0.0f;
+    lightInstantScore = 0.0f;
+    updateLightCadence(0.0f, now);
+    lightLastSample = now;
+    publishLightState();
+    return;
+  }
+  lightOverloadActive = false;
+
+  // TI's data-sheet scaling makes a D65 white source approximately R=G=B.
+  const std::array<float, 4U> scaled = {
+    2.4f * static_cast<float>(adcCodes[0]),
+    static_cast<float>(adcCodes[1]),
+    1.3f * static_cast<float>(adcCodes[2]),
+    static_cast<float>(adcCodes[3]),
+  };
+  if (not lightBaselineValid) {
+    lightBaseline = scaled;
+    lightBaselineValid = true;
+    lightRedRatio = 0.0f;
+    lightRelativeAc = 0.0f;
+    lightInstantScore = 0.0f;
+    updateLightCadence(0.0f, now);
+    lightLastSample = now;
+    publishLightState();
+    return;
+  }
+
+  std::array<float, 4U> delta = {};
+  std::array<float, 4U> positiveDelta = {};
+  for (size_t channel = 0U; channel < optChannelCount; ++channel) {
+    delta[channel] = scaled[channel] - lightBaseline[channel];
+    positiveDelta[channel] = std::max(delta[channel], 0.0f);
+  }
+
+  const float positiveRgb =
+    positiveDelta[0] + positiveDelta[1] + positiveDelta[2];
+  lightRedRatio = positiveRgb > 1.0f
+    ? positiveDelta[0] / positiveRgb : 0.0f;
+  const float normalizer = lightBaseline[0] + 1024.0f;
+  lightRelativeAc = positiveDelta[0] / normalizer;
+  const float absoluteAc = std::abs(delta[0]) / normalizer;
+  const float noise = lightNoiseValid ? lightNoiseFloor : 0.002f;
+
+  // These provisional knees are deliberately exposed through debug values;
+  // measurements on the competition beacon must be used to tune them.
+  const float absoluteScore = knee(positiveDelta[0], 256.0f, 4096.0f);
+  const float relativeScore = knee(lightRelativeAc, 0.01f, 0.25f);
+  const float riseScore = knee(
+    lightRelativeAc / (noise + 0.002f), 3.0f, 12.0f);
+  const float redScore = knee(lightRedRatio, 0.42f, 0.68f);
+  const float signalScore = std::max(relativeScore, 0.8f * riseScore);
+  lightInstantScore = redScore * signalScore *
+    (0.4f + 0.6f * absoluteScore);
+  updateLightCadence(lightInstantScore, now);
+
+  // Do not let a red flash pull the slow ambient estimate upward. A falling
+  // illumination is followed faster so a shadow does not create a long bias.
+  if ((not lightPulseActive) && (lightInstantScore < 0.20f)) {
+    for (size_t channel = 0U; channel < optChannelCount; ++channel) {
+      const float baselineAlpha = delta[channel] < 0.0f
+        ? (1.0f / 16.0f) : (1.0f / 256.0f);
+      lightBaseline[channel] = std::max(
+        0.0f, lightBaseline[channel] + delta[channel] * baselineAlpha);
+    }
+    if (not lightNoiseValid) {
+      lightNoiseFloor = absoluteAc;
+      lightNoiseValid = true;
+    } else {
+      const float noiseAlpha = absoluteAc < lightNoiseFloor
+        ? (1.0f / 16.0f) : (1.0f / 256.0f);
+      lightNoiseFloor +=
+        (absoluteAc - lightNoiseFloor) * noiseAlpha;
+    }
+  }
+
+  lightLastSample = now;
   publishLightState();
 }
 
-bool ImavLightRange::drainLightFifo()
+bool ImavLightRange::sampleLight()
 {
   if (not lightRunning) {
     return true;
   }
-
-  constexpr size_t maxChunks =
-    tcsFifoCapacity / sizeof(lightRx);
-  for (size_t chunk = 0U; chunk < maxChunks; ++chunk) {
-    if (not readLightBlock(tcsRegFifoStatus0, 2U)) {
-      return false;
-    }
-
-    const uint8_t status1 = lightRx[1];
-    const size_t level =
-      (static_cast<size_t>(lightRx[0]) << 2U) |
-      static_cast<size_t>(status1 & 0x03U);
-    if ((status1 & (tcsFifoOverflow | tcsFifoUnderflow)) != 0U) {
-      if ((status1 & tcsFifoOverflow) != 0U) {
-        ++lightFifoOverflows;
-      }
-      lightBaselineValid = false;
-      (void) writeLightRegister(tcsRegControl, tcsControlFifoClear);
-      publishLightState();
-      return true;
-    }
-    if (level == 0U) {
-      return true;
-    }
-    if ((level & 1U) != 0U) {
-      ++lightReadErrors;
-      lightBaselineValid = false;
-      (void) writeLightRegister(tcsRegControl, tcsControlFifoClear);
-      publishLightState();
-      return true;
-    }
-
-    const size_t readLength =
-      std::min(level, sizeof(lightRx));
-    if (not readLightBlock(tcsRegFifoData, readLength)) {
-      return false;
-    }
-    processLightSamples(lightRx, readLength);
+  if (not readLightBlock(optRegChannel0Msb, optResultBytes)) {
+    return false;
   }
+
+  std::array<uint32_t, optChannelCount> adcCodes = {};
+  std::array<uint8_t, optChannelCount> counters = {};
+  for (size_t channel = 0U; channel < optChannelCount; ++channel) {
+    const size_t offset = channel * 4U;
+    const Opt4060ChannelSample sample = decodeOpt4060Channel(
+      readBigEndian16(&lightRx[offset]),
+      readBigEndian16(&lightRx[offset + 2U]));
+    if (not sample.valid) {
+      ++lightReadErrors;
+      return false;
+    }
+    adcCodes[channel] = sample.adcCode;
+    counters[channel] = sample.counter;
+  }
+
+  if (lightCountersValid) {
+    for (size_t channel = 0U; channel < optChannelCount; ++channel) {
+      if (counters[channel] == lightCounters[channel]) {
+        // The four channels convert sequentially. Wait until every channel
+        // has advanced instead of mixing a new partial cycle with an old one.
+        if (++lightStalePolls < 3U) {
+          return true;
+        }
+        ++lightReadErrors;
+        return false;
+      }
+    }
+  }
+  lightStalePolls = 0U;
+  lightCounters = counters;
+  lightCountersValid = true;
+
+  uint16_t status = 0U;
+  if (not readLightRegister(optRegStatus, status)) {
+    return false;
+  }
+  processLightMeasurement(
+    adcCodes, (status & optStatusOverload) != 0U,
+    chVTGetSystemTimeX());
   return true;
 }
 
@@ -670,12 +829,12 @@ uint32_t ImavLightRange::nextRangeIntervalMs()
       }
       if (not rangeStopped) {
         // Never overlap an unconfirmed 940 nm ranging operation with the
-        // light detector. Retry the stop while leaving the TCS3410 paused.
+        // light detector. Retry the stop while leaving the OPT4060 paused.
         rangeAvailable = false;
         rangeValid = false;
         publishAvailability();
         lastRangeRetry = chVTGetSystemTimeX();
-        chThdSleepMilliseconds(tcsPollPeriodMs);
+        chThdSleepMilliseconds(optPollPeriodMs);
         continue;
       }
 
@@ -691,7 +850,7 @@ uint32_t ImavLightRange::nextRangeIntervalMs()
     }
 
     if (lightRunning) {
-      if (drainLightFifo()) {
+      if (sampleLight()) {
         lightConsecutiveErrors = 0U;
       } else if (++lightConsecutiveErrors >= 3U) {
         lightAvailable = false;
@@ -705,7 +864,7 @@ uint32_t ImavLightRange::nextRangeIntervalMs()
         (chTimeDiffX(lastLightRetry, now) >=
          TIME_MS2I(sensorRetryPeriodMs))) {
       if (initializeLight()) {
-        node.infoCb("IMAV light recovered: TCS3410 addr=0x%02x",
+        node.infoCb("IMAV light recovered: OPT4060 addr=0x%02x",
                     lightAddress);
       }
       lastLightRetry = chVTGetSystemTimeX();
@@ -721,7 +880,7 @@ uint32_t ImavLightRange::nextRangeIntervalMs()
       lastRangeStart = now;
       bool lightPaused = not lightRunning;
       if (lightRunning) {
-        (void) drainLightFifo();
+        (void) sampleLight();
         lightPaused = stopLight();
         if (lightPaused) {
           lightRestartPending = true;
@@ -752,7 +911,7 @@ uint32_t ImavLightRange::nextRangeIntervalMs()
       rangeInterval = nextRangeIntervalMs();
     }
 
-    chThdSleepMilliseconds(tcsPollPeriodMs);
+    chThdSleepMilliseconds(optPollPeriodMs);
   }
 }
 

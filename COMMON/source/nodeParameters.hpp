@@ -109,9 +109,9 @@
       // 2.6 kHz while the MSA manual specifies the wider 2.0--3.0 kHz band.
       // Read when the role starts; reboot after changing it at runtime.
       {"role.imav.audio.band_low_hz", {.min = 2000, .max = 2600, .v = 2600}},
-      // TCS3410 ordering options are 0x39 and 0x49. Intermediate values are
-      // rejected at runtime and fall back to probing these two addresses.
-      {"role.imav.light.i2c_address", {.min = 0x39, .max = 0x49, .v = 0x39}},
+      // OPT4060 address selected by ADDR: GND=0x44, VDD=0x45,
+      // SDA=0x46, SCL=0x47. Invalid persisted values fall back to probing.
+      {"role.imav.light.i2c_address", {.min = 0x44, .max = 0x47, .v = 0x44}},
       // Nominal VL53L4CX one-shot period. Small deterministic jitter is added
       // so a periodic beacon flash cannot always fall in the ToF light gap.
       {"role.imav.tof.period_ms", {.min = 100, .max = 1000, .v = 200}},

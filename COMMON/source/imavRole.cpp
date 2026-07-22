@@ -595,10 +595,10 @@ DeviceStatus ImavRole::start(UAVCAN::Node& node)
   audio->detector.band = makeAudioBandConfiguration(static_cast<uint16_t>(
     param_cget<"role.imav.audio.band_low_hz">()));
 
-  // The 8 ksample/s FIFO stream needs at least Fast mode. Both the TCS3410
-  // and VL53L4CX also support the STM32G4 Fast-mode Plus setting at 1 MHz.
+  // OPT4060 supports standard mode and Fast mode, but not the STM32G4
+  // Fast-mode Plus setting at 1 MHz (its next supported mode is HS 2.6 MHz).
   const uint32_t i2cFrequencyKhz = param_cget<"bus.i2c.frequency_khz">();
-  if ((i2cFrequencyKhz < 400U) || (i2cFrequencyKhz > 1000U)) {
+  if ((i2cFrequencyKhz < 100U) || (i2cFrequencyKhz > 400U)) {
     return DeviceStatus(DeviceStatus::IMAV_ROLE,
 			DeviceStatus::I2C_FREQ_INVALID,
 			static_cast<uint16_t>(i2cFrequencyKhz));
@@ -648,11 +648,11 @@ DeviceStatus ImavRole::start(UAVCAN::Node& node)
   node.infoCb("IMAV audio started: PA3/ADC1, 24kHz, OVS x4, band=%u-%uHz",
 	      audio->detector.band.lowFrequencyHz, audioBandHighHz);
   if (initialSensors.lightAvailable) {
-    node.infoCb("IMAV light started: TCS3410 addr=0x%02x id=0x%02x 8ksps",
-		initialSensors.lightAddress, initialSensors.lightDeviceId);
+    node.infoCb("IMAV light started: OPT4060 addr=0x%02x id=0x%04x 100Hz",
+		initialSensors.lightAddress,
+		static_cast<unsigned>(initialSensors.lightDeviceId));
   } else {
-    node.infoCb("IMAV light unavailable: TCS3410 addr=0x%02x/0x%02x",
-		0x39U, 0x49U);
+    node.infoCb("IMAV light unavailable: OPT4060 addr=0x44..0x47");
   }
   if (initialSensors.rangeAvailable) {
     node.infoCb("IMAV range started: VL53L4CX id=0x%04lx",
@@ -737,10 +737,17 @@ void ImavRole::processAudioHalf(size_t offset, bool discontinuity)
       ? audio->lightRange->snapshot() : ImavLightRangeSnapshot{};
 
     const systime_t now = chVTGetSystemTimeX();
-    const bool lightFresh = (sensors.lightLastSample != 0U) &&
+    const bool lightFresh = sensors.lightAvailable &&
+      (sensors.lightLastSample != 0U) &&
       (chTimeDiffX(sensors.lightLastSample, now) < TIME_MS2I(200U));
     const uint16_t lightScore = lightFresh
       ? static_cast<uint16_t>(1000.0f * sensors.lightFlashScore) : 0U;
+    const uint16_t lightInstant = lightFresh
+      ? static_cast<uint16_t>(1000.0f * sensors.lightInstantScore) : 0U;
+    const uint16_t lightRedRatio = lightFresh
+      ? static_cast<uint16_t>(1000.0f * sensors.lightRedRatio) : 0U;
+    const uint16_t lightCadence = lightFresh
+      ? static_cast<uint16_t>(1000.0f * sensors.lightCadenceHz) : 0U;
 
     const uint16_t blockScore = static_cast<uint16_t>(
 	1000.0f * audio->detector.channel.blockScore);
@@ -758,11 +765,19 @@ void ImavRole::processAudioHalf(size_t offset, bool discontinuity)
     m_node->infoCb("IMAV dc=%u mad=%u clip=%u sdb10=%d",
 		   audio->mean, audio->meanAbsoluteDeviation,
 		   audio->detector.channel.clippedSamples, spectralDb10);
-    m_node->infoCb("IMAV drop=%lu agap=%lu light=%u/%u sat=%lu fifo=%lu",
+    m_node->infoCb("IMAV rgbw=%lu/%lu/%lu/%lu red=%u",
+		   static_cast<unsigned long>(sensors.lightRed),
+		   static_cast<unsigned long>(sensors.lightGreen),
+		   static_cast<unsigned long>(sensors.lightBlue),
+		   static_cast<unsigned long>(sensors.lightWide),
+		   lightRedRatio);
+    m_node->infoCb("IMAV light=%u/%u cad=%u pulse=%lu sat=%lu",
+		   lightInstant, lightScore, lightCadence,
+		   static_cast<unsigned long>(sensors.lightPulses),
+		   static_cast<unsigned long>(sensors.lightSaturations));
+    m_node->infoCb("IMAV drop=%lu agap=%lu lerr=%lu",
 		   audio->droppedBlocks, audio->discontinuities,
-		   sensors.lightRaw, lightScore,
-		   sensors.lightSaturations,
-		   sensors.lightFifoOverflows);
+		   static_cast<unsigned long>(sensors.lightReadErrors));
     m_node->infoCb("IMAV tof=%u valid=%u lgap=%lu err=%lu",
 		   sensors.rangeMm, sensors.rangeValid ? 1U : 0U,
 		   sensors.lightGaps, sensors.rangeErrors);
@@ -781,7 +796,7 @@ void ImavRole::publishDebugValues()
     ? audio->lightRange->snapshot() : ImavLightRangeSnapshot{};
   float lightFlashScore = sensors.lightFlashScore;
   const systime_t now = chVTGetSystemTimeX();
-  if ((sensors.lightLastSample == 0U) ||
+  if ((not sensors.lightAvailable) || (sensors.lightLastSample == 0U) ||
       (chTimeDiffX(sensors.lightLastSample, now) >= TIME_MS2I(200U))) {
     lightFlashScore = 0.0f;
   }
@@ -890,7 +905,7 @@ void ImavRole::audioThread(void *)
   }
 }
 
-/** @brief Drain the light FIFO and schedule exclusive ToF measurements. */
+/** @brief Sample RGBW light and schedule exclusive ToF measurements. */
 void ImavRole::opticalThread(void *)
 {
   if (audio->lightRange != nullptr) {
