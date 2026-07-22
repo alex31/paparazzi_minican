@@ -106,7 +106,18 @@ La [fiche produit MSA motionSCOUT](https://s7d9.scene7.com/is/content/minesafety
 - référence du modèle K-T-R : `10088478` ;
 - étanchéité IP67.
 
-La cadence des salves sonores est donc une signature essentielle : un harmonique d'hélice peut rester en permanence autour de 2,8 kHz, alors que la balise présente une enveloppe périodique proche de trois salves par seconde.
+Les cadences proches de 2 Hz en préalarme et de 3 Hz en alarme complète sont
+des informations distinctives, mais les deux états doivent être considérés
+valides. La décision audio repose donc d'abord sur l'énergie concentrée dans la
+bande utile ; la cadence reste une mesure de diagnostic et ne bloque pas une
+détection.
+
+Une analyse de la
+[seconde vidéo de démonstration](https://www.youtube.com/watch?v=fVBscz2agI4)
+observe un maximum spectral vers 2 433 Hz, un chirp rapide d'environ 2,1 à
+2,5 kHz à l'intérieur d'un bip et une période de préalarme de 0,51 s. Cette
+observation non normative justifie la bande par défaut 2,0–3,0 kHz et le cumul
+d'énergie sur toute la bande plutôt que la recherche d'une sinusoïde fixe.
 
 ### 3.1 Avis de service MSA de février 2026
 
@@ -429,7 +440,7 @@ Principes :
 - conserver un temps d'échantillonnage ADC assez long, provisoirement 47,5 cycles ;
 - détecter numériquement les échantillons proches de 0 et du maximum.
 
-Le RC passif limite une partie du bruit hors bande mais ne constitue pas un filtre anti-repliement très raide. Il ne faut pas choisir une coupure étroite autour de 2,8 kHz avant d'avoir mesuré la balise. La sélection 2,6–3,0 kHz reste numérique.
+Le RC passif limite une partie du bruit hors bande mais ne constitue pas un filtre anti-repliement très raide. Il ne faut pas choisir une coupure étroite autour de 2,8 kHz avant d'avoir mesuré la balise. La sélection 2,0–3,0 kHz reste numérique.
 
 ### 9.2 Conséquence de l'absence de gain
 
@@ -736,25 +747,22 @@ Pour chaque demi-tampon :
 
 1. convertir l'échantillon ADC en valeur signée en retirant le point milieu ;
 2. supprimer lentement l'offset restant ;
-3. appliquer un passe-bande numérique large, par exemple 2,4 à 3,2 kHz ;
-4. calculer l'énergie dans plusieurs sous-bandes ou fréquences Goertzel ;
+3. couvrir la bande 2,0 à 3,0 kHz, avec une petite garde de part et d'autre ;
+4. calculer l'énergie dans une grille de fréquences Goertzel suffisamment
+   serrée pour suivre un chirp ;
 5. calculer l'énergie dans des bandes latérales de référence ;
-6. former un rapport `énergie alarme / énergie voisine` ;
+6. former un rapport entre l'énergie cumulée de la bande et l'énergie globale,
+   complété par le rapport aux bandes voisines ;
 7. extraire l'enveloppe de la bande ;
 8. détecter les fronts de salve avec hystérésis ;
 9. mémoriser seulement les horodatages des dernières salves ;
-10. comparer la cadence à environ trois salves par seconde ;
+10. estimer les cadences proches de 2 et 3 Hz sans les rendre obligatoires ;
 11. produire un niveau, une fréquence dominante et une confiance.
 
-Fréquences Goertzel de départ possibles :
-
-- 2,55 kHz ;
-- 2,65 kHz ;
-- 2,75 kHz ;
-- 2,85 kHz ;
-- 2,95 kHz ;
-- 3,05 kHz ;
-- bandes de référence autour de 2,1–2,4 kHz et 3,2–3,5 kHz.
+L'implémentation utilise une grille de 50 Hz entre 1,95 et 3,05 kHz pour la
+bande utile avec sa garde. Avec la borne basse par défaut à 2 kHz, les
+références basses sont à 1,65 et 1,75 kHz et les références hautes à 3,25 et
+3,40 kHz.
 
 Ces valeurs sont provisoires. Elles doivent être adaptées au spectre mesuré.
 
@@ -770,10 +778,11 @@ Ne pas utiliser uniquement un seuil d'énergie à 2,8 kHz : une harmonique moteu
 
 Combiner :
 
-- rapport à des bandes voisines ;
-- intermittence de la salve ;
-- cadence proche de trois par seconde ;
-- stabilité de la fréquence interne à la salve ;
+- rapport énergie de bande / énergie globale ;
+- rapport à des bandes voisines et élévation au-dessus du bruit adaptatif ;
+- confirmation sur deux blocs consécutifs ;
+- déplacement éventuel du maximum spectral à l'intérieur du chirp ;
+- cadences proches de 2 ou 3 Hz comme informations complémentaires ;
 - éventuel régime moteur reçu du contrôleur de vol ;
 - cohérence avec le flash lumineux ;
 - évolution spatiale lors du déplacement.
@@ -964,8 +973,11 @@ role.imav.publish_frequency
 ```
 
 `role.imav.audio.band_low_hz` est désormais implémenté : entier persistant
-borné entre 2 000 et 2 600 Hz, avec 2 600 Hz par défaut. Il est lu au démarrage
+borné entre 2 000 et 2 600 Hz, avec 2 000 Hz par défaut. Il est lu au démarrage
 du rôle ; un redémarrage de la MicroCAN est donc nécessaire après modification.
+Une carte qui possède déjà la valeur 2 600 Hz en mémoire persistante la
+conservera après mise à jour : il faudra lui écrire explicitement 2 000 Hz et
+la redémarrer.
 Les autres paramètres de cette liste restent des pistes tant qu'ils ne figurent
 pas dans `nodeParameters.hpp`.
 
@@ -1145,7 +1157,7 @@ Ces objectifs doivent être validés sur au moins 20 à 30 répétitions des cas
 
 | Risque | Conséquence | Parade |
 |---|---|---|
-| Harmonique moteur vers 2,8 kHz | Faux positif ou masquage | Cadence, bandes voisines, RPM, optique |
+| Harmonique moteur vers 2,8 kHz | Faux positif ou masquage | Rapport bande/global, bandes voisines, niveau absolu et confirmation optique |
 | Vent sur le microphone | Saturation basse fréquence | Mousse, passe-haut, placement |
 | Bruit hélices malgré l'absence de gain | Clipping ou masque de la balise | Marge directe micro->ADC, drapeau clipping, comparaison verticale |
 | Soleil direct | Saturation optique | Capteur vers le sol, couleur, retrait du fond, TIA faible gain |
@@ -1263,14 +1275,22 @@ Chaque bloc mono de 512 échantillons est consommé immédiatement, sans histori
 1. moyenne, écart absolu moyen, minimum, maximum et clipping ;
 2. fenêtre de Hann générée par récurrence, donc sans table RAM ;
 3. grille Goertzel fixe de 50 Hz permettant de choisir une borne basse entre
-   2,0 et 2,6 kHz ; le défaut réglementaire 2,6 kHz conserve les références à
-   2,25/2,35 et 3,25/3,40 kHz ainsi qu'une marge de 50 Hz autour de la bande ;
-4. puissance de bande, proéminence sur les références, concentration tonale et fréquence dominante ;
+   2,0 et 2,6 kHz ; la valeur par défaut 2,0 kHz utilise les références à
+   1,65/1,75 et 3,25/3,40 kHz ainsi qu'une marge de 50 Hz autour de la bande ;
+4. puissance moyenne de bande, proéminence sur les références, rapport en dB
+   entre l'énergie cumulée de bande et l'énergie globale, et fréquence
+   dominante indicative ;
 5. plancher lent adaptatif et score continu par voie ;
 6. machine `Unarmed/Off/On` à deux blocs avec hystérésis ;
-7. six horodatages de fronts au maximum et score continu de cadence autour de trois salves par seconde.
+7. six horodatages de fronts au maximum et mesure des cadences proches de 2 et
+   3 Hz, sans utiliser cette cadence comme condition de validité.
 
-L'état `Unarmed` est réimposé après une discontinuité. Il faut ensuite observer deux blocs bas avant de créer un nouveau front : la pause santé périodique ne peut donc pas fabriquer artificiellement une cadence de 1 Hz. Une tonalité moteur continue ne fournit qu'un front et ne suffit pas à produire le score audio final.
+L'état `Unarmed` est réimposé après une discontinuité. Il faut ensuite observer
+deux blocs bas, puis deux blocs spectraux hauts consécutifs pour valider le
+signal. Le score est maintenu pendant 750 ms puis décroît jusqu'à 1 500 ms afin
+de couvrir les silences de la préalarme et de l'alarme. Une tonalité continue
+fortement concentrée dans la bande peut donc être acceptée : c'est un choix
+délibéré compte tenu du faible risque de leurre dans la mission.
 
 Les seuils numériques actuels sont volontairement des valeurs de bring-up. Ils doivent être recalés sur des enregistrements de la vraie balise et du drone, en conservant les scores continus plutôt qu'un simple booléen.
 
@@ -1280,7 +1300,10 @@ Les seuils numériques actuels sont volontairement des valeurs de bring-up. Ils 
 - Le registre de configuration vaut `0x30B8` en acquisition : plage automatique, 1,8 ms par voie, mode continu et quatre voies séquentielles. Un cycle RGBW typique dure donc 7,2 ms.
 - Le thread lit toutes les 10 ms les huit registres de résultat par un unique transfert burst. Exposant et mantisse sont linéarisés en codes ADC 26 bits ; les compteurs de conversion empêchent de mélanger un cycle incomplet et permettent de détecter un capteur bloqué.
 - Les coefficients TI `R=2,4×CH0`, `G=CH1` et `B=1,3×CH2` sont appliqués avant de calculer la dominance rouge de la variation. Le score instantané combine amplitude absolue, variation relative, élévation au-dessus du bruit et chromaticité rouge.
-- Deux mesures hautes puis deux mesures basses valident les fronts. Six fronts au maximum alimentent un score de cadence centré sur trois allumages par seconde ; un flash isolé ou la LED d'état rouge à 1 Hz ne suffit pas à produire le score final `lit`.
+- Deux mesures hautes puis deux mesures basses valident les fronts. Six fronts
+  au maximum alimentent un score acceptant 2 Hz pour la préalarme et 3 Hz pour
+  l'alarme complète ; un flash isolé ou la LED d'état rouge à 1 Hz ne suffit
+  pas à produire le score final `lit`.
 - Le VL53L4CX utilise sans modification le composant officiel ST du sous-module `third_party/x-cube-tof1`, épinglé sur X-CUBE-TOF1 v3.4.3 (cœur VL53LX 1.2.13). Seuls les callbacks I2C/temps sont adaptés à ChibiOS.
 - Il fonctionne en profil longue distance, budget de 30 ms et one-shot asynchrone borné à 100 ms. Le résultat valide le plus proche est publié.
 - Avant chaque one-shot ou réinitialisation ToF, le mode de l'OPT4060 passe à `Power-down` par une écriture I²C acquittée. La mesure ST est effectuée, puis le mode continu est rétabli ; aucun résultat optique de cette fenêtre n'est utilisé.
@@ -1296,11 +1319,11 @@ La lumière et le son restent deux preuves indépendantes. Il n'y a pas de condi
 
 Mesures contrôlées sur le build `-Og` :
 
-- `sizeof(ImavAudioState) = 2 620` octets sur le heap DMA de 12 288 octets ; ce total contient le buffer audio mono de 2 048 octets ;
+- `sizeof(ImavAudioState) = 2 624` octets sur le heap DMA de 12 288 octets ; ce total contient le buffer audio mono de 2 048 octets ;
 - `sizeof(ImavLightRange) = 10 304` octets sur le heap standard de 20 480 octets ; ce total contient le contexte officiel ST de 9 480 octets et les tampons I2C ;
 - thread audio : pile utile configurée à 1 536 octets ;
 - thread capteurs : pile utile configurée à 2 048 octets ;
-- firmware : 276 184 octets de texte et 100 056 octets de BSS, heaps réservés inclus ;
+- firmware : 276 344 octets de texte et 100 056 octets de BSS, heaps réservés inclus ;
 - le shell de 2 000 octets n'est pas alloué en mode IMAV.
 
 La télémétrie temporaire `uavcan.protocol.debug.KeyValue`, activable par `role.imav.debug.publish`, diffuse environ une fois par seconde :
@@ -1310,10 +1333,10 @@ La télémétrie temporaire `uavcan.protocol.debug.KeyValue`, activable par `rol
 | `a0` | score spectral instantané du microphone |
 | `p0` | amplitude RMS estimée de la tonalité dominante, en comptes ADC 13 bits |
 | `sdb` | rapport en dB entre l'énergie de la bande balise et l'énergie globale de la fenêtre |
-| `aud` | score audio avec cadence |
+| `aud` | score de signature spectrale audio, maintenu pendant les silences |
 | `frq` | fréquence dominante en hertz |
 | `cad` | cadence de salves estimée en hertz |
-| `lit` | score de flash rouge qualifié par la cadence de 3 Hz, zéro après 200 ms sans nouvel échantillon |
+| `lit` | score de flash rouge qualifié par une cadence de 2 ou 3 Hz, zéro après 200 ms sans nouvel échantillon |
 | `rng` | distance en mètres, -1 si la dernière mesure n'est pas valide |
 | `rsg` | signal VL53L4CX en kcps/SPAD |
 

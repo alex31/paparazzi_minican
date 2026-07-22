@@ -78,8 +78,14 @@ indications pour le prototype, pas des caractéristiques garanties de la balise
 de compétition.
 
 La brochure MSA indique une bande de 2,6 à 3,0 kHz, comme le règlement, tandis
-que le manuel donne une bande plus large de 2,0 à 3,0 kHz. Le firmware utilise
-donc **2 600 Hz par défaut**, conformément au règlement, mais expose le
+que le manuel donne une bande plus large de 2,0 à 3,0 kHz. Une analyse de cette
+[seconde vidéo de démonstration](https://www.youtube.com/watch?v=fVBscz2agI4)
+mesure un maximum vers 2 433 Hz et un balayage rapide, ou *chirp*, d'environ
+2,1 à 2,5 kHz à l'intérieur d'un bip. Elle mesure aussi 0,51 s entre les bips de
+préalarme, soit 1,96 Hz. Ces observations vidéo ne sont pas des spécifications
+garanties, mais elles rendent une borne basse à 2,6 kHz trop risquée.
+
+Le firmware utilise donc désormais **2 000 Hz par défaut** et expose le
 paramètre persistant `role.imav.audio.band_low_hz`, réglable de 2 000 à
 2 600 Hz. La borne haute reste fixée à 3 000 Hz. La grille DSP ajoute une marge
 de 50 Hz de chaque côté et le nouveau réglage est pris en compte au redémarrage
@@ -101,7 +107,8 @@ et
 [avis de service de février 2026](https://assetlibrary.msasafety.com/m/1daafc2b15a7c2a5/original/Avis-de-service-Dispositif-MSA-motionSCOUT-PASS-Fevrier-2026.pdf).
 
 Source d'observation complémentaire :
-[vidéo YouTube de démonstration](https://www.youtube.com/shorts/VTjL53YFpTA).
+[vidéo courte](https://www.youtube.com/shorts/VTjL53YFpTA) et
+[seconde démonstration](https://www.youtube.com/watch?v=fVBscz2agI4).
 
 ### 1.3 Points à confirmer sur la balise de compétition
 
@@ -129,9 +136,11 @@ bon fonctionnement avant l'épreuve.
 
 ### 1.4 Conséquences pour notre détecteur
 
-- La voie audio utilisera par défaut l'énergie dans la bande 2,6–3,0 kHz, mais
-  sa borne basse pourra être abaissée jusqu'à 2,0 kHz pour les essais. La
-  cadence caractéristique de trois signaux par seconde reste indispensable.
+- La voie audio utilisera par défaut l'énergie cumulée dans la bande
+  2,0–3,0 kHz. Deux blocs consécutifs présentant une énergie de bande
+  suffisamment supérieure au reste du spectre valideront le signal. La cadence
+  sera mesurée mais ne conditionnera pas la décision : préalarme et alarme
+  complète sont toutes deux valides.
 - La voie optique cherchera des variations rouges rapides et répétées. Une
   acquisition voisine de 100 Hz donnera environ dix mesures pendant un
   allumage de 100 ms observé dans la vidéo, sans imposer de FIFO.
@@ -210,16 +219,22 @@ le rapport :
 
 La borne basse utilisée par ce calcul vient de
 `role.imav.audio.band_low_hz` : plage 2 000–2 600 Hz, valeur par défaut
-2 600 Hz. Ce paramètre est exposé par UAVCAN et sauvegardé dans la mémoire
+2 000 Hz. Ce paramètre est exposé par UAVCAN et sauvegardé dans la mémoire
 persistante avec le mécanisme commun de la MicroCAN. Un redémarrage est requis
 après sa modification.
 
-Il faudra lui ajouter un seuil minimal d'énergie absolue pour éviter qu'un
-rapport élevé calculé sur du silence soit interprété comme une détection. Les
-largeurs de bandes et les seuils devront être déterminés à partir
-d'enregistrements réels sous le drone. La présence d'une enveloppe répétée à
-environ 3 Hz permettra de renforcer la détection de l'alarme complète ; la
-préalarme à 2 Hz ne doit pas être notre état nominal de recherche.
+Attention lors de la mise à jour d'une carte déjà configurée : une valeur
+précédemment sauvegardée à 2 600 Hz reste prioritaire sur la nouvelle valeur
+par défaut. Il faut alors régler explicitement ce paramètre à 2 000 Hz, puis
+redémarrer la MicroCAN.
+
+Un seuil minimal d'énergie absolue complète ce rapport afin d'éviter qu'une
+valeur élevée calculée sur du silence soit interprétée comme une détection. Les
+largeurs de bandes et les seuils devront encore être recalés à partir
+d'enregistrements réels sous le drone. Le calcul cumule toute la bande plutôt
+que de rechercher une raie fixe : il reste ainsi sensible au chirp qui se
+déplace entre les fréquences. La cadence 2 ou 3 Hz reste une information de
+diagnostic, mais elle n'est plus nécessaire à la validation audio.
 
 ### 4.2 Flash
 
@@ -242,7 +257,8 @@ de mesures. La détection pourra combiner :
 - un seuil minimal absolu pour rejeter le bruit de mesure ;
 - une chromaticité dominée par le rouge, comparée aux voies verte, bleue et
   large bande ;
-- la répétition temporelle attendue de l'alarme complète, voisine de 3 Hz.
+- une répétition temporelle voisine de 2 Hz pour la préalarme ou de 3 Hz pour
+  l'alarme complète.
 
 La LED d'état rouge à 1 Hz ne devra jamais suffire à valider la détection. Les
 seuils et les rapports de couleur seront déterminés à partir de mesures sur la
@@ -422,3 +438,4 @@ Fiches fabricants :
 Observation vidéo non normative :
 
 - [vidéo YouTube de démonstration de la motionSCOUT](https://www.youtube.com/shorts/VTjL53YFpTA).
+- [seconde vidéo YouTube de démonstration](https://www.youtube.com/watch?v=fVBscz2agI4).

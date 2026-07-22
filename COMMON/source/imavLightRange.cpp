@@ -403,8 +403,13 @@ void ImavLightRange::updateLightCadence(float instantScore, systime_t now)
   for (uint8_t index = 1U; index < lightOnsetCount; ++index) {
     const float periodMs = static_cast<float>(TIME_I2MS(
       chTimeDiffX(lightOnsets[index - 1U], lightOnsets[index])));
-    const float error = (periodMs - 333.333f) / 80.0f;
-    periodScoreSum += 1.0f / (1.0f + error * error);
+    const float prealarmError = (periodMs - 500.0f) / 90.0f;
+    const float alarmError = (periodMs - 333.333f) / 80.0f;
+    const float prealarmScore =
+      1.0f / (1.0f + prealarmError * prealarmError);
+    const float alarmScore =
+      1.0f / (1.0f + alarmError * alarmError);
+    periodScoreSum += std::max(prealarmScore, alarmScore);
     periodMsSum += periodMs;
   }
 

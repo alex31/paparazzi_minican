@@ -150,15 +150,15 @@ namespace {
 
   constexpr auto defaultAudioBand =
     makeAudioBandConfiguration(defaultAudioBandLowHz);
-  constexpr auto widestAudioBand =
-    makeAudioBandConfiguration(minimumAudioBandLowHz);
-  static_assert(defaultAudioBandLowHz == maximumAudioBandLowHz);
-  static_assert(goertzelBins[defaultAudioBand.firstAlarmBin].frequencyHz == 2550U);
-  static_assert(goertzelBins[defaultAudioBand.referenceBins[0]].frequencyHz == 2250U);
-  static_assert(goertzelBins[defaultAudioBand.referenceBins[1]].frequencyHz == 2350U);
-  static_assert(goertzelBins[widestAudioBand.firstAlarmBin].frequencyHz == 1950U);
-  static_assert(goertzelBins[widestAudioBand.referenceBins[0]].frequencyHz == 1650U);
-  static_assert(goertzelBins[widestAudioBand.referenceBins[1]].frequencyHz == 1750U);
+  constexpr auto narrowestAudioBand =
+    makeAudioBandConfiguration(maximumAudioBandLowHz);
+  static_assert(defaultAudioBandLowHz == minimumAudioBandLowHz);
+  static_assert(goertzelBins[defaultAudioBand.firstAlarmBin].frequencyHz == 1950U);
+  static_assert(goertzelBins[defaultAudioBand.referenceBins[0]].frequencyHz == 1650U);
+  static_assert(goertzelBins[defaultAudioBand.referenceBins[1]].frequencyHz == 1750U);
+  static_assert(goertzelBins[narrowestAudioBand.firstAlarmBin].frequencyHz == 2550U);
+  static_assert(goertzelBins[narrowestAudioBand.referenceBins[0]].frequencyHz == 2250U);
+  static_assert(goertzelBins[narrowestAudioBand.referenceBins[1]].frequencyHz == 2350U);
 
   constexpr float hannCosStep = 0.99992440685f;
   constexpr float hannSinStep = 0.01229555183f;
@@ -222,6 +222,7 @@ struct AudioDetector {
   systime_t onsets[6] = {};
   systime_t lastBlockTime = 0U;
   systime_t lastOnsetTime = 0U;
+  systime_t lastToneTime = 0U;
   uint8_t onsetCount = 0U;
   uint8_t highBlocks = 0U;
   uint8_t lowBlocks = 0U;
@@ -302,7 +303,7 @@ namespace {
     }
 
     AudioChannelScore& score = detector.channel;
-    float bandPower = 0.0f;
+    float bandPowerSum = 0.0f;
     float peakPower = 0.0f;
     size_t peakBin = band.firstAlarmBin;
 
@@ -314,7 +315,7 @@ namespace {
       const float power = std::max(rawPower, 0.0f);
       detector.power[bin] = power;
       if ((bin >= band.firstAlarmBin) && (bin <= band.lastAlarmBin)) {
-	bandPower += power;
+	bandPowerSum += power;
 	if (power > peakPower) {
 	  peakPower = power;
 	  peakBin = bin;
@@ -327,7 +328,8 @@ namespace {
       referencePower += detector.power[bin];
     }
     referencePower /= static_cast<float>(band.referenceBins.size());
-    bandPower /= static_cast<float>(band.alarmBinCount);
+    const float bandPower =
+      bandPowerSum / static_cast<float>(band.alarmBinCount);
 
     if (not score.floorValid) {
       score.noiseFloor = bandPower;
@@ -341,10 +343,11 @@ namespace {
     score.bandPower = bandPower;
     score.peakPower = peakPower;
     score.referencePower = referencePower;
-    // The factor 3 compensates the Hann window's coherent/power gains, so a
-    // pure tone centered on a candidate frequency approaches 0 dB.
+    // Sum the complete alarm band so a chirp remains concentrated even while
+    // its instantaneous peak moves between bins. Factor 2 compensates the
+    // Hann window overlap; a band-limited signal then approaches 0 dB.
     score.concentration = std::clamp(
-      3.0f * peakPower /
+      2.0f * bandPowerSum /
 	(static_cast<float>(audioHalfDepth) * windowedEnergy + 1.0f),
       0.0f, 1.0f);
     score.spectralRatioDb = 10.0f * __builtin_log10f(
@@ -355,8 +358,9 @@ namespace {
     const float prominenceScore = knee(score.prominence, 1.5f, 5.0f);
     const float riseScore = knee(
       bandPower / (score.noiseFloor + 1.0f), 1.8f, 6.0f);
-    const float tonalityScore = knee(score.spectralRatioDb, -15.0f, -6.0f);
-    score.blockScore = tonalityScore *
+    const float bandEnergyScore = knee(
+      score.spectralRatioDb, -15.0f, -6.0f);
+    score.blockScore = bandEnergyScore *
       std::max(prominenceScore, 0.8f * riseScore);
     if (clipped >= 5U) {
       score.blockScore *= 0.8f;
@@ -398,6 +402,7 @@ namespace {
   {
     detector.onsetCount = 0U;
     detector.lastOnsetTime = 0U;
+    detector.lastToneTime = 0U;
     detector.cadenceHz = 0.0f;
     detector.cadenceScore = 0.0f;
     detector.audioScore = 0.0f;
@@ -428,7 +433,7 @@ namespace {
     detector.lastOnsetTime = now;
   }
 
-  /** @brief Extract alarm bursts and compare their cadence to about 3 Hz. */
+  /** @brief Validate the spectral signature and measure burst cadence. */
   void updateAudioCadence(AudioDetector& detector, bool discontinuity,
 			  systime_t now)
   {
@@ -466,12 +471,14 @@ namespace {
 	detector.burstState = AudioBurstState::On;
 	detector.highBlocks = 0U;
 	detector.burstPeakScore = detector.blockScore;
+	detector.lastToneTime = now;
 	appendAudioOnset(detector, now);
       }
       break;
 
     case AudioBurstState::On:
       detector.highBlocks = 0U;
+      detector.lastToneTime = now;
       detector.burstPeakScore =
 	std::max(detector.burstPeakScore, detector.blockScore);
       detector.lowBlocks = low ? static_cast<uint8_t>(detector.lowBlocks + 1U)
@@ -485,55 +492,61 @@ namespace {
       break;
     }
 
-    if (detector.lastOnsetTime == 0U) {
-      detector.cadenceHz = 0.0f;
-      detector.cadenceScore = 0.0f;
-      detector.audioScore = 0.0f;
-      return;
+    detector.cadenceHz = 0.0f;
+    detector.cadenceScore = 0.0f;
+    if (detector.lastOnsetTime != 0U) {
+      const uint32_t onsetAgeMs = TIME_I2MS(
+	chTimeDiffX(detector.lastOnsetTime, now));
+      if (onsetAgeMs >= 1500U) {
+	detector.onsetCount = 0U;
+	detector.lastOnsetTime = 0U;
+      } else {
+	float periodScoreSum = 0.0f;
+	float periodMsSum = 0.0f;
+	const uint8_t intervalCount = detector.onsetCount > 0U
+	  ? static_cast<uint8_t>(detector.onsetCount - 1U) : 0U;
+	for (uint8_t index = 1U; index < detector.onsetCount; ++index) {
+	  const float periodMs = static_cast<float>(TIME_I2MS(
+	    chTimeDiffX(detector.onsets[index - 1U],
+			detector.onsets[index])));
+	  const float prealarmError = (periodMs - 500.0f) / 90.0f;
+	  const float alarmError = (periodMs - 333.333f) / 80.0f;
+	  const float prealarmScore =
+	    1.0f / (1.0f + prealarmError * prealarmError);
+	  const float alarmScore =
+	    1.0f / (1.0f + alarmError * alarmError);
+	  periodScoreSum += std::max(prealarmScore, alarmScore);
+	  periodMsSum += periodMs;
+	}
+	if (intervalCount != 0U) {
+	  detector.cadenceHz = 1000.0f / (periodMsSum / intervalCount);
+	  const float support = std::min(
+	    static_cast<float>(intervalCount) / 3.0f, 1.0f);
+	  detector.cadenceScore =
+	    (periodScoreSum / intervalCount) * support;
+	}
+      }
     }
 
-    const uint32_t onsetAgeMs = TIME_I2MS(
-      chTimeDiffX(detector.lastOnsetTime, now));
-    if (onsetAgeMs >= 1500U) {
-      clearAudioCadence(detector);
-      return;
-    }
-
-    float periodScoreSum = 0.0f;
-    float periodMsSum = 0.0f;
-    const uint8_t intervalCount = detector.onsetCount > 0U
-      ? static_cast<uint8_t>(detector.onsetCount - 1U) : 0U;
-    for (uint8_t index = 1U; index < detector.onsetCount; ++index) {
-      const float periodMs = static_cast<float>(TIME_I2MS(
-	chTimeDiffX(detector.onsets[index - 1U], detector.onsets[index])));
-      const float error = (periodMs - 333.333f) / 80.0f;
-      periodScoreSum += 1.0f / (1.0f + error * error);
-      periodMsSum += periodMs;
-    }
-
-    if (intervalCount == 0U) {
-      detector.cadenceHz = 0.0f;
-      detector.cadenceScore = 0.0f;
-      detector.audioScore = 0.0f;
-      return;
-    }
-
-    const float meanPeriodMs = periodMsSum / intervalCount;
-    detector.cadenceHz = 1000.0f / meanPeriodMs;
-    const float support = std::min(static_cast<float>(intervalCount) / 3.0f,
-				   1.0f);
-    const float freshness = onsetAgeMs <= 450U ? 1.0f :
-      std::max(0.0f, (900.0f - static_cast<float>(onsetAgeMs)) / 450.0f);
-    detector.cadenceScore =
-      (periodScoreSum / intervalCount) * support * freshness;
+    // Cadence is diagnostic only. Two consecutive spectral blocks in the
+    // configured band validate both prealarm and full alarm, and the evidence
+    // is held long enough to bridge their silent intervals.
     const float strength = detector.burstState == AudioBurstState::On
       ? std::max(detector.recentBurstStrength, detector.burstPeakScore)
       : detector.recentBurstStrength;
-    detector.audioScore = detector.cadenceScore * (0.5f + 0.5f * strength);
+    float toneFreshness = 0.0f;
+    if (detector.lastToneTime != 0U) {
+      const uint32_t toneAgeMs = TIME_I2MS(
+	chTimeDiffX(detector.lastToneTime, now));
+      toneFreshness = toneAgeMs <= 750U ? 1.0f :
+	std::max(0.0f,
+	  (1500.0f - static_cast<float>(toneAgeMs)) / 750.0f);
+    }
+    detector.audioScore = strength * toneFreshness;
     if (detector.detected) {
-      detector.detected = detector.audioScore >= 0.35f;
+      detector.detected = detector.audioScore >= 0.25f;
     } else {
-      detector.detected = detector.audioScore >= 0.65f;
+      detector.detected = detector.audioScore >= 0.60f;
     }
   }
 }
