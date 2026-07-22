@@ -18,24 +18,55 @@
 #include <algorithm>
 #include <array>
 #include <new>
+#include <variant>
 
 namespace {
   constexpr size_t audioBufferDepth = 1024U;
   constexpr size_t audioHalfDepth = audioBufferDepth / 2U;
   constexpr gptcnt_t audioTimerInterval = 1771U;
   constexpr sysinterval_t healthPeriod = TIME_MS2I(1000U);
+  constexpr uint16_t audioBandHighHz = 3000U;
+  constexpr uint16_t audioBandGuardHz = 50U;
+
+  // Derive the configurable range from the persistent parameter metadata so
+  // its validation and the DSP configuration cannot silently diverge.
+  constexpr auto audioBandLowParam =
+    Persistant::Parameter::cfind("role.imav.audio.band_low_hz");
+  constexpr uint16_t minimumAudioBandLowHz = static_cast<uint16_t>(
+    std::get<Persistant::Integer>(audioBandLowParam.second.min));
+  constexpr uint16_t maximumAudioBandLowHz = static_cast<uint16_t>(
+    std::get<Persistant::Integer>(audioBandLowParam.second.max));
+  constexpr uint16_t defaultAudioBandLowHz = static_cast<uint16_t>(
+    std::get<Persistant::Integer>(audioBandLowParam.second.v));
 
   struct GoertzelBin {
     float coefficient;
     uint16_t frequencyHz;
   };
 
-  // Fs = 42.5 MHz / 1771 = 23997.741389 Hz. The four outer bins estimate
-  // nearby noise; the eleven inner bins cover the rulebook's 2.6--3.0 kHz
-  // alarm range with a small tolerance on either side.
-  constexpr std::array<GoertzelBin, 15U> goertzelBins = {{
+  // Fs = 42.5 MHz / 1771 = 23997.741389 Hz. A fixed 50 Hz grid avoids
+  // recomputing coefficients in the acquisition path. The selected alarm bins
+  // depend on the persistent lower edge and retain a 50 Hz guard on each side.
+  // Two lower reference bins follow that edge; two upper references are fixed.
+  constexpr std::array<GoertzelBin, 31U> goertzelBins = {{
+    {1.816252304f, 1650U},
+    {1.805134501f, 1700U},
+    {1.793707339f, 1750U},
+    {1.781972776f, 1800U},
+    {1.769932824f, 1850U},
+    {1.757589546f, 1900U},
+    {1.744945058f, 1950U},
+    {1.732001526f, 2000U},
+    {1.718761168f, 2050U},
+    {1.705226254f, 2100U},
+    {1.691399104f, 2150U},
+    {1.677282086f, 2200U},
     {1.662877621f, 2250U},
+    {1.648188176f, 2300U},
     {1.633216270f, 2350U},
+    {1.617964468f, 2400U},
+    {1.602435383f, 2450U},
+    {1.586631678f, 2500U},
     {1.570556061f, 2550U},
     {1.554211286f, 2600U},
     {1.537600155f, 2650U},
@@ -50,9 +81,85 @@ namespace {
     {1.318571212f, 3250U},
     {1.258510566f, 3400U},
   }};
-  constexpr size_t firstAlarmBin = 2U;
-  constexpr size_t lastAlarmBin = 12U;
-  constexpr size_t alarmBinCount = lastAlarmBin - firstAlarmBin + 1U;
+
+  struct AudioBandConfiguration {
+    uint16_t lowFrequencyHz;
+    size_t firstAlarmBin;
+    size_t lastAlarmBin;
+    size_t alarmBinCount;
+    std::array<size_t, 4U> referenceBins;
+  };
+
+  constexpr size_t firstBinAtOrAbove(uint16_t frequencyHz)
+  {
+    for (size_t bin = 0U; bin < goertzelBins.size(); ++bin) {
+      if (goertzelBins[bin].frequencyHz >= frequencyHz) {
+	return bin;
+      }
+    }
+    return goertzelBins.size() - 1U;
+  }
+
+  constexpr size_t lastBinAtOrBelow(uint16_t frequencyHz)
+  {
+    for (size_t bin = goertzelBins.size(); bin > 0U; --bin) {
+      if (goertzelBins[bin - 1U].frequencyHz <= frequencyHz) {
+	return bin - 1U;
+      }
+    }
+    return 0U;
+  }
+
+  constexpr size_t closestBin(uint16_t frequencyHz)
+  {
+    size_t closest = 0U;
+    uint16_t closestDistance = UINT16_MAX;
+    for (size_t bin = 0U; bin < goertzelBins.size(); ++bin) {
+      const uint16_t binFrequency = goertzelBins[bin].frequencyHz;
+      const uint16_t distance = binFrequency >= frequencyHz
+	? static_cast<uint16_t>(binFrequency - frequencyHz)
+	: static_cast<uint16_t>(frequencyHz - binFrequency);
+      if (distance < closestDistance) {
+	closest = bin;
+	closestDistance = distance;
+      }
+    }
+    return closest;
+  }
+
+  constexpr AudioBandConfiguration makeAudioBandConfiguration(
+    uint16_t lowFrequencyHz)
+  {
+    const size_t firstAlarmBin = firstBinAtOrAbove(
+      static_cast<uint16_t>(lowFrequencyHz - audioBandGuardHz));
+    const size_t lastAlarmBin = lastBinAtOrBelow(
+      static_cast<uint16_t>(audioBandHighHz + audioBandGuardHz));
+    return {
+      .lowFrequencyHz = lowFrequencyHz,
+      .firstAlarmBin = firstAlarmBin,
+      .lastAlarmBin = lastAlarmBin,
+      .alarmBinCount = lastAlarmBin - firstAlarmBin + 1U,
+      .referenceBins = {
+	closestBin(static_cast<uint16_t>(lowFrequencyHz - 350U)),
+	closestBin(static_cast<uint16_t>(lowFrequencyHz - 250U)),
+	closestBin(static_cast<uint16_t>(audioBandHighHz + 250U)),
+	closestBin(static_cast<uint16_t>(audioBandHighHz + 400U)),
+      },
+    };
+  }
+
+  constexpr auto defaultAudioBand =
+    makeAudioBandConfiguration(defaultAudioBandLowHz);
+  constexpr auto widestAudioBand =
+    makeAudioBandConfiguration(minimumAudioBandLowHz);
+  static_assert(defaultAudioBandLowHz == maximumAudioBandLowHz);
+  static_assert(goertzelBins[defaultAudioBand.firstAlarmBin].frequencyHz == 2550U);
+  static_assert(goertzelBins[defaultAudioBand.referenceBins[0]].frequencyHz == 2250U);
+  static_assert(goertzelBins[defaultAudioBand.referenceBins[1]].frequencyHz == 2350U);
+  static_assert(goertzelBins[widestAudioBand.firstAlarmBin].frequencyHz == 1950U);
+  static_assert(goertzelBins[widestAudioBand.referenceBins[0]].frequencyHz == 1650U);
+  static_assert(goertzelBins[widestAudioBand.referenceBins[1]].frequencyHz == 1750U);
+
   constexpr float hannCosStep = 0.99992440685f;
   constexpr float hannSinStep = 0.01229555183f;
   constexpr uint16_t audioClipLow = 82U;
@@ -103,6 +210,7 @@ struct AudioDetector {
   float q1[goertzelBins.size()] = {};
   float q2[goertzelBins.size()] = {};
   float power[goertzelBins.size()] = {};
+  AudioBandConfiguration band = defaultAudioBand;
   AudioChannelScore channel;
   float dominantFrequencyHz = 0.0f;
   float blockScore = 0.0f;
@@ -155,6 +263,7 @@ namespace {
 			 uint16_t mean)
   {
     AudioDetector& detector = state.detector;
+    const AudioBandConfiguration& band = detector.band;
     for (size_t bin = 0U; bin < goertzelBins.size(); ++bin) {
       detector.q1[bin] = 0.0f;
       detector.q2[bin] = 0.0f;
@@ -195,7 +304,7 @@ namespace {
     AudioChannelScore& score = detector.channel;
     float bandPower = 0.0f;
     float peakPower = 0.0f;
-    size_t peakBin = firstAlarmBin;
+    size_t peakBin = band.firstAlarmBin;
 
     for (size_t bin = 0U; bin < goertzelBins.size(); ++bin) {
       const float q1 = detector.q1[bin];
@@ -204,7 +313,7 @@ namespace {
 	goertzelBins[bin].coefficient * q1 * q2;
       const float power = std::max(rawPower, 0.0f);
       detector.power[bin] = power;
-      if ((bin >= firstAlarmBin) && (bin <= lastAlarmBin)) {
+      if ((bin >= band.firstAlarmBin) && (bin <= band.lastAlarmBin)) {
 	bandPower += power;
 	if (power > peakPower) {
 	  peakPower = power;
@@ -213,10 +322,12 @@ namespace {
       }
     }
 
-    const float referencePower =
-      (detector.power[0] + detector.power[1] +
-       detector.power[13] + detector.power[14]) * 0.25f;
-    bandPower /= static_cast<float>(alarmBinCount);
+    float referencePower = 0.0f;
+    for (const size_t bin : band.referenceBins) {
+      referencePower += detector.power[bin];
+    }
+    referencePower /= static_cast<float>(band.referenceBins.size());
+    bandPower /= static_cast<float>(band.alarmBinCount);
 
     if (not score.floorValid) {
       score.noiseFloor = bandPower;
@@ -256,8 +367,8 @@ namespace {
     score.clippedSamples = clipped;
 
     float strongestPower = 0.0f;
-    size_t strongestBin = firstAlarmBin;
-    for (size_t bin = firstAlarmBin; bin <= lastAlarmBin; ++bin) {
+    size_t strongestBin = band.firstAlarmBin;
+    for (size_t bin = band.firstAlarmBin; bin <= band.lastAlarmBin; ++bin) {
       if (detector.power[bin] > strongestPower) {
 	strongestPower = detector.power[bin];
 	strongestBin = bin;
@@ -265,7 +376,8 @@ namespace {
     }
 
     float binOffset = 0.0f;
-    if ((strongestBin > firstAlarmBin) && (strongestBin < lastAlarmBin)) {
+    if ((strongestBin > band.firstAlarmBin) &&
+	(strongestBin < band.lastAlarmBin)) {
       const float left = detector.power[strongestBin - 1U];
       const float center = strongestPower;
       const float right = detector.power[strongestBin + 1U];
@@ -480,6 +592,8 @@ DeviceStatus ImavRole::start(UAVCAN::Node& node)
 
   audio->adcGroup = &adcAudioGroup;
   audio->publishDebug = param_cget<"role.imav.debug.publish">();
+  audio->detector.band = makeAudioBandConfiguration(static_cast<uint16_t>(
+    param_cget<"role.imav.audio.band_low_hz">()));
 
   // The 8 ksample/s FIFO stream needs at least Fast mode. Both the TCS3410
   // and VL53L4CX also support the STM32G4 Fast-mode Plus setting at 1 MHz.
@@ -531,7 +645,8 @@ DeviceStatus ImavRole::start(UAVCAN::Node& node)
     node.infoCb("IMAV sensor worker unavailable: heap full");
   }
 
-  node.infoCb("IMAV audio started: PA3/ADC1, 24kHz, OVS x4");
+  node.infoCb("IMAV audio started: PA3/ADC1, 24kHz, OVS x4, band=%u-%uHz",
+	      audio->detector.band.lowFrequencyHz, audioBandHighHz);
   if (initialSensors.lightAvailable) {
     node.infoCb("IMAV light started: TCS3410 addr=0x%02x id=0x%02x 8ksps",
 		initialSensors.lightAddress, initialSensors.lightDeviceId);

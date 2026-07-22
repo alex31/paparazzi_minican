@@ -105,6 +105,10 @@
 
 #if USE_IMAV_ROLE
       {"ROLE.imav.beacon", {.v = false}},
+      // Nominal lower edge of the beacon alarm band. The IMAV rulebook gives
+      // 2.6 kHz while the MSA manual specifies the wider 2.0--3.0 kHz band.
+      // Read when the role starts; reboot after changing it at runtime.
+      {"role.imav.audio.band_low_hz", {.min = 2000, .max = 2600, .v = 2600}},
       // TCS3410 ordering options are 0x39 and 0x49. Intermediate values are
       // rejected at runtime and fall back to probing these two addresses.
       {"role.imav.light.i2c_address", {.min = 0x39, .max = 0x49, .v = 0x39}},

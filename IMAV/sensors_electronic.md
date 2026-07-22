@@ -68,9 +68,12 @@ deux LED rouges d'alarme. Le fabricant ne donne pas leur cadence, la durée de
 leurs éclairs ou leur intensité.
 
 La brochure MSA indique une bande de 2,6 à 3,0 kHz, comme le règlement, tandis
-que le manuel donne une bande plus large de 2,0 à 3,0 kHz. Nous dimensionnons
-d'abord la détection sur la bande réglementaire, puis nous mesurerons le spectre
-de l'exemplaire réellement utilisé.
+que le manuel donne une bande plus large de 2,0 à 3,0 kHz. Le firmware utilise
+donc **2 600 Hz par défaut**, conformément au règlement, mais expose le
+paramètre persistant `role.imav.audio.band_low_hz`, réglable de 2 000 à
+2 600 Hz. La borne haute reste fixée à 3 000 Hz. La grille DSP ajoute une marge
+de 50 Hz de chaque côté et le nouveau réglage est pris en compte au redémarrage
+du rôle, donc en pratique après redémarrage de la MicroCAN.
 
 Caractéristiques secondaires utiles pour préparer les essais :
 
@@ -113,8 +116,9 @@ bon fonctionnement avant l'épreuve.
 
 ### 1.4 Conséquences pour notre détecteur
 
-- La voie audio utilisera l'énergie dans la bande 2,6–3,0 kHz, mais aussi la
-  cadence caractéristique de trois signaux par seconde en alarme complète.
+- La voie audio utilisera par défaut l'énergie dans la bande 2,6–3,0 kHz, mais
+  sa borne basse pourra être abaissée jusqu'à 2,0 kHz pour les essais. La
+  cadence caractéristique de trois signaux par seconde reste indispensable.
 - La voie optique cherchera des variations rapides et répétées sans supposer
   une durée d'éclair connue.
 - La LED d'état à 1 Hz n'est pas un indice de présence de la balise. Son
@@ -190,6 +194,12 @@ L'indicateur sonore proposé pour discriminer la balise du bruit des moteurs est
 le rapport :
 
 `10 × log10(énergie dans les bandes de la balise / énergie audio totale)`
+
+La borne basse utilisée par ce calcul vient de
+`role.imav.audio.band_low_hz` : plage 2 000–2 600 Hz, valeur par défaut
+2 600 Hz. Ce paramètre est exposé par UAVCAN et sauvegardé dans la mémoire
+persistante avec le mécanisme commun de la MicroCAN. Un redémarrage est requis
+après sa modification.
 
 Il faudra lui ajouter un seuil minimal d'énergie absolue pour éviter qu'un
 rapport élevé calculé sur du silence soit interprété comme une détection. Les

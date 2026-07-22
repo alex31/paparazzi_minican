@@ -9,6 +9,8 @@ Important parameters:
 - uavcan.param_set_behavior (SetRam / SetRamFlash / SetRamFlashAndReboot)
 - bus.serial.baudrate (0..460800, where 0 enables GNSS UBX auto-baud probing)
 - bus.i2c.frequency_khz
+- role.imav.audio.band_low_hz (2000..2600 Hz, default 2600; applied when the
+  IMAV role starts, so reboot after changing it)
 - ROLE.* toggles for each role
 
 Parameter handling is implemented in:

@@ -952,7 +952,7 @@ Paramètres runtime possibles :
 ```text
 role.imav.audio.sample_rate
 role.imav.audio.gain
-role.imav.audio.band_low
+role.imav.audio.band_low_hz
 role.imav.audio.band_high
 role.imav.audio.threshold
 role.imav.audio.cadence_min
@@ -962,6 +962,12 @@ role.imav.optical.integration_time
 role.imav.fusion.threshold
 role.imav.publish_frequency
 ```
+
+`role.imav.audio.band_low_hz` est désormais implémenté : entier persistant
+borné entre 2 000 et 2 600 Hz, avec 2 600 Hz par défaut. Il est lu au démarrage
+du rôle ; un redémarrage de la MicroCAN est donc nécessaire après modification.
+Les autres paramètres de cette liste restent des pistes tant qu'ils ne figurent
+pas dans `nodeParameters.hpp`.
 
 Le rôle devra :
 
@@ -1233,7 +1239,7 @@ Ne passer à un AFE actif, un ADC externe ou à des photodiodes analogiques que 
 - [TI OPA381](https://www.ti.com/product/OPA381)
 - [TI OPA320](https://www.ti.com/product/OPA320)
 
-## 25. État de l'implémentation au 17 juillet 2026
+## 25. État de l'implémentation au 22 juillet 2026
 
 La branche active est `imav2026`. Un premier rôle fonctionnel `ImavRole` est maintenant intégré, compilé par `USE_IMAV_ROLE` et activé à l'exécution par `ROLE.imav.beacon`. Aucun autre rôle n'a été désactivé statiquement.
 
@@ -1256,7 +1262,9 @@ Chaque bloc mono de 512 échantillons est consommé immédiatement, sans histori
 
 1. moyenne, écart absolu moyen, minimum, maximum et clipping ;
 2. fenêtre de Hann générée par récurrence, donc sans table RAM ;
-3. quinze Goertzel : références à 2,25/2,35 et 3,25/3,40 kHz, puis grille de 50 Hz entre 2,55 et 3,05 kHz ;
+3. grille Goertzel fixe de 50 Hz permettant de choisir une borne basse entre
+   2,0 et 2,6 kHz ; le défaut réglementaire 2,6 kHz conserve les références à
+   2,25/2,35 et 3,25/3,40 kHz ainsi qu'une marge de 50 Hz autour de la bande ;
 4. puissance de bande, proéminence sur les références, concentration tonale et fréquence dominante ;
 5. plancher lent adaptatif et score continu par voie ;
 6. machine `Unarmed/Off/On` à deux blocs avec hystérésis ;
