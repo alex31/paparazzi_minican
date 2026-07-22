@@ -1323,8 +1323,17 @@ Mesures contrôlées sur le build `-Og` :
 - `sizeof(ImavLightRange) = 10 304` octets sur le heap standard de 20 480 octets ; ce total contient le contexte officiel ST de 9 480 octets et les tampons I2C ;
 - thread audio : pile utile configurée à 1 536 octets ;
 - thread capteurs : pile utile configurée à 2 048 octets ;
-- firmware : 276 344 octets de texte et 100 056 octets de BSS, heaps réservés inclus ;
+- firmware : 276 472 octets de texte et 100 056 octets de BSS, heaps réservés inclus ;
 - le shell de 2 000 octets n'est pas alloué en mode IMAV.
+
+Le portage matériel local du VL53L4CX réutilise le tampon `tofTx` contenu dans
+`ImavLightRange`. Le `_I2CBuffer[256]` du portage générique ST n'est donc plus
+lié au firmware, sans modifier le sous-module officiel. La section `.bss`
+applicative passe de 35 624 à 35 368 octets et les 256 octets libérés sont
+rendus au heap par le linker. Le total BSS synthétique reste à 100 056 octets
+précisément parce qu'il inclut ce heap redimensionné. Lorsque le rôle est
+compilé mais désactivé, il ne reste en RAM que les deux pointeurs de trampoline
+de 4 octets ; tous ses buffers et états sont alloués à son lancement.
 
 La télémétrie temporaire `uavcan.protocol.debug.KeyValue`, activable par `role.imav.debug.publish`, diffuse environ une fois par seconde :
 

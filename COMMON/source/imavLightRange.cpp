@@ -102,6 +102,17 @@ ImavLightRange::ImavLightRange(UAVCAN::Node& node_, uint8_t address,
   published.lightAddress = address;
 }
 
+extern "C" uint8_t *imav_vl53l4cx_work_buffer(const void *device,
+                                               uint32_t requiredSize)
+{
+  ImavLightRange *const sensors = ImavLightRange::active;
+  if ((sensors == nullptr) || (device != &sensors->rangeDevice) ||
+      (requiredSize > sizeof(sensors->tofTx))) {
+    return nullptr;
+  }
+  return sensors->tofTx;
+}
+
 void ImavLightRange::initialize()
 {
   // Ref-SPAD initialization can emit 940 nm light. Configure it before the
@@ -643,7 +654,9 @@ msg_t ImavLightRange::tofTransfer(uint16_t address, const uint8_t *tx,
   }
 
   if (txLength != 0U) {
-    std::memcpy(tofTx, tx, txLength);
+    if (tx != tofTx) {
+      std::memcpy(tofTx, tx, txLength);
+    }
   }
   i2cAcquireBus(&ExternalI2CD);
   const msg_t result = i2cMasterTransmitTimeout(

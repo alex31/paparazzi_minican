@@ -4,6 +4,7 @@
  */
 #pragma once
 
+#include "imavVl53l4cxPort.h"
 #include "UAVCAN/pubSub.hpp"
 
 #include <array>
@@ -66,6 +67,9 @@ public:
   ImavLightRangeSnapshot snapshot() const;
 
 private:
+  friend uint8_t *imav_vl53l4cx_work_buffer(const void *device,
+                                            uint32_t requiredSize);
+
   static int32_t tofBusInit();
   static int32_t tofBusDeinit();
   static int32_t tofBusWrite(uint16_t address, uint8_t *data,

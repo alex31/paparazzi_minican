@@ -211,15 +211,19 @@ COMMON := ../COMMON/source
 COMMON_CFG := $(COMMON)/../cfg
 SRCDIR = ./source
 VL53L4CX := ../third_party/x-cube-tof1/Drivers/BSP/Components/vl53l4cx
-VL53L4CX_CSRC := $(wildcard $(VL53L4CX)/modules/*.c) \
-                 $(wildcard $(VL53L4CX)/porting/*.c) \
-                 $(VL53L4CX)/vl53l4cx.c
-VL53L4CX_OBJS := $(addprefix $(BUILDDIR)/obj/, \
-                  $(notdir $(VL53L4CX_CSRC:.c=.o)))
+VL53L4CX_GENERIC_PLATFORM := $(VL53L4CX)/porting/vl53lx_platform.c
+VL53L4CX_VENDOR_CSRC := $(wildcard $(VL53L4CX)/modules/*.c) \
+                        $(wildcard $(VL53L4CX)/porting/*.c) \
+                        $(VL53L4CX)/vl53l4cx.c
+VL53L4CX_CSRC := $(filter-out $(VL53L4CX_GENERIC_PLATFORM), \
+                  $(VL53L4CX_VENDOR_CSRC)) \
+                 $(COMMON)/vl53lxPlatform.c
+VL53L4CX_VENDOR_OBJS := $(addprefix $(BUILDDIR)/obj/, \
+                         $(notdir $(VL53L4CX_VENDOR_CSRC:.c=.o)))
 
 # Keep the official ST sources byte-for-byte unchanged. Their upstream warning
 # profile is not identical to this project's -Werror policy.
-$(VL53L4CX_OBJS): CFLAGS += -Wno-error
+$(VL53L4CX_VENDOR_OBJS): CFLAGS += -Wno-error
 
 # Licensing files.
 include $(CHIBIOS)/os/license/license.mk
