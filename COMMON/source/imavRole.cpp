@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <new>
 #include <variant>
 
@@ -350,11 +351,11 @@ namespace {
       2.0f * bandPowerSum /
 	(static_cast<float>(audioHalfDepth) * windowedEnergy + 1.0f),
       0.0f, 1.0f);
-    score.spectralRatioDb = 10.0f * __builtin_log10f(
+    score.spectralRatioDb = 10.0f * std::log10(
       std::max(score.concentration, minimumSpectralRatio));
     score.prominence = bandPower / (referencePower + 1.0f);
     // Hann coherent gain gives A_rms ~= sqrt(Goertzel power) * sqrt(8) / N.
-    score.toneRms = __builtin_sqrtf(peakPower) * 0.005524272f;
+    score.toneRms = std::sqrt(peakPower) * 0.005524272f;
     const float prominenceScore = knee(score.prominence, 1.5f, 5.0f);
     const float riseScore = knee(
       bandPower / (score.noiseFloor + 1.0f), 1.8f, 6.0f);
