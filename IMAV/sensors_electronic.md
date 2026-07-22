@@ -31,9 +31,15 @@ mais elle mérite une confirmation de l'organisation.
 
 ### 1.2 Comportement de la motionSCOUT K-T-R
 
-La variante prévue est la référence MSA **10088478** : version à clé (`K`),
-avec capteur de température (`T`) et réinitialisation manuelle de l'alarme
-(`R`). D'après la documentation du fabricant :
+Le
+[manuel MSA 10251777/01](OPM_motionSCOUT_10251777_01_Book.pdf) couvre toute la
+famille motionSCOUT et pas uniquement la balise de la compétition. Son tableau
+de commande associe explicitement la version motionSCOUT `K` avec les options
+`T-R` à la référence **10088478**. C'est donc bien la variante visée par le
+règlement : version à clé (`K`), avec capteur de température (`T`) et
+réinitialisation manuelle de l'alarme (`R`).
+
+D'après ce manuel :
 
 1. le retrait de la clé active l'appareil et lance un autotest sonore et
    lumineux d'environ 2 s ;
@@ -44,15 +50,22 @@ avec capteur de température (`T`) et réinitialisation manuelle de l'alarme
    le dernier mouvement ; elle peut aussi être déclenchée immédiatement par le
    bouton d'alarme ;
 4. l'alarme complète émet trois signaux sonores par seconde au niveau maximal
-   et active les LED rouges d'alarme ;
+   et active les deux LED rouges d'alarme ; le manuel ne donne pas la cadence
+   de ces LED ;
 5. sur cette version `R`, deux appuis sur le bouton d'alarme en moins d'une
-   seconde réinitialisent l'alarme.
+   seconde réinitialisent l'alarme ;
+6. pour éteindre la version à clé, il faut réinsérer la clé puis maintenir le
+   bouton ON/OFF pendant au moins 4 s.
 
 La balise possède **deux LED rouges d'alarme** et une **LED bicolore d'état**
-distincte. Cette dernière clignote à 1 Hz en vert en fonctionnement normal et
-en rouge lorsque les piles sont faibles : l'algorithme optique ne devra pas la
-confondre avec l'alarme recherchée. Le fabricant ne donne pas la cadence, la
-durée ou l'intensité des éclairs des deux LED d'alarme.
+distincte. Cette dernière clignote à 1 Hz en vert lorsque la batterie est
+pleine. En fin de batterie, une brève alerte sonore est suivie de son
+clignotement rouge à 1 Hz ; le manuel annonce alors environ 1 h d'autonomie en
+alarme complète. Cette LED est uniquement un témoin destiné à l'utilisateur :
+elle ne fait pas partie du dispositif d'alerte et ne doit jamais contribuer à
+la décision de détection. Le signal optique utile provient exclusivement des
+deux LED rouges d'alarme. Le fabricant ne donne pas leur cadence, la durée de
+leurs éclairs ou leur intensité.
 
 La brochure MSA indique une bande de 2,6 à 3,0 kHz, comme le règlement, tandis
 que le manuel donne une bande plus large de 2,0 à 3,0 kHz. Nous dimensionnons
@@ -61,16 +74,16 @@ de l'exemplaire réellement utilisé.
 
 Caractéristiques secondaires utiles pour préparer les essais :
 
-- dimensions : 100 × 75 × 45 mm ; masse : environ 225 à 230 g avec piles ;
-- alimentation : deux piles AA ; autonomie annoncée supérieure à 200 h en
+- dimensions : 100 × 75 × 45 mm ; masse : 230 g avec piles ;
+- alimentation : deux piles AA LR6 ; autonomie annoncée supérieure à 200 h en
   marche et 10 h en alarme complète ;
-- indice IP67 ; température de fonctionnement : -30 à +60 °C ;
-- alarme thermique distincte au-dessus de 80 °C interne, peu probable dans le
-  cadre de la compétition.
+- indices IP66/IP67 ; température de fonctionnement : -20 à +50 °C ;
+- au-dessus de 80 °C interne, l'alarme thermique émet un son bitonal toutes les
+  2,5 s jusqu'au refroidissement ; ce cas est peu probable pendant l'épreuve.
 
 Sources fabricant :
 [brochure motionSCOUT](https://s7d9.scene7.com/is/content/minesafetyappliances/motionSCOUT%20Bulletin%20-%20FR),
-[manuel d'utilisation](https://s7d9.scene7.com/is/content/minesafetyappliances/motionSCOUT_operating%20manual%20-%20FR)
+[manuel MSA 10251777/01](OPM_motionSCOUT_10251777_01_Book.pdf)
 et
 [avis de service de février 2026](https://assetlibrary.msasafety.com/m/1daafc2b15a7c2a5/original/Avis-de-service-Dispositif-MSA-motionSCOUT-PASS-Fevrier-2026.pdf).
 
@@ -84,7 +97,9 @@ Le règlement et les documents MSA ne définissent pas :
 - la forme d'onde sonore, ses harmoniques, ses tolérances et les conditions de
   mesure des 95 dB ;
 - l'état des piles et les conditions réelles de soleil, de bruit, de vent et
-  d'occultation pendant la mission.
+  d'occultation pendant la mission ;
+- la référence et la date de fabrication de l'exemplaire que l'organisation
+  installera sur le mannequin.
 
 Il faut donc demander si possible une balise identique pour les essais, ou au
 minimum enregistrer l'exemplaire de compétition sous plusieurs angles et à
@@ -102,6 +117,10 @@ bon fonctionnement avant l'épreuve.
   cadence caractéristique de trois signaux par seconde en alarme complète.
 - La voie optique cherchera des variations rapides et répétées sans supposer
   une durée d'éclair connue.
+- La LED d'état à 1 Hz n'est pas un indice de présence de la balise. Son
+  éventuelle contribution au signal du capteur est un parasite qui ne doit pas
+  déclencher la détection.
+- L'alarme thermique bitonale à 0,4 Hz n'est pas non plus le signal recherché.
 - Les détections sonore et lumineuse resteront indépendantes : leur accord
   augmentera la confiance, mais un `ET` strict risquerait de rejeter une vraie
   balise.
@@ -175,7 +194,9 @@ le rapport :
 Il faudra lui ajouter un seuil minimal d'énergie absolue pour éviter qu'un
 rapport élevé calculé sur du silence soit interprété comme une détection. Les
 largeurs de bandes et les seuils devront être déterminés à partir
-d'enregistrements réels sous le drone.
+d'enregistrements réels sous le drone. La présence d'une enveloppe répétée à
+environ 3 Hz permettra de renforcer la détection de l'alarme complète ; la
+préalarme à 2 Hz ne doit pas être notre état nominal de recherche.
 
 ### 4.2 Flash
 
@@ -204,8 +225,9 @@ mesure.
 
 Cette stratégie simplifie l'électronique et évite les interactions optiques,
 mais crée une fenêtre aveugle de plusieurs dizaines de millisecondes pour les
-flashs. Elle est acceptable si la balise répète ses éclairs. Ce point doit être
-confirmé avec les caractéristiques réelles de la balise.
+flashs. Le caractère clignotant de l'alarme visuelle est confirmé, mais pas sa
+cadence : l'acceptabilité de cette fenêtre devra donc être vérifiée sur la vraie
+balise.
 
 ## 5. Schéma électrique minimal proposé
 
@@ -310,21 +332,27 @@ comparés sur les fiches techniques officielles avant substitution.
    créées par les mesures ToF ?
 3. Quel est le spectre réel de la balise et retrouve-t-on bien trois signaux
    sonores par seconde sous le drone ?
-4. Retient-on l'IM68A130A automobile ou l'IM68A130V01 plus disponible ?
-5. Quelle référence de connecteur et quelle longueur de faisceau utiliser ?
-6. Quelles dimensions, masse et fixations sont acceptables pour la carte ?
-7. Une ouverture directe suffit-elle pour la compétition ou faut-il protéger
+4. L'organisation confirme-t-elle la référence 10088478, sa date de fabrication
+   et son bon fonctionnement après l'avis de service MSA de 2026 ?
+5. Retient-on l'IM68A130A automobile ou l'IM68A130V01 plus disponible ?
+6. Quelle référence de connecteur et quelle longueur de faisceau utiliser ?
+7. Quelles dimensions, masse et fixations sont acceptables pour la carte ?
+8. Une ouverture directe suffit-elle pour la compétition ou faut-il protéger
    immédiatement les optiques et le microphone contre poussière et vent ?
-8. Une carte deux couches est-elle suffisante après placement, ou conserve-t-on
+9. Une carte deux couches est-elle suffisante après placement, ou conserve-t-on
    quatre couches pour réduire le risque sur l'audio et le VCSEL ?
-9. Faut-il prévoir une protection ESD montée dès le premier prototype si le
+10. Faut-il prévoir une protection ESD montée dès le premier prototype si le
    faisceau reste accessible ?
 
 ## 10. Essais proposés avant de figer la carte
 
 - Vérifier les rails 3,3 V et 1,8 V ainsi que les fronts I²C à 400 kHz.
-- Enregistrer le microphone, moteurs arrêtés puis tournants, avec la vraie
-  balise sonore.
+- Enregistrer le microphone, moteurs arrêtés puis tournants, pendant l'autotest,
+  la préalarme et l'alarme complète de la vraie balise.
+- Filmer ou enregistrer séparément les deux LED d'alarme pendant l'autotest, la
+  préalarme et l'alarme complète.
+- Vérifier que la LED d'état seule, verte ou rouge à 1 Hz, ne valide jamais une
+  détection de flash.
 - Tester le TCS3410 à 8 et 14 kéch/s, à l'ombre puis au soleil, avec plusieurs
   largeurs de flash et à environ 1 m.
 - Mesurer des sols clairs et sombres entre 0,5 et 1,5 m avec le VL53L4CX.
