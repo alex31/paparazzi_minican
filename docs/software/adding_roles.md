@@ -28,6 +28,11 @@ resources, and parameters for your new role.
 
 5) Allocate resources
 - In start(), use boardResource.tryAcquire(...) for pins and peripherals
+- Keep the role object small. Allocate large mutable states, DMA buffers and
+  thread working areas from the appropriate heap only when start() is called.
+- Do not use static RAM buffers for an optional role. Static const tables in
+  Flash and the small singleton/context pointers required by C callbacks are
+  acceptable.
 
 6) Subscribe and publish
 - Implement subscribe() for UAVCAN message subscriptions
@@ -56,6 +61,7 @@ Recommended workflow:
 
 3) Review output for
 - Correct resource acquisition
+- No large role-specific object allocated before runtime activation
 - Thread safety
 - Parameter naming conventions
 - Consistency with existing roles

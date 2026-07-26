@@ -150,22 +150,45 @@ Params:
 
 ### IMAV beacon (ROLE.imav.beacon)
 
-Detects the sound and red flashes of the IMAV 2026 mannequin beacon.
+Detects the sound and red flashes of the IMAV 2026 mannequin beacon and
+measures the suspended sensor module's height above the ground.
 
 Params:
+
+- `role.imav.audio.band_low_hz` (2000..2600 Hz, default 2000; reboot after
+  changing it)
 - `role.imav.light.i2c_address` (0x44..0x47)
-- `role.imav.debug.publish` (temporary 1 Hz `uavcan.protocol.debug.KeyValue` telemetry)
+- `role.imav.tof.period_ms` (100..1000 ms, default 200 ms)
+- `role.imav.debug.publish` (temporary `uavcan.protocol.debug.KeyValue`
+  bring-up telemetry)
 
 Wiring and resources:
-- microphone 0: PA3 / ADC1_IN4
+
+- one microphone: PA3 / ADC1_IN4
 - 23.9977 kHz trigger: TIM6
-- OPT4048: shared I2C1 on PA15/PB07
+- OPT4060: shared I2C1 on PA15/PB07, address 0x44 by default
+- VL53L4CX: shared I2C1 on PA15/PB07, address 0x29
 - PA2 remains TX-only debug; the PA3 console receiver is disabled
 - PA4 remains available to other roles
 
 The role stores one 1024-sample circular DMA buffer. It computes Hann/Goertzel
-spectral scores, the candidate-tone/global-energy ratio in dB (`sdb`), burst cadence
-and an independent color-normalized flash score. Current thresholds and debug
-messages are for sensor bring-up and must be calibrated with the real beacon.
+spectral scores and the complete 2.0--3.0 kHz-band/global-energy ratio in dB
+(`sdb`). Two spectrally valid blocks can detect either prealarm or full alarm;
+the measured 2/3 Hz burst cadence is diagnostic and does not gate audio
+validity.
+
+The independent optical detector accepts repeated red flashes near 2 or 3 Hz
+and rejects an isolated flash or the 1 Hz status LED. OPT4060 acquisition is
+stopped during every VL53L4CX one-shot so the 940 nm emitter cannot pollute a
+light sample. Ground range is published as
+`uavcan.equipment.range_sensor.Measurement`.
+
+The role, its 2624-byte DMA audio state, its 10304-byte sensor context and both
+thread working areas are allocated only when the runtime role is enabled.
+Current thresholds and debug messages are for sensor bring-up and must still
+be calibrated with the real beacon.
 
 See [docs/software/adding_roles.md](../adding_roles.md) for the full new role checklist.
+See [IMAV/sensors.md](../../../IMAV/sensors.md) for the detailed implementation
+and [IMAV/sensors_electronic.md](../../../IMAV/sensors_electronic.md) for the
+sensor-board discussion.

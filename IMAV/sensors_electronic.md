@@ -1,6 +1,6 @@
 # Carte capteurs IMAV — document de travail
 
-> Version de discussion du 22 juillet 2026
+> Version de discussion du 26 juillet 2026
 >
 > Cible : MicroCAN v5 / STM32G491
 >
@@ -381,8 +381,9 @@ comparés sur les fiches techniques officielles avant substitution.
    observés dans la vidéo, avec quelle puissance et quelle directivité ?
 2. La balise répète-t-elle assez ses flashs pour accepter les fenêtres aveugles
    créées par les mesures ToF ?
-3. Quel est le spectre réel de la balise et retrouve-t-on bien trois signaux
-   sonores par seconde sous le drone ?
+3. Quel est le spectre réel de la balise et retrouve-t-on bien environ deux
+   signaux sonores par seconde en préalarme puis trois en alarme complète sous
+   le drone ?
 4. L'organisation confirme-t-elle la référence 10088478, sa date de fabrication
    et son bon fonctionnement après l'avis de service MSA de 2026 ?
 5. Retient-on l'IM68A130A automobile ou l'IM68A130V01 plus disponible ?

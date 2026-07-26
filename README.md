@@ -12,6 +12,8 @@ MicroCAN is a flexible UAVCAN interface card based on an STM32G491 microcontroll
 - **Telemetry tunnel** for Paparazzi messages or raw serial data
 - **I2C sensor support** (e.g. MPL3115A2 barometer)
 - **Health survey** publishing battery and core temperature measurements
+- **IMAV beacon detection** using one analog microphone, an OPT4060 flash
+  sensor and a VL53L4CX ground-range sensor
 - Configurable roles and parameters stored in persistent memory
 
 Hardware design files are available under [HARDWARE/](HARDWARE/).
@@ -22,6 +24,7 @@ Hardware design files are available under [HARDWARE/](HARDWARE/).
 - [microcan/](microcan/) – main application implementing the UAVCAN node and all roles
 - [COMMON/](COMMON/) – modules shared between bootloader and application
 - [HARDWARE/](HARDWARE/) – hardware schematics and CubeMX configuration
+- [IMAV/](IMAV/) – IMAV 2026 beacon study and sensor-board working document
 - [docs/](docs/) – software and hardware documentation
 
 ## Documentation

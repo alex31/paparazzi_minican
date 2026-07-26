@@ -2,6 +2,7 @@
 
 Compile-time role toggles are defined in
 [COMMON/source/roleConf.h](../../COMMON/source/roleConf.h):
+
 - USE_SERVO_ROLE
 - USE_BARO_MPL3115A2_ROLE
 - USE_QMC5883_ROLE
@@ -12,6 +13,7 @@ Compile-time role toggles are defined in
 - USE_LED2812_ROLE
 - USE_VOLTMETER_ROLE
 - USE_TEMPLATE_ROLE
+- USE_IMAV_ROLE
 
 These must be enabled for roles to be compiled in. Runtime enable is separate
 and controlled by ROLE.* parameters.

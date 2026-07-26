@@ -12,7 +12,7 @@ Core components:
   - Dynamically instantiates enabled roles
 - [COMMON/source/roleBase.hpp](../../COMMON/source/roleBase.hpp)
   - Role interface and singleton/trampoline helpers
-- [COMMON/source/ressourceManager.hpp](../../COMMON/source/ressourceManager.hpp)
+- [COMMON/source/resourceManager.hpp](../../COMMON/source/resourceManager.hpp)
   - Prevents peripheral/pin conflicts between roles
 - [COMMON/source/MFS.cpp](../../COMMON/source/MFS.cpp) and
   [COMMON/source/mfsOnM95p.c](../../COMMON/source/mfsOnM95p.c)
@@ -20,3 +20,8 @@ Core components:
 - [COMMON/source/firmwareUpdate.cpp](../../COMMON/source/firmwareUpdate.cpp) and
   [COMMON/source/firmwareHeader.hpp](../../COMMON/source/firmwareHeader.hpp)
   - Firmware update protocol and header management
+
+Enabled roles are allocated dynamically during `CANSlave::start()`. Large
+role-specific buffers, sensor contexts and thread working areas are allocated
+only from each role's `start()` method. Read-only tables may remain in Flash;
+large mutable objects must not consume static RAM while their role is disabled.

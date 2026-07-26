@@ -19,5 +19,10 @@ Hardware
 - [hardware/bringup.md](hardware/bringup.md)
 - [hardware/boards/microcan_v5.md](hardware/boards/microcan_v5.md)
 
+IMAV 2026
+
+- [Sensor electronics working document](../IMAV/sensors_electronic.md)
+- [Beacon detection architecture and implementation](../IMAV/sensors.md)
+
 Assets (images, diagrams)
 - [assets/](assets/)
