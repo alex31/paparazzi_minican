@@ -169,7 +169,7 @@ seul capteur par fonction, tous orientés ou ouverts vers le bas :
 
 - un microphone pour la balise sonore ;
 - un capteur rapide pour les flashs ;
-- un télémètre pour contrôler la hauteur du module au-dessus du sol.
+- éventuellement un télémètre pour contrôler la hauteur du module au-dessus du sol.
 
 Ce document présente la solution actuellement envisagée. Il ne constitue pas
 encore une spécification de fabrication définitive.
@@ -178,14 +178,14 @@ encore une spécification de fabrication définitive.
 
 | Fonction | Composant retenu | Interface | Motivation principale |
 |---|---|---|---|
-| Son | Infineon IM68A130A | PA3 / ADC1_IN4 | microphone analogique sensible, un seul canal ADC |
+| Son | Infineon IM68A130A | PA4 / ADC2_IN17 | microphone analogique sensible, ADC2 dédié au son |
 | Flash | Texas Instruments OPT4060DTSR | I²C, adresse 0x44 | RGBW, forte réjection IR, plage automatique et alimentation directe en 3,3 V |
-| Distance au sol | ST VL53L4CXV0DH/1 | I²C, adresse 0x29 | portée suffisante autour de 1 m et pilote officiel ST |
+| Distance au sol optionnelle | ST VL53L4CXV0DH/1 | I²C, adresse 0x29 | non monté sur le premier assemblage ; portée suffisante autour de 1 m si ajouté |
 
 Décisions déjà raisonnablement établies :
 
 - un seul microphone et un seul capteur de flash ;
-- OPT4060 et VL53L4CX orientés vers le sol ;
+- OPT4060 orienté vers le sol ; VL53L4CX optionnel et non monté initialement ;
 - microphone relié directement à l'ADC, sans amplificateur externe ;
 - OPT4060 et VL53L4CX sur le même bus I²C ;
 - bus à 400 kHz pour le premier prototype ;
@@ -292,7 +292,7 @@ plausible, mais son acceptabilité devra être vérifiée sur la vraie balise.
   +---------------------------- VL53L4CX AVDD + AVDDVCSEL           |
                                  +-- 100 nF + 4,7 µF vers GND       |
                                                                    |
-IM68A130A OUT -- 100 Ω -- MIC_ADC -- PA3 / ADC1_IN4                |
+IM68A130A OUT -- 100 Ω -- MIC_ADC -- PA4 / ADC2_IN17               |
                                                                    |
 OPT4060 ADDR ------------------------------------------------ GND   |
 OPT4060 INT ------------------------------------------ point de test|
@@ -320,12 +320,12 @@ faisceau et le rail 3,3 V seront dimensionnés pour au moins 60 mA.
 ## 6. Connexion à la MicroCAN
 
 La proposition utilise un connecteur verrouillable à six contacts et un petit
-faisceau en Y vers J3 et J5 de la MicroCAN.
+faisceau en Y vers J6 et J5 de la MicroCAN.
 
 | Signal carte capteurs | Destination MicroCAN |
 |---|---|
-| GND_AUDIO | J3 broche 1 |
-| MIC_ADC | J3 broche 7 — PA3 / ADC1_IN4 |
+| GND_AUDIO | J6 broche 1 |
+| MIC_ADC | J6 broche 4 — PA4 / ADC2_IN17 |
 | GND_I2C | J5 broche 1 |
 | +3V3 | J5 broche 3 |
 | SDA | J5 broche 4 — PB7 / I2C1_SDA |

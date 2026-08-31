@@ -1,0 +1,8 @@
+phase,start_s,duration_s,period_us,audio_on_us,led_on_us,audio_start_hz,audio_end_hz,peak_dbfs,led_rgb,source_status
+initial_silence,0,1,0,0,0,0,0,-inf,"0/0/0",test_choice
+prealarm_low,1,4,500000,120000,100000,2100,2500,-24,"255/0/0",cadence_official_waveform_and_led_timing_estimated
+prealarm_medium,5,4,500000,120000,100000,2100,2500,-18,"255/0/0",cadence_official_waveform_and_led_timing_estimated
+prealarm_high,9,4,500000,120000,100000,2100,2500,-12,"255/0/0",cadence_official_waveform_and_led_timing_estimated
+prealarm_max,13,3,500000,120000,100000,2100,2500,-9,"255/0/0",cadence_official_waveform_and_led_timing_estimated
+separator,16,1,0,0,0,0,0,-inf,"0/0/0",test_choice
+full_alarm,17,10,333333,120000,100000,2100,2500,-6,"255/0/0",cadence_official_waveform_and_led_timing_estimated

@@ -8,7 +8,6 @@
 #if USE_IMAV_ROLE
 
 #include "imavRole.hpp"
-#include "adcSurvey.hpp"
 #include "hardwareConf.hpp"
 #include "I2C_periph.hpp"
 #include "imavLightRange.hpp"
@@ -25,9 +24,16 @@ namespace {
   constexpr size_t audioBufferDepth = 1024U;
   constexpr size_t audioHalfDepth = audioBufferDepth / 2U;
   constexpr gptcnt_t audioTimerInterval = 1771U;
-  constexpr sysinterval_t healthPeriod = TIME_MS2I(1000U);
   constexpr uint16_t audioBandHighHz = 3000U;
   constexpr uint16_t audioBandGuardHz = 50U;
+  constexpr uint8_t audioBurstEndLowBlocks = 1U;
+  constexpr uint16_t minimumAudioOnsetIntervalMs = 250U;
+  constexpr uint16_t maximumAudioOnsetIntervalMs = 750U;
+  constexpr float audioOnsetMinimumBlockScore = 0.45f;
+  constexpr float audioOnsetMinimumPairScore = 1.20f;
+  constexpr float audioOnsetMaximumFrequencyStepHz = 250.0f;
+  constexpr float audioSnrBurstAlpha = 0.5f;
+  constexpr sysinterval_t measurementPublishPeriod = TIME_MS2I(200U);
 
   // Derive the configurable range from the persistent parameter metadata so
   // its validation and the DSP configuration cannot silently diverge.
@@ -191,6 +197,7 @@ struct AudioChannelScore {
   float noiseFloor = 0.0f;
   float concentration = 0.0f;
   float spectralRatioDb = -60.0f;
+  float signalToNoiseDb = 0.0f;
   float prominence = 0.0f;
   float blockScore = 0.0f;
   float toneRms = 0.0f;
@@ -220,12 +227,17 @@ struct AudioDetector {
   float cadenceHz = 0.0f;
   float cadenceScore = 0.0f;
   float audioScore = 0.0f;
+  float audioSnrDb = 0.0f;
+  float burstPeakSnrDb = 0.0f;
+  float recentBurstSnrDb = 0.0f;
+  float previousBlockScore = 0.0f;
+  float previousDominantFrequencyHz = 0.0f;
+  float previousSignalToNoiseDb = 0.0f;
   systime_t onsets[6] = {};
   systime_t lastBlockTime = 0U;
   systime_t lastOnsetTime = 0U;
   systime_t lastToneTime = 0U;
   uint8_t onsetCount = 0U;
-  uint8_t highBlocks = 0U;
   uint8_t lowBlocks = 0U;
   AudioBurstState burstState = AudioBurstState::Unarmed;
   bool detected = false;
@@ -244,11 +256,12 @@ struct ImavAudioState {
   uint32_t stalledBlocks = 0U;
   uint32_t acquisitionRestarts = 0U;
   uint32_t discontinuities = 0U;
+  systime_t lastMeasurementPublishTime = 0U;
   uint16_t mean = 0U;
   uint16_t meanAbsoluteDeviation = 0U;
   AudioDetector detector;
   ImavLightRange *lightRange = nullptr;
-  bool publishDebug = true;
+  bool timeOfFlightEnabled = false;
 };
 
 static_assert(sizeof(adcsample_t) == sizeof(uint16_t));
@@ -332,15 +345,6 @@ namespace {
     const float bandPower =
       bandPowerSum / static_cast<float>(band.alarmBinCount);
 
-    if (not score.floorValid) {
-      score.noiseFloor = bandPower;
-      score.floorValid = true;
-    } else if (detector.burstState != AudioBurstState::On) {
-      const float alpha = bandPower < score.noiseFloor ? 1.0f / 16.0f
-						    : 1.0f / 256.0f;
-      score.noiseFloor += (bandPower - score.noiseFloor) * alpha;
-    }
-
     score.bandPower = bandPower;
     score.peakPower = peakPower;
     score.referencePower = referencePower;
@@ -357,15 +361,31 @@ namespace {
     // Hann coherent gain gives A_rms ~= sqrt(Goertzel power) * sqrt(8) / N.
     score.toneRms = std::sqrt(peakPower) * 0.005524272f;
     const float prominenceScore = knee(score.prominence, 1.5f, 5.0f);
-    const float riseScore = knee(
-      bandPower / (score.noiseFloor + 1.0f), 1.8f, 6.0f);
     const float bandEnergyScore = knee(
       score.spectralRatioDb, -15.0f, -6.0f);
-    score.blockScore = bandEnergyScore *
-      std::max(prominenceScore, 0.8f * riseScore);
+    // A rise above the learned floor alone also accepts broadband impulses.
+    // Require the alarm band to stand above the side-band references; the
+    // concentration term still accepts a chirp moving inside the full band.
+    score.blockScore = bandEnergyScore * prominenceScore;
     if (clipped >= 5U) {
       score.blockScore *= 0.8f;
     }
+
+    // Learn only blocks that do not already resemble the beacon. This robust
+    // floor follows continuous broadband motor noise but cannot slowly absorb
+    // a persistent 2/3 Hz alarm into its own reference level.
+    if (not score.floorValid) {
+      score.noiseFloor = bandPower;
+      score.floorValid = true;
+    } else if ((detector.burstState != AudioBurstState::On) &&
+	       (score.blockScore <= 0.30f)) {
+      const float alpha = bandPower < score.noiseFloor ? 1.0f / 16.0f
+						    : 1.0f / 256.0f;
+      score.noiseFloor += (bandPower - score.noiseFloor) * alpha;
+    }
+    const float signalPower = std::max(bandPower - score.noiseFloor, 0.0f);
+    score.signalToNoiseDb = std::clamp(10.0f * std::log10(
+      (signalPower + 1.0f) / (score.noiseFloor + 1.0f)), -60.0f, 60.0f);
     score.peakFrequencyHz = goertzelBins[peakBin].frequencyHz;
     score.minimum = minimum;
     score.maximum = maximum;
@@ -407,9 +427,14 @@ namespace {
     detector.cadenceHz = 0.0f;
     detector.cadenceScore = 0.0f;
     detector.audioScore = 0.0f;
+    detector.audioSnrDb = 0.0f;
     detector.recentBurstStrength = 0.0f;
     detector.burstPeakScore = 0.0f;
-    detector.highBlocks = 0U;
+    detector.burstPeakSnrDb = 0.0f;
+    detector.recentBurstSnrDb = 0.0f;
+    detector.previousBlockScore = 0.0f;
+    detector.previousDominantFrequencyHz = 0.0f;
+    detector.previousSignalToNoiseDb = 0.0f;
     detector.lowBlocks = 0U;
     detector.burstState = AudioBurstState::Unarmed;
     detector.detected = false;
@@ -418,9 +443,16 @@ namespace {
   /** @brief Append an onset to the fixed six-entry chronological history. */
   void appendAudioOnset(AudioDetector& detector, systime_t now)
   {
-    if ((detector.lastOnsetTime != 0U) &&
-	(chTimeDiffX(detector.lastOnsetTime, now) < TIME_MS2I(120U))) {
-      return;
+    if (detector.lastOnsetTime != 0U) {
+      const sysinterval_t onsetInterval =
+	chTimeDiffX(detector.lastOnsetTime, now);
+      if (onsetInterval < TIME_MS2I(minimumAudioOnsetIntervalMs)) {
+	return;
+      }
+      if (onsetInterval > TIME_MS2I(maximumAudioOnsetIntervalMs)) {
+	// Do not mix a new burst train with stale cadence evidence.
+	detector.onsetCount = 0U;
+      }
     }
 
     if (detector.onsetCount < std::size(detector.onsets)) {
@@ -446,16 +478,19 @@ namespace {
 
     if (discontinuity) {
       detector.burstState = AudioBurstState::Unarmed;
-      detector.highBlocks = 0U;
       detector.lowBlocks = 0U;
       detector.burstPeakScore = 0.0f;
+      detector.burstPeakSnrDb = 0.0f;
+      detector.recentBurstSnrDb = 0.0f;
+      detector.audioSnrDb = 0.0f;
+      detector.previousBlockScore = 0.0f;
+      detector.previousDominantFrequencyHz = 0.0f;
+      detector.previousSignalToNoiseDb = 0.0f;
     }
 
-    const bool high = detector.blockScore >= 0.62f;
     const bool low = detector.blockScore <= 0.30f;
     switch (detector.burstState) {
     case AudioBurstState::Unarmed:
-      detector.highBlocks = 0U;
       detector.lowBlocks = low ? static_cast<uint8_t>(detector.lowBlocks + 1U)
 			       : 0U;
       if (detector.lowBlocks >= 2U) {
@@ -464,34 +499,67 @@ namespace {
       }
       break;
 
-    case AudioBurstState::Off:
+    case AudioBurstState::Off: {
       detector.lowBlocks = 0U;
-      detector.highBlocks = high ? static_cast<uint8_t>(detector.highBlocks + 1U)
-				 : 0U;
-      if (detector.highBlocks >= 2U) {
+
+      // A weak chirp over broadband noise can put one of two adjacent blocks
+      // just below the strong threshold. Accept the pair only when its total
+      // score is high and its spectral peak moves coherently; random broadband
+      // peaks do not retain a nearby dominant frequency from block to block.
+      const bool coherentPair =
+	detector.previousBlockScore >= audioOnsetMinimumBlockScore &&
+	detector.blockScore >= audioOnsetMinimumBlockScore &&
+	(detector.previousBlockScore + detector.blockScore) >=
+	  audioOnsetMinimumPairScore &&
+	std::fabs(detector.dominantFrequencyHz -
+		  detector.previousDominantFrequencyHz) <=
+	  audioOnsetMaximumFrequencyStepHz;
+      if (coherentPair) {
 	detector.burstState = AudioBurstState::On;
-	detector.highBlocks = 0U;
-	detector.burstPeakScore = detector.blockScore;
+	detector.burstPeakScore = std::max(
+	  detector.previousBlockScore, detector.blockScore);
+	detector.burstPeakSnrDb = std::max(
+	  {0.0f, detector.previousSignalToNoiseDb,
+	   detector.channel.signalToNoiseDb});
 	detector.lastToneTime = now;
 	appendAudioOnset(detector, now);
       }
       break;
+    }
 
     case AudioBurstState::On:
-      detector.highBlocks = 0U;
       detector.lastToneTime = now;
       detector.burstPeakScore =
 	std::max(detector.burstPeakScore, detector.blockScore);
+      detector.burstPeakSnrDb = std::max(
+	detector.burstPeakSnrDb, detector.channel.signalToNoiseDb);
       detector.lowBlocks = low ? static_cast<uint8_t>(detector.lowBlocks + 1U)
 			       : 0U;
-      if (detector.lowBlocks >= 2U) {
+      // A powerful loudspeaker and the real beacon can leave a narrow-band
+      // acoustic tail in most of the nominally silent interval. One complete
+      // 21 ms block below the low threshold is nevertheless an unambiguous
+      // gap, and is needed to separate 120 ms bursts repeated at 3 Hz.
+      if (detector.lowBlocks >= audioBurstEndLowBlocks) {
 	detector.burstState = AudioBurstState::Off;
 	detector.lowBlocks = 0U;
 	detector.recentBurstStrength = detector.burstPeakScore;
+	if (detector.burstPeakSnrDb > 0.0f) {
+	  if (detector.recentBurstSnrDb <= 0.0f) {
+	    detector.recentBurstSnrDb = detector.burstPeakSnrDb;
+	  } else {
+	    detector.recentBurstSnrDb += audioSnrBurstAlpha *
+	      (detector.burstPeakSnrDb - detector.recentBurstSnrDb);
+	  }
+	}
 	detector.burstPeakScore = 0.0f;
+	detector.burstPeakSnrDb = 0.0f;
       }
       break;
     }
+
+    detector.previousBlockScore = detector.blockScore;
+    detector.previousDominantFrequencyHz = detector.dominantFrequencyHz;
+    detector.previousSignalToNoiseDb = detector.channel.signalToNoiseDb;
 
     detector.cadenceHz = 0.0f;
     detector.cadenceScore = 0.0f;
@@ -544,6 +612,13 @@ namespace {
 	  (1500.0f - static_cast<float>(toneAgeMs)) / 750.0f);
     }
     detector.audioScore = strength * toneFreshness;
+    const float peakSnrDb = detector.burstState == AudioBurstState::On
+      ? std::max(detector.recentBurstSnrDb, detector.burstPeakSnrDb)
+      : detector.recentBurstSnrDb;
+    // Keep the latest burst peak stable across the 333/500 ms silent gaps.
+    // Once the burst train stops, decay it with the same freshness envelope as
+    // the normalized audio score so the navigation input cannot remain stale.
+    detector.audioSnrDb = std::max(0.0f, peakSnrDb) * toneFreshness;
     if (detector.detected) {
       detector.detected = detector.audioScore >= 0.25f;
     } else {
@@ -563,14 +638,14 @@ DeviceStatus ImavRole::start(UAVCAN::Node& node)
   m_node = &node;
 
   using HR = HWResource;
-  if (not boardResource.tryAcquire(HR::PA03, HR::ADC_1, HR::TIM_6)) {
+  if (not boardResource.tryAcquire(HR::PA04, HR::ADC_2, HR::TIM_6)) {
     return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT,
-			std::to_underlying(HR::ADC_1));
+			std::to_underlying(HR::ADC_2));
   }
 
-  if (ADCD1.state != ADC_READY) {
+  if (ADCD2.state != ADC_STOP) {
     return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT,
-			std::to_underlying(HR::ADC_1));
+			std::to_underlying(HR::ADC_2));
   }
 
   DeviceStatus status(DeviceStatus::IMAV_ROLE);
@@ -593,11 +668,11 @@ DeviceStatus ImavRole::start(UAVCAN::Node& node)
     .awd2cr = 0U,
     .awd3cr = 0U,
     .smpr = {
-      ADC_SMPR1_SMP_AN4(ADC_SMPR_SMP_47P5),
       0U,
+      ADC_SMPR2_SMP_AN17(ADC_SMPR_SMP_47P5),
     },
     .sqr = {
-      ADC_SQR1_SQ1_N(ADC_CHANNEL_IN4),
+      ADC_SQR1_SQ1_N(ADC_CHANNEL_IN17),
       0U,
       0U,
       0U,
@@ -605,7 +680,9 @@ DeviceStatus ImavRole::start(UAVCAN::Node& node)
   };
 
   audio->adcGroup = &adcAudioGroup;
-  audio->publishDebug = param_cget<"role.imav.debug.publish">();
+  audio->timeOfFlightEnabled =
+    param_cget<"role.imav.time_of_flight">();
+  audio->lastMeasurementPublishTime = chVTGetSystemTimeX();
   audio->detector.band = makeAudioBandConfiguration(static_cast<uint16_t>(
     param_cget<"role.imav.audio.band_low_hz">()));
 
@@ -632,12 +709,31 @@ DeviceStatus ImavRole::start(UAVCAN::Node& node)
     static_cast<uint8_t>(
       param_cget<"role.imav.light.i2c_address">()),
     static_cast<uint32_t>(
-      param_cget<"role.imav.tof.period_ms">()));
+      param_cget<"role.imav.tof.period_ms">()),
+    audio->timeOfFlightEnabled);
   audio->lightRange->initialize();
   const ImavLightRangeSnapshot initialSensors =
     audio->lightRange->snapshot();
 
-  palSetLineMode(LINE_DBG_RX, PAL_MODE_INPUT_ANALOG);
+  palSetLineMode(LINE_SPI_PERIPH_CS, PAL_MODE_INPUT_ANALOG);
+
+  // ADCv3 asserts instead of returning an error when its dynamically chosen
+  // stream is exhausted. IMAV is started before optional roles; this explicit
+  // preflight therefore turns the remaining failure case into DeviceStatus.
+  const stm32_dma_stream_t * const dmaProbe = dmaStreamAlloc(
+    STM32_ADC_ADC2_DMA_STREAM, STM32_ADC_ADC2_DMA_IRQ_PRIORITY,
+    nullptr, nullptr);
+  if (dmaProbe == nullptr) {
+    return DeviceStatus(DeviceStatus::IMAV_ROLE,
+			DeviceStatus::DMA_UNAVAILABLE,
+			std::to_underlying(HR::ADC_2));
+  }
+  dmaStreamFree(dmaProbe);
+
+  if (adcStart(&ADCD2, nullptr) != MSG_OK) {
+    return DeviceStatus(DeviceStatus::IMAV_ROLE, DeviceStatus::NOT_RESPONDING,
+			std::to_underlying(HR::ADC_2));
+  }
   if (gptStart(&GPTD6, &audioTimerConfig) != MSG_OK) {
     return DeviceStatus(DeviceStatus::IMAV_ROLE, DeviceStatus::NOT_RESPONDING,
 			std::to_underlying(HR::TIM_6));
@@ -659,7 +755,7 @@ DeviceStatus ImavRole::start(UAVCAN::Node& node)
     node.infoCb("IMAV sensor worker unavailable: heap full");
   }
 
-  node.infoCb("IMAV audio started: PA3/ADC1, 24kHz, OVS x4, band=%u-%uHz",
+  node.infoCb("IMAV audio started: PA4/ADC2, 24kHz, OVS x4, band=%u-%uHz",
 	      audio->detector.band.lowFrequencyHz, audioBandHighHz);
   if (initialSensors.lightAvailable) {
     node.infoCb("IMAV light started: OPT4060 addr=0x%02x id=0x%04x 100Hz",
@@ -668,11 +764,15 @@ DeviceStatus ImavRole::start(UAVCAN::Node& node)
   } else {
     node.infoCb("IMAV light unavailable: OPT4060 addr=0x44..0x47");
   }
-  if (initialSensors.rangeAvailable) {
-    node.infoCb("IMAV range started: VL53L4CX id=0x%04lx",
-		static_cast<unsigned long>(initialSensors.rangeDeviceId));
+  if (audio->timeOfFlightEnabled) {
+    if (initialSensors.rangeAvailable) {
+      node.infoCb("IMAV range started: VL53L4CX id=0x%04lx",
+		  static_cast<unsigned long>(initialSensors.rangeDeviceId));
+    } else {
+      node.infoCb("IMAV range unavailable: VL53L4CX addr=0x29");
+    }
   } else {
-    node.infoCb("IMAV range unavailable: VL53L4CX addr=0x29");
+    node.infoCb("IMAV range disabled");
   }
   return DeviceStatus(DeviceStatus::IMAV_ROLE);
 }
@@ -685,23 +785,23 @@ void ImavRole::startAudioAcquisition()
   audio->errors = 0U;
   chSysUnlock();
 
-  adcStartConversion(&ADCD1, audio->adcGroup, audio->samples,
+  adcStartConversion(&ADCD2, audio->adcGroup, audio->samples,
 		     audioBufferDepth);
   gptStartContinuous(&GPTD6, audioTimerInterval);
 }
 
-/** @brief Stop the trigger first, then return ADC1 to READY state. */
+/** @brief Stop the trigger first, then return ADC2 to READY state. */
 void ImavRole::stopAudioAcquisition()
 {
   gptStopTimer(&GPTD6);
-  adcStopConversion(&ADCD1);
+  adcStopConversion(&ADCD2);
 }
 
 /** @brief Minimal ISR callback: count half-buffers and wake the worker. */
 void ImavRole::audioDmaCallback(ADCDriver *adcp)
 {
   chSysLockFromISR();
-  if (adcp == &ADCD1) {
+  if (adcp == &ADCD2) {
     ++audio->adcSequence;
   }
   if (audio->worker != nullptr) {
@@ -740,17 +840,28 @@ void ImavRole::processAudioHalf(size_t offset, bool discontinuity)
   audio->meanAbsoluteDeviation =
     static_cast<uint16_t>(deviation / audioHalfDepth);
   analyzeAudioBlock(*audio, offset, mean);
-  updateAudioCadence(audio->detector, discontinuity, chVTGetSystemTimeX());
+  const systime_t now = chVTGetSystemTimeX();
+  updateAudioCadence(audio->detector, discontinuity, now);
   ++audio->processedBlocks;
   if (discontinuity) {
     ++audio->discontinuities;
+  }
+
+  if (chTimeDiffX(audio->lastMeasurementPublishTime, now) >=
+      measurementPublishPeriod) {
+    audio->lastMeasurementPublishTime += measurementPublishPeriod;
+    if (chTimeDiffX(audio->lastMeasurementPublishTime, now) >=
+	measurementPublishPeriod) {
+      // Do not emit a catch-up burst if the worker was delayed.
+      audio->lastMeasurementPublishTime = now;
+    }
+    publishMeasurements();
   }
 
   if ((audio->processedBlocks % 47U) == 0U) {
     const ImavLightRangeSnapshot sensors = audio->lightRange != nullptr
       ? audio->lightRange->snapshot() : ImavLightRangeSnapshot{};
 
-    const systime_t now = chVTGetSystemTimeX();
     const bool lightFresh = sensors.lightAvailable &&
       (sensors.lightLastSample != 0U) &&
       (chTimeDiffX(sensors.lightLastSample, now) < TIME_MS2I(200U));
@@ -776,9 +887,12 @@ void ImavRole::processAudioHalf(size_t offset, bool discontinuity)
 		   audio->detector.detected ? 1U : 0U);
     const int16_t spectralDb10 = static_cast<int16_t>(
 	10.0f * audio->detector.channel.spectralRatioDb);
-    m_node->infoCb("IMAV dc=%u mad=%u clip=%u sdb10=%d",
+    const int16_t snrDb10 = static_cast<int16_t>(
+	10.0f * audio->detector.audioSnrDb);
+    m_node->infoCb("IMAV dc=%u mad=%u clip=%u sdb10=%d snr10=%d",
 		   audio->mean, audio->meanAbsoluteDeviation,
-		   audio->detector.channel.clippedSamples, spectralDb10);
+		   audio->detector.channel.clippedSamples, spectralDb10,
+		   snrDb10);
     m_node->infoCb("IMAV rgbw=%lu/%lu/%lu/%lu red=%u",
 		   static_cast<unsigned long>(sensors.lightRed),
 		   static_cast<unsigned long>(sensors.lightGreen),
@@ -792,17 +906,27 @@ void ImavRole::processAudioHalf(size_t offset, bool discontinuity)
     m_node->infoCb("IMAV drop=%lu agap=%lu lerr=%lu",
 		   audio->droppedBlocks, audio->discontinuities,
 		   static_cast<unsigned long>(sensors.lightReadErrors));
-    m_node->infoCb("IMAV tof=%u valid=%u lgap=%lu err=%lu",
-		   sensors.rangeMm, sensors.rangeValid ? 1U : 0U,
-		   sensors.lightGaps, sensors.rangeErrors);
-    publishDebugValues();
+    if (audio->timeOfFlightEnabled) {
+      m_node->infoCb("IMAV tof=%u valid=%u lgap=%lu err=%lu",
+		     sensors.rangeMm, sensors.rangeValid ? 1U : 0U,
+		     sensors.lightGaps, sensors.rangeErrors);
+    }
   }
 }
 
-/** @brief Publish compact one-frame values for threshold tuning in flight. */
-void ImavRole::publishDebugValues()
+/** @brief Publish navigation measurements as compact single-frame values. */
+void ImavRole::publishMeasurements()
 {
-  if (not audio->publishDebug) {
+  uavcan_protocol_debug_KeyValue message = {};
+  const auto publish = [this, &message](const char *key, float value) {
+    message.value = value;
+    UAVCAN::dsdlAssign(message.key, key);
+    m_node->sendBroadcast(message, CANARD_TRANSFER_PRIORITY_LOW);
+  };
+  publish("det", audio->detector.detected ? 1.0f : 0.0f);
+  publish("snr", audio->detector.audioSnrDb);
+
+  if (not param_cget<"role.imav.debug.publish.optional">()) {
     return;
   }
 
@@ -814,15 +938,6 @@ void ImavRole::publishDebugValues()
       (chTimeDiffX(sensors.lightLastSample, now) >= TIME_MS2I(200U))) {
     lightFlashScore = 0.0f;
   }
-  const float rangeMetres = sensors.rangeValid
-    ? static_cast<float>(sensors.rangeMm) * 0.001f : -1.0f;
-
-  uavcan_protocol_debug_KeyValue message = {};
-  const auto publish = [this, &message](const char *key, float value) {
-    message.value = value;
-    UAVCAN::dsdlAssign(message.key, key);
-    m_node->sendBroadcast(message, CANARD_TRANSFER_PRIORITY_LOW);
-  };
   publish("a0", audio->detector.channel.blockScore);
   publish("p0", audio->detector.channel.toneRms);
   publish("sdb", audio->detector.channel.spectralRatioDb);
@@ -830,18 +945,21 @@ void ImavRole::publishDebugValues()
   publish("frq", audio->detector.dominantFrequencyHz);
   publish("cad", audio->detector.cadenceHz);
   publish("lit", lightFlashScore);
-  publish("rng", rangeMetres);
-  publish("rsg", sensors.rangeSignalKcps);
+  if (audio->timeOfFlightEnabled) {
+    const float rangeMetres = sensors.rangeValid
+      ? static_cast<float>(sensors.rangeMm) * 0.001f : -1.0f;
+    publish("rng", rangeMetres);
+    publish("rsg", sensors.rangeSignalKcps);
+  }
 }
 
-/** @brief Own ADC1, process DMA halves and periodically refresh health. */
+/** @brief Own ADC2 and process each completed DMA half-buffer. */
 void ImavRole::audioThread(void *)
 {
   uint32_t lastSequence = 0U;
   bool discardNextBlock = true;
   bool discontinuity = true;
-  systime_t lastHealth = chVTGetSystemTimeX();
-  systime_t lastBlock = lastHealth;
+  systime_t lastBlock = chVTGetSystemTimeX();
 
   while (true) {
     const eventmask_t events =
@@ -900,21 +1018,6 @@ void ImavRole::audioThread(void *)
       discontinuity = true;
       lastBlock = chVTGetSystemTimeX();
       continue;
-    }
-
-    if (chTimeDiffX(lastHealth, now) >= healthPeriod) {
-      stopAudioAcquisition();
-      const bool healthOk = Adc::sampleOnce();
-      (void) chEvtGetAndClearEvents(allAudioEvents);
-      startAudioAcquisition();
-      lastSequence = 0U;
-      discardNextBlock = true;
-      discontinuity = true;
-      lastHealth = now;
-      lastBlock = chVTGetSystemTimeX();
-      if (not healthOk) {
-        m_node->infoCb("IMAV: ADC health sampling failed");
-      }
     }
   }
 }

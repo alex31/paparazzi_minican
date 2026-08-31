@@ -11,8 +11,8 @@ Key properties:
 - Persistent parameter storage and UAVCAN GetSet support
 - Modular roles enabled via persistent parameters
 - Resource manager to prevent peripheral conflicts
-- Optional IMAV beacon role using one analog microphone, an OPT4060 color
-  sensor and a VL53L4CX ground-range sensor
+- Optional IMAV beacon role using one analog microphone and an OPT4060 color
+  sensor, with optional VL53L4CX ground ranging
 
 Repository layout:
 - [bootloader/](../../bootloader/) : Bootloader application

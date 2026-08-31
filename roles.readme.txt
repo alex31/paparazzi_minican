@@ -77,13 +77,13 @@ Roles UAVCAN – messages reçus / envoyés
 
 - ImavRole (`ROLE.imav.beacon`)
   - Reçoit : rien.
-  - Envoie : pendant le bring-up, `uavcan.protocol.debug.KeyValue` à environ 1 Hz avec les clés `a0`, `p0`, `sdb`, `aud`, `frq`, `cad` et `lit`.
-  - Paramètres : `role.imav.light.i2c_address` (0x44..0x47), `role.imav.debug.publish`.
-  - Audio : un IM68A130 analogique sur PA3/ADC1_IN4, déclenché par TIM6 à 23 997,74 Hz, DMA circulaire et oversampling x4/shift1. PA4 reste disponible.
-  - DSP : Hann sans table, grille Goertzel 2,55..3,05 kHz, rapport spectral balise/énergie globale en dB (`sdb`), bandes latérales, clipping et reconnaissance provisoire d'une cadence proche de trois salves/s.
-  - Lumière : OPT4048 sur I2C1, lecture 4 canaux avec CRC/compteurs, retrait du fond et score de flash rouge indépendant du son.
-  - Ressources : PA3, ADC1 et TIM6. I2C1 reste partageable ; les resets du bus sont sérialisés.
-  - Debug : PA2 conserve `DBG_TX`; le récepteur LPUART, ses interruptions et le shell sont coupés lorsque le rôle est actif.
+  - Envoie : systématiquement `det` (détection audio 0/1) et `snr` (force de la dernière salve en dB au-dessus du bruit moteur adaptatif) sous forme de `uavcan.protocol.debug.KeyValue` à 5 Hz. Lorsque `role.imav.debug.publish.optional` est vrai, ajoute `a0`, `p0`, `sdb`, `aud`, `frq`, `cad` et `lit`, ainsi que `rng/rsg` si le ToF est activé. `uavcan.equipment.range_sensor.Measurement` reste indépendant de cette option.
+  - Paramètres : `role.imav.audio.band_low_hz` (2000..2600 Hz), `role.imav.light.i2c_address` (0x44..0x47), `role.imav.time_of_flight` (défaut `false`), `role.imav.tof.period_ms` et `role.imav.debug.publish.optional` (défaut `false`, effet immédiat).
+  - Audio : un IM68A130 analogique sur PA4/ADC2_IN17, déclenché par TIM6 à 23 997,74 Hz, DMA circulaire et oversampling x4/shift1. ADC1 reste dédié à la surveillance continue VIN/température/VREF.
+  - DSP : Hann sans table, grille Goertzel configurable couvrant 2,0..3,0 kHz, rapport spectral balise/énergie globale en dB (`sdb`), bandes latérales, clipping et mesure diagnostique de la cadence des salves.
+  - Lumière/distance : OPT4060 sur I2C1 ; le VL53L4CX est optionnel. Lorsqu'il est activé, les acquisitions RGBW et ToF sont sérialisées pour éviter la pollution par le VCSEL 940 nm.
+  - Ressources : PA4, ADC2 et TIM6. I2C1 reste partageable ; les resets du bus sont sérialisés.
+  - Debug : PA2/PA3 conservent la console LPUART complète lorsque le rôle est actif.
   - Notes : les seuils sont provisoires jusqu'aux mesures sur la vraie balise. Le rôle n'impose pas un `son ET lumière` rigide.
 
 Services/protocoles gérés par le nœud (pubSub/UAVCanSlave)

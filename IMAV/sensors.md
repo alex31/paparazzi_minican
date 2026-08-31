@@ -1,7 +1,7 @@
 # Détection IMAV 2026 du mannequin équipé d'un MSA motionSCOUT
 
 > Note de conception et de reprise de contexte — 26 juillet 2026
-> Projet : MicroCAN v5, branche `imav2026/one_mic`
+> Projet : MicroCAN v5, branche `imav2026/one_mic_adc2`
 > MCU : STM32G491KEU6, ChibiOS 21.11, DroneCAN/UAVCAN v0  
 > Statut : première implémentation fonctionnelle ; les seuils restent à calibrer
 > sur la balise réelle et sous le drone.
@@ -31,20 +31,20 @@ Cette note rassemble les conclusions techniques nécessaires pour reprendre le t
 
 La première conclusion est simple : **la MicroCAN v5 et ses 112 Kio de RAM suffisent très largement pour reconnaître l'alarme**, car l'audio n'est jamais enregistré intégralement. Un DMA circulaire contient seulement 20 à 40 ms de signal, le bloc est traité, puis immédiatement écrasé par le bloc suivant.
 
-La deuxième conclusion est liée au matériel existant et aux décisions prises après l'étude initiale : **le MVP utilise un seul microphone analogique IM68A130(A), directement relié à PA3/ADC1_IN4, un OPT4060 orienté vers le sol pour les flashs et un VL53L4CX pour la hauteur du module**. PA4 est de nouveau libre. L'OPT4060 fournit les quatre voies RGBW à environ 100 Hz, sans FIFO ; sa mesure est explicitement arrêtée pendant chaque mesure ponctuelle du télémètre 940 nm.
+La deuxième conclusion est liée au matériel existant et aux décisions prises après l'étude initiale : **le MVP utilise un seul microphone analogique IM68A130(A), directement relié à PA4/ADC2_IN17, et un OPT4060 orienté vers le sol pour les flashs**. ADC2 est ainsi dédié au son, tandis qu'ADC1 conserve exclusivement la surveillance VIN/température/VREF. Le VL53L4CX de mesure de hauteur n'est pas monté et reste une option logicielle désactivée par défaut.
 
 Les décisions suivantes font foi lorsqu'une section historique du document semble encore présenter une variante antérieure :
 
-- un microphone unique sur PA3 = ADC1_IN4 ;
-- PA4 libre pour une autre fonction ;
-- PA2 conservée pour `DBG_TX` ;
+- un microphone unique sur PA4 = ADC2_IN17 ;
+- PA2/PA3 conservées pour la console de débogage complète ;
+- ADC2 dédié à l'audio et ADC1 dédié à la surveillance carte ;
 - pas d'OPAMP interne ni externe dans le premier prototype ;
 - liaison continue en tension entre la sortie déjà polarisée de l'IM68A130(A) et l'ADC, avec seulement découplage et petit réseau RC passif ;
 - suréchantillonnage matériel ADC envisagé en x4 ou x16, sans augmentation de la taille des tampons DMA ;
 - un seul OPT4060 sous le drone, sans sectorisation optique ;
-- VL53L4CX piloté par le composant officiel ST provenant du sous-module `STMicroelectronics/x-cube-tof1` ;
-- pas de canaux injectés : un seul thread arbitre explicitement audio et mesures lentes ;
-- acquisition lumière et mesure ToF strictement exclusives.
+- VL53L4CX optionnel, piloté lorsqu'il est activé par le composant officiel ST provenant du sous-module `STMicroelectronics/x-cube-tof1` ;
+- pas de canaux injectés ni d'arbitrage entre audio et mesures lentes ;
+- acquisition lumière et mesure ToF strictement exclusives lorsque le ToF est activé.
 
 ## 2. Exigences du règlement IMAV 2026
 
@@ -224,13 +224,13 @@ Il n'est donc pas nécessaire d'ajouter un transceiver CAN ou une alimentation g
 
 Le boîtier 32 broches ne fournit pas un connecteur ADC dédié.
 
-En conservant I2C1, SPI1/M95P et CAN, une seule entrée analogique est retenue :
+En conservant I2C1, SPI1/M95P interne et CAN, une seule entrée analogique externe est retenue :
 
 | Broche MCU | Connecteur/fonction actuelle | Fonction possible | Décision actuelle |
 |---|---|---|---|
 | PA2 | sonde J3, `DBG_TX` | `ADC1_IN3` possible | conservée pour une trace TX minimale |
-| PA3 | sonde J3, `DBG_RX` | `ADC1_IN4`, microphone unique | retenue ; perte du RX de débogage |
-| PA4 | `SPI_PERIPH_CS` | `ADC2_IN17` possible | libre pour les autres fonctions ; non utilisée par IMAV |
+| PA3 | sonde J3, `DBG_RX` | `ADC1_IN4` possible | conservée pour la console de débogage |
+| PA4 | J6 broche 4, `SPI_PERIPH_CS` | `ADC2_IN17`, microphone unique | retenue ; perte du chip-select SPI externe et de TIM3_CH2 |
 
 Les autres entrées analogiques ne sont pas retenues :
 
@@ -245,43 +245,44 @@ Les autres entrées analogiques ne sont pas retenues :
 | PF0/PF1 | fonctions analogiques possibles | oscillateur/terminaison CAN | fonctions de carte prioritaires |
 
 Le microphone possède déjà une sortie amplifiée et polarisée. Son réseau vers
-PA3 reste donc passif : petite résistance série, découplage local et empreinte
+PA4 reste donc passif : petite résistance série, découplage local et empreinte
 de condensateur optionnelle. Aucun second canal audio n'est câblé.
 
 ### 6.2 ADC et timers dans le firmware actuel
 
 Le firmware actuel :
 
-- partage ADC1 entre le microphone et les mesures lentes VIN/température/VREF ;
-- laisse ADC2 désactivé ;
-- utilise ADC1 en conversion circulaire mono déclenchée par TIM6 ;
+- réserve ADC1 aux mesures VIN/température/VREF en conversion continue ;
+- réserve ADC2 au microphone ;
+- utilise ADC2 en conversion circulaire mono déclenchée par TIM6 ;
 - utilise TIM2 pour l'OS ;
 - utilise potentiellement TIM7 pour DShot ;
 - utilise FDCAN2 pour le réseau ;
 - utilise I2C1 sur PA15/PB7 pour l'OPT4060 et le VL53L4CX ;
 - dispose d'un gestionnaire de ressources pour les rôles.
 
-En mode IMAV, `main.cpp` laisse le rôle posséder ADC1. Le thread audio
-sérialise l'acquisition continue et les mesures lentes sans utiliser les
-groupes injectés.
+`main.cpp` démarre toujours la surveillance continue sur ADC1. Le rôle IMAV
+démarre indépendamment ADC2 et ne suspend donc jamais les mesures lentes.
 
 Séquence de fonctionnement :
 
-1. configurer ADC1 avec un groupe régulier d'un canal sur PA3 ;
+1. configurer ADC2 avec un groupe régulier d'un canal sur PA4 ;
 2. armer son DMA circulaire de 1024 mots, puis démarrer le TRGO TIM6 à
    23 997,74 Hz ;
 3. traiter chaque demi-buffer de 512 échantillons dans le thread audio ;
-4. toutes les secondes, arrêter le trigger et ADC1 à une frontière de bloc ;
-5. lancer sur ADC1 la séquence lente VREF factice, VIN, température et VREF ;
-6. restaurer le groupe audio, relancer TIM6 et jeter le premier demi-buffer ;
-7. signaler explicitement la discontinuité au détecteur.
+4. laisser ADC1 mesurer en parallèle VREF factice, VIN, température et VREF ;
+5. en cas d'erreur ou de blocage audio, arrêter puis relancer uniquement
+   TIM6 et ADC2, jeter le premier demi-buffer et signaler la discontinuité au
+   détecteur.
 
-Une perte occasionnelle de quelques échantillons est acceptable pour cette détection par salves. Cette architecture garantit qu'ADC1 n'est jamais utilisé simultanément par la surveillance lente et l'audio, sans complexité de conversions injectées.
+Cette architecture supprime les pauses audio périodiques et toute commutation
+de groupe ADC. Les deux acquisitions restent indépendantes, hors horloge
+commune ADC12 imposée par le STM32G491.
 
-Le rôle acquiert PA3, ADC1 et TIM6 avant de démarrer. ADC2 reste désactivé.
+Le rôle acquiert PA4, ADC2 et TIM6 avant de démarrer. ADC1 n'appartient pas au
+rôle IMAV et reste géré par la surveillance carte.
 L'infrastructure I2C commune arbitre PA15/PB7 ; un conflit avec une fonction
-TIM3 utilisant PB7 est donc signalé au démarrage. Si le rôle échoue, le mode
-historique de surveillance ADC est restauré.
+TIM3 utilisant PB7 est donc signalé au démarrage.
 
 Le fichier CubeMX `.ioc` est partiellement obsolète : il indique notamment 160 MHz, tandis que le firmware vise 170 MHz. Les fichiers ChibiOS, le schéma et le code source sont les références à privilégier.
 
@@ -290,7 +291,7 @@ Le fichier CubeMX `.ioc` est partiellement obsolète : il indique notamment 160 
 ### 7.1 MVP compatible avec la MicroCAN existante
 
 ```text
-IM68A130(A) -> RC passif -> PA3 / ADC1_IN4 -> DMA mono --+
+IM68A130(A) -> RC passif -> PA4 / ADC2_IN17 -> DMA mono -+
                                                            |
 OPT4060 RGBW -------------------------------> I2C1 --------+--> STM32G491
 VL53L4CX ToF -------------------------------> I2C1 --------+    -> mesures
@@ -304,7 +305,7 @@ Cette architecture apporte déjà :
 - mesure de la hauteur du module suspendu ;
 - exclusion temporelle explicite entre lumière et ToF ;
 - cartographie sur le contrôleur de vol ;
-- utilisation de PA3 sur J3, tout en laissant PA4 libre ;
+- conservation de PA2/PA3 pour la console et utilisation de PA4 sur J6 ;
 - aucune perte de l'accès à la mémoire M95P.
 
 Le son et la lumière restent deux preuves indépendantes. Leur accord augmente
@@ -330,8 +331,8 @@ spatial.
 
 Une photodiode avec TIA, un ADC externe, un second microphone ou une IMU ne
 seront ajoutés que si les essais sous le drone montrent une insuffisance mesurée
-du montage minimal. PA4 reste disponible pour une évolution, mais aucune de ces
-extensions ne fait partie de la carte actuelle.
+du montage minimal. Aucune de ces extensions ne fait partie de la carte
+actuelle.
 
 ## 8. Choix des capteurs audio
 
@@ -426,7 +427,7 @@ OUT micro -- R série faible --+------------------------------- entrée ADC
 Principes :
 
 - aucun OPAMP interne ou externe ;
-- un unique réseau passif entre le microphone et PA3 / ADC1_IN4 ;
+- un unique réseau passif entre le microphone et PA4 / ADC2_IN17 ;
 - résistance série de quelques centaines d'ohms pour isoler/protéger la sortie ;
 - empreinte de condensateur à la broche ADC pour former un RC passif et servir de réservoir de charge ;
 - commencer avec des valeurs prudentes puis vérifier à l'oscilloscope le temps d'établissement et l'absence d'oscillation ; une plage expérimentale de 4,7 à 22 nF est raisonnable, la valeur finale dépendant de la résistance série et de l'impédance de sortie du microphone ;
@@ -621,7 +622,7 @@ Sous ChibiOS 21.11 :
 - le driver ADCv3 active automatiquement la prise en charge du suréchantillonnage sur STM32G4 ;
 - `ADCConversionGroup` possède déjà le champ `.cfgr2` ;
 - `STM32_ADC_COMPACT_SAMPLES` vaut `FALSE` dans ce projet, donc `adcsample_t` est un `uint16_t` capable de transporter un résultat 13 ou 14 bits ;
-- ADC1 est utilisé en mode indépendant et son groupe écrit son propre `CFGR2` ;
+- ADC2 est utilisé en mode indépendant et son groupe écrit son propre `CFGR2` ;
 - le mode ADC dual reste désactivé.
 
 Réglages utiles :
@@ -639,7 +640,7 @@ La loi idéale est :
 
 Elle suppose un bruit ou un dithering non corrélé d'une conversion à la suivante. Le microphone et l'ADC en fourniront probablement assez pour gagner près d'un bit ; le gain réel de deux bits devra être mesuré. Les erreurs statiques de l'ADC, le bruit du microphone et le bruit aérodynamique ne disparaissent pas magiquement.
 
-Configuration illustrative des deux `ADCConversionGroup` audio :
+Configuration illustrative du `ADCConversionGroup` audio :
 
 ```cpp
 constexpr uint32_t ovsX4Keep13Bits =
@@ -655,7 +656,7 @@ constexpr uint32_t ovsX16Keep14Bits =
 
 Ne pas positionner `ADC_CFGR2_TROVS`. Avec `TROVS = 0`, un front TIM6 lance immédiatement les x4 ou x16 sous-conversions et un résultat final est écrit. Avec `TROVS = 1`, il faudrait x4 ou x16 fronts pour obtenir un résultat et le débit utile tomberait respectivement à 6 ou 1,5 kéch/s si le timer restait à 24 kHz.
 
-`ROVSM` est sans effet utile dans cette architecture puisqu'aucune conversion injectée n'interrompt l'audio ; il peut rester à zéro. Les deux groupes doivent avoir exactement la même valeur de `cfgr2`.
+`ROVSM` est sans effet utile dans cette architecture puisqu'aucune conversion injectée n'interrompt l'audio ; il peut rester à zéro.
 
 Avec l'horloge ADC12 actuelle à 42,5 MHz et un échantillonnage de 47,5 cycles, une conversion 12 bits prend environ :
 
@@ -680,23 +681,24 @@ Recommandation de mise au point :
 Le code DSP ne suppose ni une pleine échelle de 4095 ni un point milieu fixe à
 2048 : il retire la moyenne du bloc du microphone. La pleine échelle vaut
 environ 8190 en x4/shift1. Les conversions VIN/température/VREF restent en
-12 bits dans leur autre groupe, dont `.cfgr2 = 0`.
+12 bits sur ADC1, dont le groupe utilise `.cfgr2 = 0`.
 
 Le burst de quatre sous-conversions réalise aussi une petite moyenne temporelle.
 Son atténuation dans la bande 2,0–3,0 kHz reste faible, mais il ne remplace pas
 un vrai filtre anti-repliement analogique.
 
-ADC1 et TIM6 respectent les contraintes de l'[errata STM32G491 ES0523](https://www.st.com/resource/en/errata_sheet/es0523-stm32g491xx4a1xx-device-errata-stmicroelectronics.pdf), section 2.6.9. Avec l'horloge ADC synchrone actuelle `AHB/4`, le contournement ST consiste à :
+ADC2 et TIM6 respectent les contraintes de l'[errata STM32G491 ES0523](https://www.st.com/resource/en/errata_sheet/es0523-stm32g491xx4a1xx-device-errata-stmicroelectronics.pdf), section 2.6.9. Avec l'horloge ADC synchrone actuelle `AHB/4`, le contournement ST consiste à :
 
-- déclencher ADC1 par TIM6 ;
+- déclencher ADC2 par TIM6 ;
 - donner à TIM6 le même rapport de prescaler `/4`, ou un multiple entier.
 
 Pour TIM6 cadencé à 170 MHz, configurer le GPT à 42,5 MHz force donc `PSC = 3`. Un intervalle de 1771 tops fournit environ 23 997,74 Hz, soit seulement -94 ppm par rapport à 24 kHz. Le DSP doit employer cette fréquence réelle dans ses coefficients ou bins Goertzel.
 
 Les sections 2.6.7 et 2.6.8 du même errata imposent aussi de se méfier du
-premier résultat après une longue pause ou un arrêt logiciel. La séquence santé
-commence donc par une conversion VREF factice. Après la reprise audio, le
-premier demi-buffer est jeté et le DSP reçoit un marqueur de discontinuité.
+premier résultat après un arrêt logiciel. Chaque balayage ADC1 commence donc
+par une conversion VREF factice. Au démarrage ou après une reprise d'ADC2, le
+premier demi-buffer audio est jeté et le DSP reçoit un marqueur de
+discontinuité.
 
 ## 12. Traitement numérique audio
 
@@ -877,14 +879,20 @@ Possibilités :
 
 Une carte 1 m avec 8 octets par cellule prend environ 20 Kio. Elle tient dans le G491, mais il est préférable de la stocker sur le calculateur de vol pour ne pas rogner les heaps du nœud CAN.
 
-## 16. Messages DroneCAN proposés
+## 16. Messages DroneCAN
 
-L'interface ci-dessous reste une proposition. Le firmware actuel publie la distance
-validée par le message de télémétrie existant et, en mode debug, des diagnostics
-temporaires `KeyValue`. Le message DSDL de score de balise n'est pas encore
-implémenté.
+Le firmware diffuse systématiquement à 5 Hz des
+`uavcan.protocol.debug.KeyValue`. Les deux entrées audio destinées à la
+navigation sont `det`, booléen transporté comme 0,0 ou 1,0, et `snr`, force de
+la dernière salve reconnue en dB au-dessus du plancher adaptatif de la bande
+2–3 kHz. Elles sont toujours envoyées. Le paramètre booléen
+`role.imav.debug.publish.optional`, faux par défaut et appliqué immédiatement,
+ajoute seulement les valeurs de mise au point. Cette interface fonctionne
+avec DroneCAN sans allouer un nouvel identifiant DSDL.
 
-Pour le prototype, un message de débogage ou tunnel peut suffire. Pour la version finale, créer un type DSDL dédié après avoir choisi le namespace et l'identifiant conformément aux conventions du projet.
+Un message DSDL dédié pourra remplacer les `KeyValue` après avoir choisi le
+namespace et l'identifiant avec l'autopilote. Il regrouperait alors les champs
+ci-dessous dans un unique transfert.
 
 Le build par défaut utilise le DSDL externe référencé par `microcan/Makefile` (`../UAVCAN/DSDL` relativement à l'arborescence de travail), et pas automatiquement la copie sous `ext/UAVCAN`. Cette dépendance doit être recréée ou corrigée lors de la reprise sur une autre machine.
 
@@ -914,7 +922,9 @@ Flags possibles :
 - module suspendu instable ;
 - capteur en erreur.
 
-Fréquence de publication : 20 à 50 Hz. Les événements de salve peuvent éventuellement être publiés séparément si le timestamp précis est nécessaire.
+La fréquence de publication implémentée est de 5 Hz. Les événements de salve
+pourront éventuellement être publiés séparément si un timestamp plus précis
+devient nécessaire.
 
 Ne pas transmettre le flux audio brut sur CAN pendant la mission. Avec un
 microphone à 24 kéch/s et 16 bits, il représenterait environ 48 ko/s hors
@@ -939,8 +949,9 @@ Paramètres runtime implémentés :
 ```text
 role.imav.audio.band_low_hz
 role.imav.light.i2c_address
+role.imav.time_of_flight
 role.imav.tof.period_ms
-role.imav.debug.publish
+role.imav.debug.publish.optional
 ```
 
 `role.imav.audio.band_low_hz` est désormais implémenté : entier persistant
@@ -955,13 +966,13 @@ le temps de conversion OPT4060 sont pour l'instant des constantes du firmware.
 Le rôle :
 
 - hérite de `RoleBase` et utilise le schéma CRTP/trampoline existant ;
-- acquiert PA3, ADC1 et TIM6 ;
-- démarre I2C1 via l'infrastructure commune pour l'OPT4060 et le VL53L4CX ;
+- acquiert PA4, ADC2 et TIM6 ;
+- démarre I2C1 via l'infrastructure commune pour l'OPT4060 et, en option, le VL53L4CX ;
 - alloue son unique état/buffer audio par `malloc_dma()` au démarrage ;
 - alloue le contexte capteurs et les deux piles de threads au démarrage ;
-- utilise un thread audio pour ADC1, les mesures de santé et le DSP ;
-- utilise un second thread pour sérialiser l'OPT4060 et le VL53L4CX ;
-- arme ADC1 avant de démarrer TIM6 ;
+- utilise un thread audio pour ADC2 et le DSP ;
+- utilise un second thread pour l'OPT4060 et, si demandé, pour sérialiser le VL53L4CX ;
+- arme ADC2 avant de démarrer TIM6 ;
 - ne réalise presque aucun calcul dans le callback ADC ;
 - publie les diagnostics sans bloquer l'acquisition ;
 - signale les conflits de ressources, manques de mémoire et capteurs absents ;
@@ -970,12 +981,13 @@ Le rôle :
 Le gestionnaire de ressources doit représenter explicitement :
 
 ```text
-ADC_1
+PA04
+ADC_2
 TIM_6
 ```
 
-La surveillance VIN/température/VREF est intégrée au thread audio lorsque le
-rôle est actif. ADC2 et PA4 restent libres.
+La surveillance VIN/température/VREF reste continue sur ADC1 et indépendante
+du thread audio.
 
 Attention : I2C1 partage PB7 avec certaines fonctions TIM3/LED. Le rôle IMAV ne pourra pas coexister avec les rôles qui réaffectent PB7.
 
@@ -1069,8 +1081,8 @@ Mesurer :
 ### Étape 1 — banc minimal
 
 - MicroCAN v5 ;
-- un IM68A130(A) sur carte fille, sans OPAMP, relié à PA3/ADC1_IN4 ;
-- PA2 conservée en TX de trace ;
+- un IM68A130(A) sur carte fille, sans OPAMP, relié à PA4/ADC2_IN17 ;
+- PA2/PA3 conservées pour la console de débogage ;
 - comparaison ADC sans suréchantillonnage, x4/shift1 et x16/shift2 ;
 - OPT4060 et VL53L4CX sur I2C1 à 400 kHz ;
 - capture de blocs audio ;
@@ -1140,7 +1152,7 @@ Ces objectifs doivent être validés sur au moins 20 à 30 répétitions des cas
 | Variation de réponse optique pendant la rotation | Cartographie perturbée | Capteur vers le sol, suspension anti-lacet et plusieurs passages |
 | Fenêtre DSP trop longue en mouvement | Carte décalée | Horodater chaque salve, ralentir au raffinement |
 | RAM saturée par les rôles/heaps | Échec au démarrage | États alloués uniquement au lancement, erreurs d'allocation vérifiées et contrôle `.map` |
-| PA3 réutilisée en ADC | Perte de `DBG_RX` | Conserver PA2 comme trace TX minimale |
+| PA4 réutilisée en ADC | Perte de `SPI_PERIPH_CS` et TIM3_CH2 | Configuration mission dédiée et gestion de ressources |
 | I2C1 réaffecté par un autre rôle | Perte OPT4060/VL53L4CX | Gestion de ressources et configuration mission dédiée |
 | Firmware update pendant acquisition SPI future | Conflit de bus | Arrêter rôle avant update, arbitrage explicite |
 | Source lumineuse rouge parasite | Faux positif | Cadence, mouvement spatial, fusion audio |
@@ -1151,9 +1163,9 @@ Ces objectifs doivent être validés sur au moins 20 à 30 répétitions des cas
 Construire d'abord une petite carte fille :
 
 1. **un IM68A130/IM68A130A analogique**, alimenté et découplé proprement ;
-2. aucun OPAMP ; sa sortie déjà polarisée rejoint **PA3/ADC1_IN4** par un
+2. aucun OPAMP ; sa sortie déjà polarisée rejoint **PA4/ADC2_IN17** par un
    réseau RC passif ;
-3. PA2 conservée comme `DBG_TX` minimal et PA4 laissée libre ;
+3. PA2/PA3 conservées pour la console de débogage ;
 4. **un OPT4060** orienté vers le sol sur I2C1 ;
 5. **un VL53L4CX** orienté vers le sol sur le même bus ;
 6. cloison optique entre les deux capteurs et mécanique protégeant le
@@ -1164,12 +1176,13 @@ Construire d'abord une petite carte fille :
 
 L'implémentation actuelle du rôle MicroCAN utilise :
 
-- ADC1 déclenché par TIM6 à 23 997,74 Hz ;
+- ADC2 déclenché par TIM6 à 23 997,74 Hz ;
 - un DMA circulaire de 1024 × 16 bits, soit 2 Kio ;
 - blocs mono de 512 échantillons ;
 - suréchantillonnage matériel x4/shift1 ;
-- pause explicite pour VIN/température/VREF et rejet du premier demi-buffer
-  après reprise ;
+- ADC1 maintenu en surveillance continue parallèle pour VIN/température/VREF ;
+- rejet du premier demi-buffer audio au démarrage ou après une reprise sur
+  erreur ;
 - énergie cumulée entre 2,0 et 3,0 kHz et confirmation sur deux blocs ;
 - cadence 2/3 Hz mesurée sans conditionner la validité audio ;
 - lecture OPT4060 proche de 100 Hz et cadence optique 2/3 Hz ;
@@ -1228,24 +1241,27 @@ Ne passer à un AFE actif, un ADC externe ou à des photodiodes analogiques que 
 - [TI OPA381](https://www.ti.com/product/OPA381)
 - [TI OPA320](https://www.ti.com/product/OPA320)
 
-## 25. État de l'implémentation au 26 juillet 2026
+## 25. État de l'implémentation au 31 août 2026
 
-La branche active est `imav2026/one_mic`. Un premier rôle fonctionnel
+La branche active est `imav2026/one_mic_adc2`. Un premier rôle fonctionnel
 `ImavRole` est intégré, compilé par `USE_IMAV_ROLE` et activé à l'exécution par
 `ROLE.imav.beacon`. Aucun autre rôle n'a été désactivé statiquement.
 
 ### 25.1 Acquisition et partage des ressources
 
-- PA3/ADC1_IN4 est acquis avec ADC1 et TIM6 par le gestionnaire de ressources ; PA4 et ADC2 ne sont pas utilisés par IMAV.
-- ADC1 utilise une conversion régulière circulaire d'un canal, un DMA de 1024 mots et un callback minimal.
+- PA4/ADC2_IN17 est acquis avec ADC2 et TIM6 par le gestionnaire de ressources.
+- ADC2 utilise une conversion régulière circulaire d'un canal, un DMA de 1024 mots et un callback minimal.
+- ADC1 reste exclusivement affecté à la surveillance continue VIN/température/VREF.
 - TIM6 fournit le TRGO à `42,5 MHz / 1771 = 23 997,74 Hz` ; son prescaler `/4` respecte le contournement de l'errata avec l'horloge ADC AHB/4.
 - Le suréchantillonnage est x4 avec shift 1 : sortie 13 bits, débit DMA inchangé.
 - Un watchdog relance l'acquisition si aucun demi-buffer ne progresse pendant 100 ms.
-- Toutes les secondes, le thread arrête le trigger puis ADC1, réalise la séquence lente de santé et relance l'audio. La séquence lente commence par un VREF dummy qui absorbe le premier résultat invalide décrit par ES0523 ; VIN, température et VREF utiles suivent dans la même séquence.
-- Après chaque reprise, le premier demi-buffer audio est jeté et le suivant porte un marqueur de discontinuité.
-- Si le démarrage du nœud ou d'un rôle échoue, ADC1 revient au mode historique continu afin que la santé carte ne reste pas figée.
+- La surveillance ADC1 et le flux audio ADC2 fonctionnent sans pause ni commutation de groupe.
+- Après le démarrage ou une reprise sur erreur, le premier demi-buffer audio est jeté et le suivant porte un marqueur de discontinuité.
 
-PA2 reste utilisable pour `DebugTrace`. En mode IMAV, le shell n'est pas créé et le récepteur LPUART est réellement désactivé (`RE`, RXNE/error/LIN interrupts et FIFO RX), avant de passer PA3 en analogique.
+PA2 et PA3 restent disponibles pour `DebugTrace` et le shell complet. Sur cette
+branche dédiée, PA4 est configurée en entrée analogique dès `halInit` afin de
+ne jamais forcer électriquement la sortie du microphone ; le rôle confirme ce
+mode avant de démarrer ADC2.
 
 ### 25.2 DSP audio actuel
 
@@ -1256,24 +1272,39 @@ Chaque bloc mono de 512 échantillons est consommé immédiatement, sans histori
 3. grille Goertzel fixe de 50 Hz permettant de choisir une borne basse entre
    2,0 et 2,6 kHz ; la valeur par défaut 2,0 kHz utilise les références à
    1,65/1,75 et 3,25/3,40 kHz ainsi qu'une marge de 50 Hz autour de la bande ;
-4. puissance moyenne de bande, proéminence sur les références, rapport en dB
-   entre l'énergie cumulée de bande et l'énergie globale, et fréquence
-   dominante indicative ;
+4. puissance moyenne de bande, proéminence obligatoire sur les références,
+   rapport en dB entre l'énergie cumulée de bande et l'énergie globale, et
+   fréquence dominante indicative ; une simple montée d'énergie large bande
+   ne suffit pas à valider un bloc ;
 5. plancher lent adaptatif et score continu par voie ;
-6. machine `Unarmed/Off/On` à deux blocs avec hystérésis ;
+6. machine `Unarmed/Off/On` avec hystérésis et validation d'une paire de blocs
+   spectraux cohérente en niveau et en fréquence ;
 7. six horodatages de fronts au maximum et mesure des cadences proches de 2 et
    3 Hz, sans utiliser cette cadence comme condition de validité.
 
 L'état `Unarmed` est réimposé après une discontinuité. Il faut ensuite observer
-deux blocs bas, puis deux blocs spectraux hauts consécutifs pour valider le
-signal. Le score est maintenu pendant 750 ms puis décroît jusqu'à 1 500 ms afin
-de couvrir les silences de la préalarme et de l'alarme. Une tonalité continue
-fortement concentrée dans la bande peut donc être acceptée : c'est un choix
-délibéré compte tenu du faible risque de leurre dans la mission.
+deux blocs bas. Un front demande deux blocs adjacents valant chacun au moins
+0,45, dont la somme atteint 1,20, et dont les fréquences dominantes diffèrent
+de moins de 250 Hz. Un bloc inférieur ou égal à 0,30 termine la salve. Deux
+fronts acceptés sont séparés d'au moins 250 ms ; un intervalle supérieur à
+750 ms réinitialise l'historique au lieu de polluer la cadence suivante. Ces
+bornes couvrent les périodes de 333 ms et 500 ms tout en rejetant la
+réverbération d'une même salve. Le score est maintenu pendant 750 ms puis
+décroît jusqu'à 1 500 ms afin de couvrir les silences de la préalarme et de
+l'alarme. Une tonalité continue fortement concentrée dans la bande peut donc
+être acceptée : c'est un choix délibéré compte tenu du faible risque de leurre
+dans la mission.
+
+Le banc avec enceinte a validé des chirps 2,1–2,5 kHz de 60 à 120 ms. Avec
+120 ms, la préalarme est mesurée à 1,98–2,04 Hz et l'alarme complète à
+2,96–3,04 Hz. Le bruit blanc continu et des salves de bruit blanc à 3 Hz sont
+rejetés. Après trois secondes d'apprentissage d'un bruit blanc continu, un
+chirp dont le niveau RMS est supérieur de 6 dB reste détecté à 3 Hz. Ces
+mesures qualifient le banc, pas encore le bruit aérodynamique réel du drone.
 
 Les seuils numériques actuels sont volontairement des valeurs de bring-up. Ils doivent être recalés sur des enregistrements de la vraie balise et du drone, en conservant les scores continus plutôt qu'un simple booléen.
 
-### 25.3 OPT4060, VL53L4CX et exclusion temporelle
+### 25.3 OPT4060 et VL53L4CX optionnel
 
 - Un unique OPT4060 orienté vers le sol est recherché aux adresses 0x44 à 0x47 ; `ADDR=GND` et l'adresse 0x44 sont les valeurs nominales.
 - Le registre de configuration vaut `0x30B8` en acquisition : plage automatique, 1,8 ms par voie, mode continu et quatre voies séquentielles. Un cycle RGBW typique dure donc 7,2 ms.
@@ -1283,14 +1314,15 @@ Les seuils numériques actuels sont volontairement des valeurs de bring-up. Ils 
   au maximum alimentent un score acceptant 2 Hz pour la préalarme et 3 Hz pour
   l'alarme complète ; un flash isolé ou la LED d'état rouge à 1 Hz ne suffit
   pas à produire le score final `lit`.
-- Le cœur officiel ST du VL53L4CX reste inchangé dans le sous-module `third_party/x-cube-tof1`, épinglé sur X-CUBE-TOF1 v3.4.3 (cœur VL53LX 1.2.13). Le portage générique `vl53lx_platform.c` est exclu et remplacé par le portage local ChibiOS, qui utilise les callbacks I2C/temps du projet et le buffer `tofTx` alloué avec le rôle.
+- `role.imav.time_of_flight` vaut `false` par défaut. Dans cet état, le firmware n'accède jamais à l'adresse 0x29, ne lance aucune initialisation ou relance VL53L4CX et ne suspend jamais l'OPT4060.
+- Lorsque cette option est activée, le cœur officiel ST du VL53L4CX reste inchangé dans le sous-module `third_party/x-cube-tof1`, épinglé sur X-CUBE-TOF1 v3.4.3 (cœur VL53LX 1.2.13). Le portage générique `vl53lx_platform.c` est exclu et remplacé par le portage local ChibiOS, qui utilise les callbacks I2C/temps du projet et le buffer `tofTx` alloué avec le rôle.
 - Il fonctionne en profil longue distance, budget de 30 ms et one-shot asynchrone borné à 100 ms. Le résultat valide le plus proche est publié.
 - Avant chaque one-shot ou réinitialisation ToF, le mode de l'OPT4060 passe à `Power-down` par une écriture I²C acquittée. La mesure ST est effectuée, puis le mode continu est rétabli ; aucun résultat optique de cette fenêtre n'est utilisé.
 - La période nominale vaut 200 ms et est paramétrable. Un petit jitter déterministe déplace la phase des trous afin de ne pas masquer systématiquement une balise périodique.
 - I2C standard 100 kHz et Fast mode 400 kHz sont acceptés ; 400 kHz reste recommandé. Le Fast-mode Plus 1 MHz est refusé car l'OPT4060 passe directement du Fast mode au protocole High-Speed 2,6 MHz, non activé ici.
 - Un NACK d'un capteur absent ne réinitialise pas le bus partagé. Seuls un timeout ou une faute électrique/protocolaire déclenchent la récupération sérialisée.
 
-La distance est publiée à chaque mesure dans `uavcan.equipment.range_sensor.Measurement` (`sensor_id=0`, type LIDAR, champ de vue 18°). L'orientation de corps est laissée indéfinie car le module est suspendu ; le contrôleur de vol configure lui-même l'orientation du télémètre vers le bas.
+Lorsque le ToF est activé, la distance est publiée à chaque mesure dans `uavcan.equipment.range_sensor.Measurement` (`sensor_id=0`, type LIDAR, champ de vue 18°). L'orientation de corps est laissée indéfinie car le module est suspendu ; le contrôleur de vol configure lui-même l'orientation du télémètre vers le bas.
 
 La lumière et le son restent deux preuves indépendantes. Il n'y a pas de condition rigide `son ET lumière`, notamment à cause de l'avis MSA 2026 sur des alarmes sonores potentiellement défaillantes.
 
@@ -1298,42 +1330,63 @@ La lumière et le son restent deux preuves indépendantes. Il n'y a pas de condi
 
 Mesures contrôlées sur le build `-Og` :
 
-- `sizeof(ImavAudioState) = 2 624` octets sur le heap DMA de 12 288 octets ; ce total contient le buffer audio mono de 2 048 octets ;
+- `sizeof(ImavAudioState) = 2 652` octets sur le heap DMA de 12 288 octets ; ce total contient le buffer audio mono de 2 048 octets ;
 - `sizeof(ImavLightRange) = 10 304` octets sur le heap standard de 20 480 octets ; ce total contient le contexte officiel ST de 9 480 octets et les tampons I2C ;
 - thread audio : pile utile configurée à 1 536 octets ;
 - thread capteurs : pile utile configurée à 2 048 octets ;
-- firmware : 276 472 octets de texte et 100 056 octets de BSS, heaps réservés inclus ;
+- firmware : 277 136 octets de texte et 100 048 octets de BSS, heaps réservés inclus ;
 - le shell de 2 000 octets n'est pas alloué en mode IMAV.
 
 Le portage matériel local du VL53L4CX réutilise le tampon `tofTx` contenu dans
 `ImavLightRange`. Le `_I2CBuffer[256]` du portage générique ST n'est donc plus
 lié au firmware, sans modifier le sous-module officiel. La section `.bss`
-applicative passe de 35 624 à 35 368 octets et les 256 octets libérés sont
-rendus au heap par le linker. Le total BSS synthétique reste à 100 056 octets
-précisément parce qu'il inclut ce heap redimensionné. Lorsque le rôle est
+applicative mesurée vaut 35 424 octets ; les 256 octets du tampon générique
+restent rendus au heap par le linker. Le total BSS synthétique vaut
+100 048 octets parce qu'il inclut ce heap. Lorsque le rôle est
 compilé mais désactivé, il ne reste en RAM que les deux pointeurs de trampoline
 de 4 octets ; tous ses buffers et états sont alloués à son lancement.
 
-La télémétrie temporaire `uavcan.protocol.debug.KeyValue`, activable par `role.imav.debug.publish`, diffuse environ une fois par seconde :
+La télémétrie fonctionnelle `uavcan.protocol.debug.KeyValue` est diffusée à
+5 Hz lorsque le rôle IMAV est actif :
 
 | Clé | Valeur |
 |---|---|
-| `a0` | score spectral instantané du microphone |
-| `p0` | amplitude RMS estimée de la tonalité dominante, en comptes ADC 13 bits |
-| `sdb` | rapport en dB entre l'énergie de la bande balise et l'énergie globale de la fenêtre |
-| `aud` | score de signature spectrale audio, maintenu pendant les silences |
-| `frq` | fréquence dominante en hertz |
-| `cad` | cadence de salves estimée en hertz |
-| `lit` | score de flash rouge qualifié par une cadence de 2 ou 3 Hz, zéro après 200 ms sans nouvel échantillon |
-| `rng` | distance en mètres, -1 si la dernière mesure n'est pas valide |
-| `rsg` | signal VL53L4CX en kcps/SPAD |
+| `det` | détection audio avec hystérésis, exactement 0,0 ou 1,0 ; entrée principale de l'autopilote |
+| `snr` | pic de la puissance excédentaire de la salve rapportée en dB au plancher adaptatif dans la bande 2–3 kHz ; maintenu entre les bips puis ramené à zéro lorsque le signal devient périmé |
+| `a0` | optionnel : score spectral instantané du microphone |
+| `p0` | optionnel : amplitude RMS estimée de la tonalité dominante, en comptes ADC 13 bits |
+| `sdb` | optionnel : rapport instantané en dB entre l'énergie de la bande balise et l'énergie globale de la fenêtre ; ce n'est pas le SNR moteur |
+| `aud` | optionnel : score de signature spectrale audio, maintenu pendant les silences |
+| `frq` | optionnel : fréquence dominante en hertz |
+| `cad` | optionnel : cadence de salves estimée en hertz |
+| `lit` | optionnel : score de flash rouge qualifié par une cadence de 2 ou 3 Hz, zéro après 200 ms sans nouvel échantillon |
+| `rng` | optionnel avec ToF : distance en mètres, -1 si la dernière mesure n'est pas valide |
+| `rsg` | optionnel avec ToF : signal VL53L4CX en kcps/SPAD |
 
-Les clés font trois caractères afin que chaque message tienne dans une seule trame CAN classique.
+Les clés font trois caractères afin que chaque message tienne dans une seule
+trame CAN classique. Le mode nominal produit 10 trames/s (`det` et `snr` à
+5 Hz). Le débogage optionnel porte le total à 45 trames/s sans ToF et à
+55 trames/s avec ToF. Le plancher de `snr` apprend les blocs non reconnus comme
+balise : il suit le bruit blanc continu des moteurs mais n'absorbe pas les
+salves périodiques. Chaque pic de salve est lissé avec un coefficient de 0,5 ;
+la valeur reste stable dans les silences de 333/500 ms, puis suit la même
+décroissance de fraîcheur que `aud` après 750 ms sans tonalité.
+
+La réception SocketCAN avec PyDroneCAN confirme cinq groupes de clés par
+seconde, espacés alternativement d'environ 192 et 213 ms à cause des blocs DSP
+de 21,33 ms. Avec l'option à `false`, seuls `det` et `snr` sont observés ; son
+passage à `true` ajoute immédiatement les sept clés optionnelles sans
+redémarrage. Sur le banc, trois fichiers séparés par pas de 6 dBFS donnent des
+plateaux `snr` d'environ 12,0, 17,6 et 23,7 dB : les écarts mesurés de 5,6 et
+6,1 dB confirment que la grandeur est utilisable comme force relative pour la
+cartographie spatiale. Ces valeurs absolues dépendent toutefois du bruit de
+fond, du haut-parleur, du microphone et de la géométrie du test.
 
 ### 25.5 Validation encore nécessaire
 
 - mesurer le temps CPU maximum du DSP sur cible en `-Og` puis en `RELEASE=fast` ;
-- injecter des sinus/salves connus sur PA3 et vérifier fréquence, cadence, clipping et reprise après pause santé ;
+- injecter des sinus/salves connus sur PA4 et vérifier fréquence, cadence,
+  clipping et reprise après une erreur ADC2 ;
 - enregistrer la vraie forme temporelle du motionSCOUT et ajuster les seuils/profils de cadence ;
 - mesurer la largeur réelle des flashs et vérifier qu'un allumage produit plusieurs cycles RGBW complets ;
 - tester l'OPT4060 au soleil, à l'ombre, devant des LED parasites et avec l'ouverture mécanique définitive ;

@@ -4,21 +4,11 @@
  */
 #pragma once
 
-#include <cstdint>
-
 namespace Adc {
-  /** @brief ADC1 ownership mode selected during board startup. */
-  enum class Mode : uint8_t {
-    Continuous,
-    OnDemand,
-  };
-
   /** @brief Callback signature for ADC updates. */
   using Callback_t = void  (float psBat, float coreTemp);
   /** @brief Start ADC sampling and optional callback reporting. */
-  void start(Callback_t *cb = nullptr, Mode mode = Mode::Continuous);
-  /** @brief Refresh VIN, core temperature and VREF in OnDemand mode. */
-  bool sampleOnce();
+  void start(Callback_t *cb = nullptr);
   /** @brief Register a callback for ADC error conditions. */
   void setErrorCB(Callback_t *cb);
   /** @brief Read raw battery voltage (uncalibrated). */

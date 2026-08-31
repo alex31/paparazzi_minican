@@ -55,9 +55,9 @@ struct ImavLightRangeSnapshot {
 class ImavLightRange final {
 public:
   ImavLightRange(UAVCAN::Node& node, uint8_t lightAddress,
-                 uint32_t rangePeriodMs);
+                 uint32_t rangePeriodMs, bool timeOfFlightEnabled);
 
-  /** @brief Probe/configure the ToF sensor first, then start light sampling. */
+  /** @brief Optionally configure ToF, then start light sampling. */
   void initialize();
 
   /** @brief Service both sensors forever with mutually exclusive acquisition. */
@@ -107,6 +107,7 @@ private:
   UAVCAN::Node& node;
   uint8_t lightAddress;
   const uint32_t rangePeriodMs;
+  const bool timeOfFlightEnabled;
   VL53L4CX_Object_t rangeDevice = {};
 
   // This object is allocated in SRAM1, which is DMA-accessible on STM32G491.

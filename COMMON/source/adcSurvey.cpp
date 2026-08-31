@@ -55,7 +55,6 @@ namespace {
   /** @brief Report cached values when they are outside accepted limits. */
   void reportHealthIfOutOfRange();
   Adc::Callback_t *errorCb;
-  Adc::Mode adcMode = Adc::Mode::Continuous;
 
   constexpr ADCConversionGroup adcgrpcfgNoThreshold = {
     .circular     = false,
@@ -92,10 +91,9 @@ namespace {
 
 namespace Adc {
   /** @brief Start ADC sampling and optional error callback reporting. */
-  void start(Callback_t *cb, Mode mode)
+  void start(Callback_t *cb)
   {
     errorCb = cb;
-    adcMode = mode;
     adcStart(&ADCD1, nullptr);
     adcSTM32EnableVREF(&ADCD1);
     adcSTM32EnableTS(&ADCD1);
@@ -113,10 +111,6 @@ namespace Adc {
 		 "assuming run attached to swd probe", psBat);
     }
 			   
-    if (adcMode == Mode::OnDemand) {
-      return;
-    }
-
     const adcsample_t psBatMinSample = volts2adc(psBatMin);
     const adcsample_t psBatMaxSample = volts2adc(psBatMax);
     const adcsample_t coreTempMinSample = calculate_tsval(coreTempMin);
@@ -143,21 +137,6 @@ namespace Adc {
     startConversion();
   }
 
-  /** @brief Refresh slow board-health channels from the owning thread. */
-  bool sampleOnce()
-  {
-    if (adcMode != Mode::OnDemand) {
-      return false;
-    }
-
-    if (convert() != MSG_OK) {
-      return false;
-    }
-
-    reportHealthIfOutOfRange();
-    return true;
-  }
-  
   /** @brief Register an error callback for ADC watchdog events. */
   void setErrorCB(Callback_t *cb)
   {
@@ -258,10 +237,8 @@ namespace {
     if (err & (ADC_ERR_AWD1 | ADC_ERR_AWD2)) {
       reportHealthIfOutOfRange();
     }
-    if (adcMode == Adc::Mode::Continuous) {
-      chThdSleepMilliseconds(10);
-      startConversion();
-    }
+    chThdSleepMilliseconds(10);
+    startConversion();
   }
 
   /** @brief Invoke the registered health callback for invalid cached values. */

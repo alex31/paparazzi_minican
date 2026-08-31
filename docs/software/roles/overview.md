@@ -150,43 +150,55 @@ Params:
 
 ### IMAV beacon (ROLE.imav.beacon)
 
-Detects the sound and red flashes of the IMAV 2026 mannequin beacon and
-measures the suspended sensor module's height above the ground.
+Detects the sound and red flashes of the IMAV 2026 mannequin beacon. Ground
+height measurement with a VL53L4CX is optional and disabled by default.
 
 Params:
 
 - `role.imav.audio.band_low_hz` (2000..2600 Hz, default 2000; reboot after
   changing it)
 - `role.imav.light.i2c_address` (0x44..0x47)
-- `role.imav.tof.period_ms` (100..1000 ms, default 200 ms)
-- `role.imav.debug.publish` (temporary `uavcan.protocol.debug.KeyValue`
-  bring-up telemetry)
+- `role.imav.time_of_flight` (enable the optional VL53L4CX, default false)
+- `role.imav.tof.period_ms` (100..1000 ms, default 200 ms when enabled)
+- `role.imav.debug.publish.optional` (add the tuning keys to the mandatory
+  navigation output, default false and applied live)
+
+Outputs:
+
+- `det` (audio detection, 0 or 1) and `snr` (held beacon burst strength in dB
+  above the adaptive 2--3 kHz motor-noise floor) are always broadcast as
+  `uavcan.protocol.debug.KeyValue` at 5 Hz.
+- When `role.imav.debug.publish.optional` is true, `a0`, `p0`, `sdb`, `aud`,
+  `frq`, `cad` and `lit` provide the accompanying tuning measurements.
+  Optional ToF also adds `rng` and `rsg`.
 
 Wiring and resources:
 
-- one microphone: PA3 / ADC1_IN4
+- one microphone: PA4 / ADC2_IN17
 - 23.9977 kHz trigger: TIM6
 - OPT4060: shared I2C1 on PA15/PB07, address 0x44 by default
-- VL53L4CX: shared I2C1 on PA15/PB07, address 0x29
-- PA2 remains TX-only debug; the PA3 console receiver is disabled
-- PA4 remains available to other roles
+- optional VL53L4CX: shared I2C1 on PA15/PB07, address 0x29
+- ADC1 remains dedicated to continuous voltage and core-temperature monitoring
+- PA2/PA3 retain the complete debug console
+- PA4 is unavailable to external SPI and TIM3_CH2 while IMAV is active
 
 The role stores one 1024-sample circular DMA buffer. It computes Hann/Goertzel
 spectral scores and the complete 2.0--3.0 kHz-band/global-energy ratio in dB
-(`sdb`). Two spectrally valid blocks can detect either prealarm or full alarm;
-the measured 2/3 Hz burst cadence is diagnostic and does not gate audio
-validity.
+(`sdb`). A coherent pair of adjacent blocks, checked for score and dominant
+frequency continuity, can detect either prealarm or full alarm. Broadband
+energy rises without prominence over the reference bands are rejected. The
+measured 2/3 Hz burst cadence is diagnostic and does not gate audio validity.
 
 The independent optical detector accepts repeated red flashes near 2 or 3 Hz
-and rejects an isolated flash or the 1 Hz status LED. OPT4060 acquisition is
-stopped during every VL53L4CX one-shot so the 940 nm emitter cannot pollute a
-light sample. Ground range is published as
-`uavcan.equipment.range_sensor.Measurement`.
+and rejects an isolated flash or the 1 Hz status LED. When
+`role.imav.time_of_flight` is true, OPT4060 acquisition is stopped during each
+VL53L4CX one-shot so the 940 nm emitter cannot pollute a light sample, and
+ground range is published as `uavcan.equipment.range_sensor.Measurement`.
 
-The role, its 2624-byte DMA audio state, its 10304-byte sensor context and both
+The role, its 2652-byte DMA audio state, its 10304-byte sensor context and both
 thread working areas are allocated only when the runtime role is enabled.
-Current thresholds and debug messages are for sensor bring-up and must still
-be calibrated with the real beacon.
+Current thresholds and measurements must still be calibrated with the real
+beacon and the drone motors running.
 
 See [docs/software/adding_roles.md](../adding_roles.md) for the full new role checklist.
 See [IMAV/sensors.md](../../../IMAV/sensors.md) for the detailed implementation

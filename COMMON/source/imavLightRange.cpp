@@ -91,11 +91,12 @@ namespace {
 }
 
 ImavLightRange::ImavLightRange(UAVCAN::Node& node_, uint8_t address,
-                               uint32_t periodMs)
+                               uint32_t periodMs, bool enableTimeOfFlight)
   : node(node_),
     lightAddress(address),
     rangePeriodMs(std::clamp(
-      periodMs, uint32_t{100U}, uint32_t{1000U}))
+      periodMs, uint32_t{100U}, uint32_t{1000U})),
+    timeOfFlightEnabled(enableTimeOfFlight)
 {
   chDbgAssert(active == nullptr, "single IMAV light/range instance expected");
   active = this;
@@ -117,7 +118,7 @@ void ImavLightRange::initialize()
 {
   // Ref-SPAD initialization can emit 940 nm light. Configure it before the
   // OPT4060 starts, so the two sensors are never acquiring simultaneously.
-  rangeAvailable = initializeRange();
+  rangeAvailable = timeOfFlightEnabled && initializeRange();
   const bool lightOk = initializeLight();
   (void) lightOk;
   publishAvailability();
@@ -671,6 +672,10 @@ msg_t ImavLightRange::tofTransfer(uint16_t address, const uint8_t *tx,
 
 bool ImavLightRange::initializeRange()
 {
+  if (not timeOfFlightEnabled) {
+    return false;
+  }
+
   std::memset(&rangeDevice, 0, sizeof(rangeDevice));
   pendingTofRead = false;
   VL53L4CX_IO_t io = {
@@ -889,9 +894,9 @@ uint32_t ImavLightRange::nextRangeIntervalMs()
     }
 
     now = chVTGetSystemTimeX();
-    const bool rangeDue = rangeAvailable &&
+    const bool rangeDue = timeOfFlightEnabled && rangeAvailable &&
       (chTimeDiffX(lastRangeStart, now) >= TIME_MS2I(rangeInterval));
-    const bool rangeRetryDue = (not rangeAvailable) &&
+    const bool rangeRetryDue = timeOfFlightEnabled && (not rangeAvailable) &&
       (chTimeDiffX(lastRangeRetry, now) >=
        TIME_MS2I(sensorRetryPeriodMs));
     if (rangeDue || rangeRetryDue) {

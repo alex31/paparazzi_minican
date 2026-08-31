@@ -16,9 +16,14 @@ using the same pins or timers.
 
 ## IMAV role
 
-`ImavRole` acquires PA3, ADC1 and TIM6 for its single 23.9977 kHz microphone
-channel. It also starts the shared I2C1 infrastructure for the OPT4060 and
-VL53L4CX on PA15/PB07. PA4 and ADC2 remain available to other roles.
+`ImavRole` acquires PA4, ADC2 and TIM6 for its single 23.9977 kHz microphone
+channel on ADC2_IN17. ADC1 remains dedicated to continuous voltage and core
+temperature monitoring. The role also starts the shared I2C1 infrastructure
+for the OPT4060 and, when `role.imav.time_of_flight` is enabled, the optional
+VL53L4CX on PA15/PB07.
+
+PA4 is also the external SPI chip select and TIM3_CH2. IMAV therefore conflicts
+with any role that tries to use that pin for external SPI or PWM channel 6.
 
 PB07 is also TIM3_CH4. An IMAV configuration using I2C1 therefore cannot run
 at the same time as a role that reassigns PB07 to the LED strip or voltmeter.

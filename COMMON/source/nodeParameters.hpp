@@ -112,11 +112,15 @@
       // OPT4060 address selected by ADDR: GND=0x44, VDD=0x45,
       // SDA=0x46, SCL=0x47. Invalid persisted values fall back to probing.
       {"role.imav.light.i2c_address", {.min = 0x44, .max = 0x47, .v = 0x44}},
+      // The VL53L4CX is optional and not fitted on the first IMAV assembly.
+      // When disabled, no ToF initialization, retry or light pause occurs.
+      {"role.imav.time_of_flight", {.v = false}},
       // Nominal VL53L4CX one-shot period. Small deterministic jitter is added
       // so a periodic beacon flash cannot always fall in the ToF light gap.
       {"role.imav.tof.period_ms", {.min = 100, .max = 1000, .v = 200}},
-      // Temporary bring-up telemetry: nine single-frame KeyValue messages/s.
-      {"role.imav.debug.publish", {.v = true}},
+      // det/snr are always broadcast. Enable the remaining KeyValue channels
+      // only while diagnosing or tuning the beacon sensors.
+      {"role.imav.debug.publish.optional", {.v = false}},
 #endif
 
 #if USE_VOLTMETER_ROLE
