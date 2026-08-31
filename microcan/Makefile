@@ -61,7 +61,7 @@ GCC_DIAG =  -Werror -Wno-error=unused-variable -Wno-error=format \
             -Wlogical-op -Wformat-overflow=2 -fdiagnostics-color=always \
             -Wno-error=maybe-uninitialized
 
-G++_DIAG =   -Wnon-virtual-dtor -Woverloaded-virtual
+G++_DIAG =   -Wnon-virtual-dtor -Woverloaded-virtual -Wnrvo
 
 
 ifeq "$(GCCVERSIONGTEQ10)" "1"
