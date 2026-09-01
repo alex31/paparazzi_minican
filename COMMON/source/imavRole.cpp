@@ -749,7 +749,7 @@ DeviceStatus ImavRole::start(UAVCAN::Node& node)
 
   startAudioAcquisition();
   audio->opticalWorker = chThdCreateFromHeap(
-    nullptr, THD_WORKING_AREA_SIZE(2048U), "imav sensors", NORMALPRIO - 1,
+    nullptr, THD_WORKING_AREA_SIZE(2048U), "imav sensors", NORMALPRIO,
     &Trampoline<&ImavRole::opticalThread>::fn, this);
   if (audio->opticalWorker == nullptr) {
     node.infoCb("IMAV sensor worker unavailable: heap full");
@@ -858,60 +858,8 @@ void ImavRole::processAudioHalf(size_t offset, bool discontinuity)
     publishMeasurements();
   }
 
-  if ((audio->processedBlocks % 47U) == 0U) {
-    const ImavLightRangeSnapshot sensors = audio->lightRange != nullptr
-      ? audio->lightRange->snapshot() : ImavLightRangeSnapshot{};
-
-    const bool lightFresh = sensors.lightAvailable &&
-      (sensors.lightLastSample != 0U) &&
-      (chTimeDiffX(sensors.lightLastSample, now) < TIME_MS2I(200U));
-    const uint16_t lightScore = lightFresh
-      ? static_cast<uint16_t>(1000.0f * sensors.lightFlashScore) : 0U;
-    const uint16_t lightInstant = lightFresh
-      ? static_cast<uint16_t>(1000.0f * sensors.lightInstantScore) : 0U;
-    const uint16_t lightRedRatio = lightFresh
-      ? static_cast<uint16_t>(1000.0f * sensors.lightRedRatio) : 0U;
-    const uint16_t lightCadence = lightFresh
-      ? static_cast<uint16_t>(1000.0f * sensors.lightCadenceHz) : 0U;
-
-    const uint16_t blockScore = static_cast<uint16_t>(
-	1000.0f * audio->detector.channel.blockScore);
-    const uint16_t frequency = static_cast<uint16_t>(
-      audio->detector.dominantFrequencyHz);
-    const uint16_t cadence = static_cast<uint16_t>(
-      1000.0f * audio->detector.cadenceHz);
-    const uint16_t audioScore = static_cast<uint16_t>(
-      1000.0f * audio->detector.audioScore);
-    m_node->infoCb("IMAV a=%u f=%u c=%u s=%u d=%u",
-		   blockScore, frequency, cadence, audioScore,
-		   audio->detector.detected ? 1U : 0U);
-    const int16_t spectralDb10 = static_cast<int16_t>(
-	10.0f * audio->detector.channel.spectralRatioDb);
-    const int16_t snrDb10 = static_cast<int16_t>(
-	10.0f * audio->detector.audioSnrDb);
-    m_node->infoCb("IMAV dc=%u mad=%u clip=%u sdb10=%d snr10=%d",
-		   audio->mean, audio->meanAbsoluteDeviation,
-		   audio->detector.channel.clippedSamples, spectralDb10,
-		   snrDb10);
-    m_node->infoCb("IMAV rgbw=%lu/%lu/%lu/%lu red=%u",
-		   static_cast<unsigned long>(sensors.lightRed),
-		   static_cast<unsigned long>(sensors.lightGreen),
-		   static_cast<unsigned long>(sensors.lightBlue),
-		   static_cast<unsigned long>(sensors.lightWide),
-		   lightRedRatio);
-    m_node->infoCb("IMAV light=%u/%u cad=%u pulse=%lu sat=%lu",
-		   lightInstant, lightScore, lightCadence,
-		   static_cast<unsigned long>(sensors.lightPulses),
-		   static_cast<unsigned long>(sensors.lightSaturations));
-    m_node->infoCb("IMAV drop=%lu agap=%lu lerr=%lu",
-		   audio->droppedBlocks, audio->discontinuities,
-		   static_cast<unsigned long>(sensors.lightReadErrors));
-    if (audio->timeOfFlightEnabled) {
-      m_node->infoCb("IMAV tof=%u valid=%u lgap=%lu err=%lu",
-		     sensors.rangeMm, sensors.rangeValid ? 1U : 0U,
-		     sensors.lightGaps, sensors.rangeErrors);
-    }
-  }
+  // IMAV measurements and detailed diagnostics are published over CAN.
+  // Keep the serial debug link quiet during normal operation.
 }
 
 /** @brief Publish navigation measurements as compact single-frame values. */
@@ -926,10 +874,6 @@ void ImavRole::publishMeasurements()
   publish("det", audio->detector.detected ? 1.0f : 0.0f);
   publish("snr", audio->detector.audioSnrDb);
 
-  if (not param_cget<"role.imav.debug.publish.optional">()) {
-    return;
-  }
-
   const ImavLightRangeSnapshot sensors = audio->lightRange != nullptr
     ? audio->lightRange->snapshot() : ImavLightRangeSnapshot{};
   float lightFlashScore = sensors.lightFlashScore;
@@ -938,13 +882,34 @@ void ImavRole::publishMeasurements()
       (chTimeDiffX(sensors.lightLastSample, now) >= TIME_MS2I(200U))) {
     lightFlashScore = 0.0f;
   }
+  publish("lit", lightFlashScore);
+
+  if (not param_cget<"role.imav.debug.publish.optional">()) {
+    return;
+  }
+
   publish("a0", audio->detector.channel.blockScore);
   publish("p0", audio->detector.channel.toneRms);
   publish("sdb", audio->detector.channel.spectralRatioDb);
   publish("aud", audio->detector.audioScore);
   publish("frq", audio->detector.dominantFrequencyHz);
   publish("cad", audio->detector.cadenceHz);
-  publish("lit", lightFlashScore);
+  publish("lrr", sensors.lightRedRatio);
+  publish("lac", sensors.lightRelativeAc);
+  publish("lis", sensors.lightInstantScore);
+  publish("lhz", sensors.lightCadenceHz);
+  publish("lcs", sensors.lightCadenceScore);
+  publish("lps", sensors.lightPulseStrength);
+  publish("lpc", static_cast<float>(sensors.lightPulses));
+  publish("lsa", static_cast<float>(sensors.lightSaturations));
+  publish("ler", static_cast<float>(sensors.lightReadErrors));
+  publish("lgp", static_cast<float>(sensors.lightGaps));
+  publish("lsc", sensors.lightFlashScore);
+  publish("lsn", sensors.lightSpectralSnrDb);
+  publish("lco", sensors.lightSpectralCoherence);
+  publish("lrf", sensors.lightSpectralRedFraction);
+  publish("lfq", sensors.lightSpectralFrequencyHz);
+  publish("lhr", sensors.lightHarmonicRatio);
   if (audio->timeOfFlightEnabled) {
     const float rangeMetres = sensors.rangeValid
       ? static_cast<float>(sensors.rangeMm) * 0.001f : -1.0f;

@@ -10,6 +10,9 @@
 #include "imavLightRange.hpp"
 #include "hardwareConf.hpp"
 #include "I2C_periph.hpp"
+#include "UAVCAN/dsdlStringUtils.hpp"
+
+#include <uavcan.protocol.debug.KeyValue.h>
 
 #include <algorithm>
 #include <array>
@@ -43,7 +46,26 @@ namespace {
   constexpr size_t optChannelCount = 4U;
   constexpr size_t optResultBytes = optChannelCount * 4U;
   constexpr uint32_t optPollPeriodMs = 10U;
+  constexpr uint32_t optPollPeriodUs = 9400U;
   constexpr uint32_t optFirstConversionDelayMs = 8U;
+
+  // Streaming DFT bins in tenths of hertz. The dense 2.2..3.8 Hz bank makes
+  // the noise estimate local and rejects broad outdoor flicker or spectral
+  // slopes. Bins 2.8..3.2 Hz search the alarm; 6.0 Hz observes its expected
+  // second harmonic without making that weaker component mandatory.
+  constexpr std::array<uint8_t, 18U> lightSpectralTenthsHz = {
+    22U, 23U, 24U, 25U, 26U, 27U, 28U, 29U, 30U,
+    31U, 32U, 33U, 34U, 35U, 36U, 37U, 38U, 60U,
+  };
+  constexpr size_t lightFirstTargetBin = 6U;
+  constexpr size_t lightTargetBinCount = 5U;
+  constexpr size_t lightHarmonicBin = 17U;
+  constexpr float lightSpectralDcAlpha = 0.01f;
+  constexpr float lightSpectralAlpha = 0.001f;
+  constexpr uint32_t lightSpectralUpdateDivider = 20U;
+  constexpr uint32_t lightSpectralSupportSamples = 1000U;
+  constexpr uint32_t lightSpectralResetGapMs = 100U;
+  constexpr float twoPi = 6.2831853071795864769f;
 
   static_assert(optConfigurationPowerDown == 0x3088U);
   static_assert(optConfigurationContinuous == 0x30B8U);
@@ -157,7 +179,16 @@ void ImavLightRange::publishLightState()
   published.lightRelativeAc = lightRelativeAc;
   published.lightInstantScore = lightInstantScore;
   published.lightCadenceHz = lightCadenceHz;
+  published.lightCadenceScore = lightCadenceScore;
+  published.lightPulseStrength = lightPulseActive
+    ? std::max(lightRecentPulseStrength, lightPulsePeakScore)
+    : lightRecentPulseStrength;
   published.lightFlashScore = lightFlashScore;
+  published.lightSpectralSnrDb = lightSpectralSnrDb;
+  published.lightSpectralCoherence = lightSpectralCoherence;
+  published.lightSpectralRedFraction = lightSpectralRedFraction;
+  published.lightSpectralFrequencyHz = lightSpectralFrequencyHz;
+  published.lightHarmonicRatio = lightHarmonicRatio;
   published.lightSamples = lightSamples;
   published.lightPulses = lightPulses;
   published.lightSaturations = lightSaturations;
@@ -166,6 +197,34 @@ void ImavLightRange::publishLightState()
   published.lightGaps = lightGaps;
   published.lightLastSample = lightLastSample;
   chSysUnlock();
+}
+
+void ImavLightRange::publishLightDebugSample(bool overloaded)
+{
+  if (not param_cget<"role.imav.debug.publish.optional">()) {
+    return;
+  }
+
+  uavcan_protocol_debug_KeyValue message = {};
+  const auto publish = [this, &message](const char *key, float value) {
+    message.value = value;
+    UAVCAN::dsdlAssign(message.key, key);
+    node.sendBroadcast(message, CANARD_TRANSFER_PRIORITY_LOW);
+  };
+
+  // ADC codes are exactly representable as float: the OPT4060 result has a
+  // 20-bit mantissa shifted by its exponent, hence at most 20 significant
+  // bits even though the linearized code spans 26 bits.
+  publish("lrd", static_cast<float>(lightRed));
+  publish("lgn", static_cast<float>(lightGreen));
+  publish("lbl", static_cast<float>(lightBlue));
+  publish("lwh", static_cast<float>(lightWide));
+  publish("lov", overloaded ? 1.0f : 0.0f);
+  publish("lct", static_cast<float>(lightSamples));
+  // Microseconds modulo 2^24 remain exactly representable as float and can be
+  // unwrapped by the recorder every 16.78 seconds.
+  publish("ltu", static_cast<float>(
+    TIME_I2US(lightLastSample) & 0x00FFFFFFU));
 }
 
 void ImavLightRange::recordI2cFailure(bool rangeSensor, msg_t result)
@@ -277,6 +336,7 @@ bool ImavLightRange::initializeLight()
   lightInstantScore = 0.0f;
   lightLastSample = 0U;
   clearLightCadence();
+  resetLightSpectrum();
   if (not startLight()) {
     publishAvailability();
     return false;
@@ -328,6 +388,172 @@ void ImavLightRange::clearLightCadence()
   lightCadenceHz = 0.0f;
   lightCadenceScore = 0.0f;
   lightFlashScore = 0.0f;
+}
+
+void ImavLightRange::resetLightSpectrum()
+{
+  lightSpectralBins = {};
+  lightSpectralBaseline = {};
+  lightSpectralEnergy = 0.0f;
+  lightSpectralScore = 0.0f;
+  lightSpectralSnrDb = 0.0f;
+  lightSpectralCoherence = 0.0f;
+  lightSpectralRedFraction = 0.0f;
+  lightSpectralFrequencyHz = 0.0f;
+  lightHarmonicRatio = 0.0f;
+  lightSpectralSamples = 0U;
+  lightSpectralLastSample = 0U;
+  lightFlashScore = 0.0f;
+}
+
+void ImavLightRange::updateLightSpectrum(
+  const std::array<float, 4U>& scaled, systime_t now)
+{
+  if ((lightSpectralLastSample != 0U) &&
+      (chTimeDiffX(lightSpectralLastSample, now) >=
+       TIME_MS2I(lightSpectralResetGapMs))) {
+    resetLightSpectrum();
+  }
+
+  if (lightSpectralSamples == 0U) {
+    lightSpectralBaseline = {scaled[0], scaled[1], scaled[2]};
+  }
+  lightSpectralLastSample = now;
+  ++lightSpectralSamples;
+
+  std::array<float, 3U> ac = {};
+  for (size_t channel = 0U; channel < ac.size(); ++channel) {
+    lightSpectralBaseline[channel] += lightSpectralDcAlpha *
+      (scaled[channel] - lightSpectralBaseline[channel]);
+    ac[channel] = scaled[channel] - lightSpectralBaseline[channel];
+  }
+
+  // Red-sensitive, but deliberately broad enough for a different red LED
+  // spectrum on the real motionSCOUT. The periodic color is checked again
+  // from the complex RGB amplitudes below.
+  const float redContrast = ac[0] - 0.5f * (ac[1] + ac[2]);
+  lightSpectralEnergy += lightSpectralAlpha *
+    (redContrast * redContrast - lightSpectralEnergy);
+
+  // All requested frequencies are integer multiples of 0.1 Hz, hence their
+  // phase repeats every ten seconds. Work directly in system ticks so the
+  // 32-bit TIME_I2US result cannot introduce a phase discontinuity every
+  // 71.6 minutes.
+  constexpr systime_t phasePeriod = TIME_S2I(10U);
+  const systime_t phaseTicks = now % phasePeriod;
+  const float baseAngle = twoPi *
+    (static_cast<float>(phaseTicks) / static_cast<float>(phasePeriod));
+  const float baseReal = std::cos(baseAngle);
+  const float baseImag = -std::sin(baseAngle);
+  float oscillatorReal = 1.0f;
+  float oscillatorImag = 0.0f;
+  size_t binIndex = 0U;
+  for (uint8_t tenthHz = 1U;
+       (tenthHz <= lightSpectralTenthsHz.back()) &&
+       (binIndex < lightSpectralBins.size()); ++tenthHz) {
+    const float nextReal =
+      oscillatorReal * baseReal - oscillatorImag * baseImag;
+    oscillatorImag =
+      oscillatorReal * baseImag + oscillatorImag * baseReal;
+    oscillatorReal = nextReal;
+    if (tenthHz != lightSpectralTenthsHz[binIndex]) {
+      continue;
+    }
+
+    LightSpectralBin& bin = lightSpectralBins[binIndex++];
+    const auto update = [=](float value, float& real, float& imag) {
+      real += lightSpectralAlpha *
+        (value * oscillatorReal - real);
+      imag += lightSpectralAlpha *
+        (value * oscillatorImag - imag);
+    };
+    update(ac[0], bin.redReal, bin.redImag);
+    update(ac[1], bin.greenReal, bin.greenImag);
+    update(ac[2], bin.blueReal, bin.blueImag);
+  }
+
+  if ((lightSpectralSamples % lightSpectralUpdateDivider) != 0U) {
+    lightFlashScore = lightSpectralScore;
+    return;
+  }
+
+  const auto contrastPower = [](const LightSpectralBin& bin) {
+    const float real = bin.redReal -
+      0.5f * (bin.greenReal + bin.blueReal);
+    const float imag = bin.redImag -
+      0.5f * (bin.greenImag + bin.blueImag);
+    return real * real + imag * imag;
+  };
+
+  size_t bestBinIndex = lightFirstTargetBin;
+  float bestPower = 0.0f;
+  for (size_t index = lightFirstTargetBin;
+       index < lightFirstTargetBin + lightTargetBinCount; ++index) {
+    const float power = contrastPower(lightSpectralBins[index]);
+    if (power > bestPower) {
+      bestPower = power;
+      bestBinIndex = index;
+    }
+  }
+
+  std::array<float, 14U> noiseAmplitudes = {};
+  size_t noiseIndex = 0U;
+  for (size_t index = 0U; index + 1U < lightSpectralBins.size(); ++index) {
+    const int frequencyDistance = std::abs(
+      static_cast<int>(lightSpectralTenthsHz[index]) -
+      static_cast<int>(lightSpectralTenthsHz[bestBinIndex]));
+    // Do not count the peak itself or the two immediately adjacent bins as
+    // noise: a real frequency between DFT bins legitimately occupies both.
+    if (frequencyDistance <= 1) {
+      continue;
+    }
+    noiseAmplitudes[noiseIndex++] =
+      std::sqrt(contrastPower(lightSpectralBins[index]));
+  }
+  chDbgAssert(noiseIndex == noiseAmplitudes.size(),
+              "unexpected optical DFT noise-bin count");
+  std::sort(noiseAmplitudes.begin(), noiseAmplitudes.end());
+  const float noiseAmplitude =
+    0.5f * (noiseAmplitudes[6] + noiseAmplitudes[7]);
+  const float signalAmplitude = std::sqrt(bestPower);
+  lightSpectralSnrDb = 20.0f * std::log10(
+    (signalAmplitude + 1.0f) / (noiseAmplitude + 1.0f));
+  lightSpectralCoherence = std::sqrt(std::clamp(
+    2.0f * bestPower / (lightSpectralEnergy + 1.0f), 0.0f, 1.0f));
+  lightSpectralFrequencyHz = 0.1f *
+    static_cast<float>(lightSpectralTenthsHz[bestBinIndex]);
+
+  const LightSpectralBin& bestBin = lightSpectralBins[bestBinIndex];
+  const float redAmplitude = std::hypot(bestBin.redReal, bestBin.redImag);
+  const float inverseRedAmplitude = 1.0f / (redAmplitude + 1.0f);
+  const float greenProjection = std::max(0.0f,
+    (bestBin.greenReal * bestBin.redReal +
+     bestBin.greenImag * bestBin.redImag) * inverseRedAmplitude);
+  const float blueProjection = std::max(0.0f,
+    (bestBin.blueReal * bestBin.redReal +
+     bestBin.blueImag * bestBin.redImag) * inverseRedAmplitude);
+  lightSpectralRedFraction = redAmplitude /
+    (redAmplitude + greenProjection + blueProjection + 1.0f);
+
+  const float harmonicAmplitude = std::sqrt(
+    contrastPower(lightSpectralBins[lightHarmonicBin]));
+  lightHarmonicRatio = harmonicAmplitude / (signalAmplitude + 1.0f);
+
+  const float snrScore = knee(lightSpectralSnrDb, 6.0f, 14.0f);
+  const float coherenceScore =
+    knee(lightSpectralCoherence, 0.04f, 0.14f);
+  const float redScore =
+    knee(lightSpectralRedFraction, 0.55f, 0.72f);
+  const float support = std::min(
+    static_cast<float>(lightSpectralSamples) /
+      static_cast<float>(lightSpectralSupportSamples), 1.0f);
+  // SNR and coherence are both mandatory evidence. Using their minimum keeps
+  // a weak random peak from being inflated by a geometric mean. Color is a
+  // softer qualifier because ground reflection and the real beacon lens can
+  // alter its apparent spectrum substantially.
+  lightSpectralScore = support * std::min(snrScore, coherenceScore) *
+    (0.5f + 0.5f * redScore);
+  lightFlashScore = lightSpectralScore;
 }
 
 void ImavLightRange::appendLightOnset(systime_t now)
@@ -451,6 +677,14 @@ void ImavLightRange::processLightMeasurement(
   lightWide = adcCodes[3];
   ++lightSamples;
 
+  // TI's data-sheet scaling makes a D65 white source approximately R=G=B.
+  const std::array<float, 4U> scaled = {
+    2.4f * static_cast<float>(adcCodes[0]),
+    static_cast<float>(adcCodes[1]),
+    1.3f * static_cast<float>(adcCodes[2]),
+    static_cast<float>(adcCodes[3]),
+  };
+
   if (overloaded) {
     if (not lightOverloadActive) {
       ++lightSaturations;
@@ -460,19 +694,14 @@ void ImavLightRange::processLightMeasurement(
     lightRelativeAc = 0.0f;
     lightInstantScore = 0.0f;
     updateLightCadence(0.0f, now);
+    resetLightSpectrum();
     lightLastSample = now;
     publishLightState();
+    publishLightDebugSample(overloaded);
     return;
   }
   lightOverloadActive = false;
 
-  // TI's data-sheet scaling makes a D65 white source approximately R=G=B.
-  const std::array<float, 4U> scaled = {
-    2.4f * static_cast<float>(adcCodes[0]),
-    static_cast<float>(adcCodes[1]),
-    1.3f * static_cast<float>(adcCodes[2]),
-    static_cast<float>(adcCodes[3]),
-  };
   if (not lightBaselineValid) {
     lightBaseline = scaled;
     lightBaselineValid = true;
@@ -480,8 +709,10 @@ void ImavLightRange::processLightMeasurement(
     lightRelativeAc = 0.0f;
     lightInstantScore = 0.0f;
     updateLightCadence(0.0f, now);
+    updateLightSpectrum(scaled, now);
     lightLastSample = now;
     publishLightState();
+    publishLightDebugSample(overloaded);
     return;
   }
 
@@ -533,8 +764,13 @@ void ImavLightRange::processLightMeasurement(
     }
   }
 
+  // The spectral detector is deliberately updated after the legacy pulse
+  // detector, so the navigation score is the locally noise-normalized 3 Hz
+  // score while the threshold/cadence metrics remain available for tuning.
+  updateLightSpectrum(scaled, now);
   lightLastSample = now;
   publishLightState();
+  publishLightDebugSample(overloaded);
 }
 
 bool ImavLightRange::sampleLight()
@@ -838,6 +1074,7 @@ uint32_t ImavLightRange::nextRangeIntervalMs()
 [[noreturn]] void ImavLightRange::run()
 {
   systime_t now = chVTGetSystemTimeX();
+  systime_t previousPoll = now;
   systime_t lastLightRetry = now;
   systime_t lastRangeRetry = now;
   systime_t lastRangeStart = now;
@@ -934,7 +1171,22 @@ uint32_t ImavLightRange::nextRangeIntervalMs()
       rangeInterval = nextRangeIntervalMs();
     }
 
-    chThdSleepMilliseconds(optPollPeriodMs);
+    const systime_t nextPoll = previousPoll + TIME_US2I(optPollPeriodUs);
+    now = chVTGetSystemTimeX();
+    if (chTimeIsInRangeX(now, previousPoll, nextPoll)) {
+      previousPoll = chThdSleepUntilWindowed(previousPoll, nextPoll);
+    } else {
+      const sysinterval_t overrun = chTimeDiffX(nextPoll, now);
+      if (overrun < TIME_US2I(optPollPeriodUs)) {
+        // Keep the original grid after a single late cycle. The next sample
+        // absorbs the delay instead of shifting every subsequent timestamp.
+        previousPoll = nextPoll;
+      } else {
+        // A ToF transaction or a recovery may miss several deadlines. Restart
+        // the grid instead of emitting a catch-up burst.
+        previousPoll = now;
+      }
+    }
   }
 }
 

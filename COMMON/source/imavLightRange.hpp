@@ -28,7 +28,14 @@ struct ImavLightRangeSnapshot {
   float lightRelativeAc = 0.0f;
   float lightInstantScore = 0.0f;
   float lightCadenceHz = 0.0f;
+  float lightCadenceScore = 0.0f;
+  float lightPulseStrength = 0.0f;
   float lightFlashScore = 0.0f;
+  float lightSpectralSnrDb = 0.0f;
+  float lightSpectralCoherence = 0.0f;
+  float lightSpectralRedFraction = 0.0f;
+  float lightSpectralFrequencyHz = 0.0f;
+  float lightHarmonicRatio = 0.0f;
   uint32_t lightSamples = 0U;
   uint32_t lightPulses = 0U;
   uint32_t lightSaturations = 0U;
@@ -87,6 +94,9 @@ private:
   void clearLightCadence();
   void appendLightOnset(systime_t now);
   void updateLightCadence(float instantScore, systime_t now);
+  void resetLightSpectrum();
+  void updateLightSpectrum(const std::array<float, 4U>& scaled,
+                           systime_t now);
   bool readLightRegister(uint8_t reg, uint16_t& value);
   bool readLightBlock(uint8_t reg, size_t length);
   bool writeLightRegister(uint8_t reg, uint16_t value);
@@ -99,6 +109,7 @@ private:
                     size_t rxLength);
   void recordI2cFailure(bool rangeSensor, msg_t result);
   void publishLightState();
+  void publishLightDebugSample(bool overloaded);
   void publishAvailability();
   uint32_t nextRangeIntervalMs();
 
@@ -131,6 +142,27 @@ private:
   std::array<float, 4U> lightBaseline = {};
   std::array<uint8_t, 4U> lightCounters = {};
   std::array<systime_t, 6U> lightOnsets = {};
+
+  struct LightSpectralBin {
+    float redReal = 0.0f;
+    float redImag = 0.0f;
+    float greenReal = 0.0f;
+    float greenImag = 0.0f;
+    float blueReal = 0.0f;
+    float blueImag = 0.0f;
+  };
+  std::array<LightSpectralBin, 18U> lightSpectralBins = {};
+  std::array<float, 3U> lightSpectralBaseline = {};
+  float lightSpectralEnergy = 0.0f;
+  float lightSpectralScore = 0.0f;
+  float lightSpectralSnrDb = 0.0f;
+  float lightSpectralCoherence = 0.0f;
+  float lightSpectralRedFraction = 0.0f;
+  float lightSpectralFrequencyHz = 0.0f;
+  float lightHarmonicRatio = 0.0f;
+  uint32_t lightSpectralSamples = 0U;
+  systime_t lightSpectralLastSample = 0U;
+
   float lightNoiseFloor = 0.0f;
   float lightRedRatio = 0.0f;
   float lightRelativeAc = 0.0f;

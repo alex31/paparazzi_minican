@@ -28,6 +28,7 @@ namespace {
   THD_WORKING_AREA(waWatchdogReset, 256) __attribute__((section(FAST_SECTION "_clear")));
   /** @brief Periodically reset the watchdog to detect system stalls. */
   void  watchdogReset (void *) {
+    chRegSetThreadName("watchdog");
     wdgStart(&WDGD1, &wdgcfg);
     while(true) {
       wdgReset(&WDGD1);
