@@ -160,16 +160,26 @@ Params:
 - `role.imav.light.i2c_address` (0x44..0x47)
 - `role.imav.time_of_flight` (enable the optional VL53L4CX, default false)
 - `role.imav.tof.period_ms` (100..1000 ms, default 200 ms when enabled)
-- `role.imav.debug.publish.optional` (add the tuning keys to the mandatory
-  navigation output, default false and applied live)
+- `role.imav.debug.publish.optional` (add 5 Hz derived tuning and 100 Hz
+  lossless optical samples to the mandatory navigation output, default false
+  and applied live)
 
 Outputs:
 
-- `det` (audio detection, 0 or 1) and `snr` (held beacon burst strength in dB
-  above the adaptive 2--3 kHz motor-noise floor) are always broadcast as
+- `det` (audio detection, 0 or 1), `snr` (held beacon burst strength in dB
+  above the adaptive 2--3 kHz motor-noise floor) and `lit` (locally
+  noise-normalized red-flash spectral score near 3 Hz) are always broadcast as
   `uavcan.protocol.debug.KeyValue` at 5 Hz.
 - When `role.imav.debug.publish.optional` is true, `a0`, `p0`, `sdb`, `aud`,
-  `frq`, `cad` and `lit` provide the accompanying tuning measurements.
+  `frq` and `cad` provide the accompanying audio tuning measurements at 5 Hz.
+  Light tuning at 5 Hz adds red ratio `lrr`, relative red AC `lac`,
+  instantaneous score `lis`, flash cadence `lhz`, cadence score `lcs`, pulse
+  strength `lps`, pulse count `lpc`, saturation count `lsa`, read-error count
+  `ler` and sample-gap count `lgp`. Spectral tuning adds score `lsc`, local
+  prominence in dB `lsn`, coherence `lco`, periodic red fraction `lrf`, peak
+  frequency `lfq` and second-harmonic ratio `lhr`. Each 100 Hz lossless optical sample adds
+  raw `lrd/lgn/lbl/lwh`, overload `lov`, sample counter `lct` and modulo-2^24
+  microsecond timestamp `ltu`.
   Optional ToF also adds `rng` and `rsg`.
 
 Wiring and resources:
@@ -189,8 +199,13 @@ frequency continuity, can detect either prealarm or full alarm. Broadband
 energy rises without prominence over the reference bands are rejected. The
 measured 2/3 Hz burst cadence is diagnostic and does not gate audio validity.
 
-The independent optical detector accepts repeated red flashes near 2 or 3 Hz
-and rejects an isolated flash or the 1 Hz status LED. When
+The independent optical detector applies a streaming DFT to red contrast. A
+dense 2.2--3.8 Hz bank estimates local colored noise around the searched
+2.8--3.2 Hz alarm fundamental; coherence and periodic color qualify the peak,
+while 6 Hz is retained as a diagnostic harmonic. Its roughly 10-second
+integration avoids absolute-light thresholds and is designed for weak outdoor
+signals. The former 2/3 Hz edge detector remains available for diagnostics.
+When
 `role.imav.time_of_flight` is true, OPT4060 acquisition is stopped during each
 VL53L4CX one-shot so the 940 nm emitter cannot pollute a light sample, and
 ground range is published as `uavcan.equipment.range_sensor.Measurement`.

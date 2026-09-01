@@ -18,7 +18,9 @@ Important parameters:
 - role.imav.tof.period_ms (100..1000 ms, used only when time-of-flight is
   enabled; default 200 ms before deterministic jitter)
 - role.imav.debug.publish.optional (publish the optional IMAV tuning keys in
-  addition to the mandatory `det`/`snr` values; default false, applied live)
+  addition to the mandatory `det`/`snr`/`lit` values; derived tuning remains
+  at 5 Hz while lossless RGBW samples are sent at 100 Hz; default false,
+  applied live)
 - ROLE.* toggles for each role
 
 Parameter handling is implemented in:
