@@ -123,6 +123,13 @@
       {"role.imav.debug.publish.optional", {.v = false}},
 #endif
 
+      // Optional linear correction on the measured battery voltage (psBat):
+      // V_corrected = V_raw * adc.psbat.scale + adc.psbat.bias
+      // ADC survey and shell calibration use these independently of the
+      // optional voltmeter display role.
+      {"adc.psbat.scale", {.min = 0.5f, .max = 1.5f, .v = 1.0f}},
+      {"adc.psbat.bias", {.min = -5.0f, .max = 5.0f, .v = 0.0f}},
+
 #if USE_VOLTMETER_ROLE
       {"ROLE.voltmeter", {.v = false}},
       {"role.voltmeter.cells", {.min = 2, .max = 6, .v = 4}},
@@ -133,8 +140,4 @@
       // Set to 0 to disable this behavior.
       {"role.voltmeter.gps_speed_off_mps", {.min = 0.0f, .max = 100.0f, .v = 3.0f}},
 	
-      // Optional linear correction on the measured battery voltage (psBat):
-      // V_corrected = V_raw * adc.psbat.scale + adc.psbat.bias
-      {"adc.psbat.scale", {.min = 0.5f, .max = 1.5f, .v = 1.0f}},
-      {"adc.psbat.bias", {.min = -5.0f, .max = 5.0f, .v = 0.0f}},
 #endif
