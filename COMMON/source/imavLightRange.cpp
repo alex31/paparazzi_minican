@@ -65,6 +65,9 @@ namespace {
   constexpr size_t lightHarmonicBin = 17U;
   constexpr uint32_t lightSpectralUpdateDivider = 20U;
   constexpr uint32_t lightSpectralResetGapMs = 100U;
+  constexpr float lightFastTrackingEnterScore = 0.55f;
+  constexpr float lightFastTrackingExitScore = 0.15f;
+  constexpr float lightSlowTrackingExitScore = 0.20f;
   constexpr float twoPi = 6.2831853071795864769f;
 
   static_assert(optConfigurationPowerDown == 0x3088U);
@@ -187,10 +190,12 @@ void ImavLightRange::publishLightState()
   published.lightInstantScore = lightInstantScore;
   published.lightCadenceHz = lightCadenceHz;
   published.lightCadenceScore = lightCadenceScore;
+  published.lightFastScore = lightFastScore;
   published.lightPulseStrength = lightPulseActive
     ? std::max(lightRecentPulseStrength, lightPulsePeakScore)
     : lightRecentPulseStrength;
   published.lightFlashScore = lightFlashScore;
+  published.lightSpectralScore = lightSpectralScore;
   published.lightSpectralSnrDb = lightSpectralSnrDb;
   published.lightSpectralCoherence = lightSpectralCoherence;
   published.lightSpectralRedFraction = lightSpectralRedFraction;
@@ -336,6 +341,7 @@ bool ImavLightRange::initializeLight()
   lightNoiseValid = false;
   lightCountersValid = false;
   lightOverloadActive = false;
+  lightFastTracking = false;
   lightConsecutiveErrors = 0U;
   lightStalePolls = 0U;
   lightRedRatio = 0.0f;
@@ -394,7 +400,7 @@ void ImavLightRange::clearLightCadence()
   lightRecentPulseStrength = 0.0f;
   lightCadenceHz = 0.0f;
   lightCadenceScore = 0.0f;
-  lightFlashScore = 0.0f;
+  lightFastScore = 0.0f;
 }
 
 void ImavLightRange::resetLightSpectrum()
@@ -495,7 +501,7 @@ void ImavLightRange::updateLightSpectrum(
   }
 
   if ((lightSpectralSamples % lightSpectralUpdateDivider) != 0U) {
-    lightFlashScore = lightSpectralScore;
+    updateLightCombinedScore();
     return;
   }
 
@@ -575,7 +581,40 @@ void ImavLightRange::updateLightSpectrum(
   // alter its apparent spectrum substantially.
   lightSpectralScore = support * std::min(snrScore, coherenceScore) *
     (0.5f + 0.5f * redScore);
-  lightFlashScore = lightSpectralScore;
+  updateLightCombinedScore();
+}
+
+void ImavLightRange::updateLightCombinedScore()
+{
+  if ((not lightFastTracking) &&
+      (lightFastScore >= lightFastTrackingEnterScore)) {
+    // Once the nearby beacon is unambiguous, spatial tracking must favor
+    // current flash strength over the long-memory acquisition detector.
+    lightFastTracking = true;
+  }
+
+  if (not lightFastTracking) {
+    // Acquisition mode: retain maximum range, but allow a strong nearby
+    // cadence to produce a sub-second attack.
+    lightFlashScore = std::max(lightFastScore, lightSpectralScore);
+    return;
+  }
+
+  // Tracking mode: gate the stale slow DFT with current proximity evidence.
+  // The cadence freshness starts falling 450 ms after the last onset and is
+  // zero at 900 ms, so lit follows the beacon spatially after an overflight.
+  const float slowGate = knee(
+    lightFastScore, lightFastTrackingExitScore,
+    lightFastTrackingEnterScore);
+  lightFlashScore = std::max(
+    lightFastScore, lightSpectralScore * slowGate);
+
+  if ((lightFastScore <= lightFastTrackingExitScore) &&
+      (lightSpectralScore <= lightSlowTrackingExitScore)) {
+    // Both paths have forgotten the beacon: permit a new long-range
+    // acquisition without requiring a reboot.
+    lightFastTracking = false;
+  }
 }
 
 void ImavLightRange::appendLightOnset(systime_t now)
@@ -638,7 +677,7 @@ void ImavLightRange::updateLightCadence(float instantScore, systime_t now)
   if (lightLastOnset == 0U) {
     lightCadenceHz = 0.0f;
     lightCadenceScore = 0.0f;
-    lightFlashScore = 0.0f;
+    lightFastScore = 0.0f;
     return;
   }
 
@@ -654,7 +693,7 @@ void ImavLightRange::updateLightCadence(float instantScore, systime_t now)
   if (intervalCount == 0U) {
     lightCadenceHz = 0.0f;
     lightCadenceScore = 0.0f;
-    lightFlashScore = 0.0f;
+    lightFastScore = 0.0f;
     return;
   }
 
@@ -675,8 +714,10 @@ void ImavLightRange::updateLightCadence(float instantScore, systime_t now)
 
   const float meanPeriodMs = periodMsSum / intervalCount;
   lightCadenceHz = 1000.0f / meanPeriodMs;
+  // Two coherent intervals mean three observed flashes: enough evidence for
+  // the proximity path, while still rejecting an isolated pair of edges.
   const float support = std::min(
-    static_cast<float>(intervalCount) / 3.0f, 1.0f);
+    static_cast<float>(intervalCount) / 2.0f, 1.0f);
   const float freshness = onsetAgeMs <= 450U ? 1.0f :
     std::max(0.0f,
       (900.0f - static_cast<float>(onsetAgeMs)) / 450.0f);
@@ -685,7 +726,7 @@ void ImavLightRange::updateLightCadence(float instantScore, systime_t now)
   const float strength = lightPulseActive
     ? std::max(lightRecentPulseStrength, lightPulsePeakScore)
     : lightRecentPulseStrength;
-  lightFlashScore =
+  lightFastScore =
     lightCadenceScore * (0.5f + 0.5f * strength);
 }
 

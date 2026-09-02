@@ -29,8 +29,10 @@ struct ImavLightRangeSnapshot {
   float lightInstantScore = 0.0f;
   float lightCadenceHz = 0.0f;
   float lightCadenceScore = 0.0f;
+  float lightFastScore = 0.0f;
   float lightPulseStrength = 0.0f;
   float lightFlashScore = 0.0f;
+  float lightSpectralScore = 0.0f;
   float lightSpectralSnrDb = 0.0f;
   float lightSpectralCoherence = 0.0f;
   float lightSpectralRedFraction = 0.0f;
@@ -97,6 +99,7 @@ private:
   void resetLightSpectrum();
   void updateLightSpectrum(const std::array<float, 4U>& scaled,
                            systime_t now);
+  void updateLightCombinedScore();
   bool readLightRegister(uint8_t reg, uint16_t& value);
   bool readLightBlock(uint8_t reg, size_t length);
   bool writeLightRegister(uint8_t reg, uint16_t value);
@@ -139,6 +142,7 @@ private:
   bool lightPulseArmed = false;
   bool lightPulseActive = false;
   bool lightOverloadActive = false;
+  bool lightFastTracking = false;
   std::array<float, 4U> lightBaseline = {};
   std::array<uint8_t, 4U> lightCounters = {};
   std::array<systime_t, 6U> lightOnsets = {};
@@ -170,6 +174,7 @@ private:
   float lightInstantScore = 0.0f;
   float lightCadenceHz = 0.0f;
   float lightCadenceScore = 0.0f;
+  float lightFastScore = 0.0f;
   float lightFlashScore = 0.0f;
   float lightPulsePeakScore = 0.0f;
   float lightRecentPulseStrength = 0.0f;

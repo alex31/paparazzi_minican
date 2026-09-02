@@ -42,6 +42,8 @@ Les décisions suivantes font foi lorsqu'une section historique du document semb
 - liaison continue en tension entre la sortie déjà polarisée de l'IM68A130(A) et l'ADC, avec seulement découplage et petit réseau RC passif ;
 - suréchantillonnage matériel ADC envisagé en x4 ou x16, sans augmentation de la taille des tampons DMA ;
 - un seul OPT4060 sous le drone, sans sectorisation optique ;
+- score lumineux combinant une voie rapide sur trois flashs cohérents et une
+  voie DFT lente pour le signal lointain noyé dans le bruit ;
 - VL53L4CX optionnel, piloté lorsqu'il est activé par le composant officiel ST provenant du sous-module `STMicroelectronics/x-cube-tof1` ;
 - pas de canaux injectés ni d'arbitrage entre audio et mesures lentes ;
 - acquisition lumière et mesure ToF strictement exclusives lorsque le ToF est activé.
@@ -1188,8 +1190,8 @@ L'implémentation actuelle du rôle MicroCAN utilise :
   erreur ;
 - énergie cumulée entre 2,0 et 3,0 kHz et confirmation sur deux blocs ;
 - cadence 2/3 Hz mesurée sans conditionner la validité audio ;
-- lecture OPT4060 pilotée par data-ready jusqu'à environ 139 Hz, détecteur spectral optique adaptatif autour
-  de 3 Hz et ancienne cadence par fronts conservée en diagnostic ;
+- lecture OPT4060 pilotée par data-ready jusqu'à environ 139 Hz, voie rapide
+  sur les fronts à 2/3 Hz et détecteur spectral adaptatif lent autour de 3 Hz ;
 - one-shot VL53L4CX typiquement toutes les 200 ms, sans mesure de lumière
   simultanée ;
 - télémétrie de bring-up et publication de la distance au sol.
@@ -1324,9 +1326,11 @@ Les seuils numériques actuels sont volontairement des valeurs de bring-up. Ils 
 - Les coefficients TI `R=2,4×CH0`, `G=CH1` et `B=1,3×CH2` sont appliqués avant de calculer la dominance rouge de la variation. Le score instantané combine amplitude absolue, variation relative, élévation au-dessus du bruit et chromaticité rouge.
 - Deux mesures hautes puis deux mesures basses valident les fronts. Six fronts
   au maximum alimentent un score acceptant 2 Hz pour la préalarme et 3 Hz pour
-  l'alarme complète. Cette ancienne détection par seuil reste exposée dans les
-  diagnostics `lis/lhz/lcs/lps/lpc`, mais ne produit plus le score final.
-- `lit` provient d'une DFT glissante sur le contraste rouge
+  l'alarme complète. Deux intervalles cohérents, soit trois flashs, donnent le
+  support complet. Cette voie rapide est exposée par
+  `lis/lhz/lcs/lfs/lps/lpc` et permet une décision en environ 0,67 s à 3 Hz,
+  avant la latence CAN.
+- La voie lente de `lit` provient d'une DFT glissante sur le contraste rouge
   `R - (G+B)/2`. Une banque dense par pas de 0,1 Hz couvre 2,2 à 3,8 Hz ; le
   meilleur bin de 2,8 à 3,2 Hz est comparé à la médiane des bins non adjacents.
   Le fond continu est retiré, l'intégration exponentielle a une constante de
@@ -1338,6 +1342,13 @@ Les seuils numériques actuels sont volontairement des valeurs de bring-up. Ils 
   du pic et une cohérence périodique ; la couleur rouge est un qualificatif
   souple pour tolérer les réflexions du sol. Le bin 6 Hz mesure la deuxième
   harmonique attendue sans la rendre obligatoire.
+- En acquisition, le score nominal `lit` prend le maximum de la voie rapide
+  `lfs` et de la voie spectrale lente `lsc`. Lorsque `lfs` atteint 0,55, un
+  mode de suivi de proximité est mémorisé : `lfs` pondère alors la contribution
+  lente afin qu'elle ne masque pas l'éloignement après le survol. `lit` commence
+  à décroître 450 ms après le dernier front et atteint normalement zéro vers
+  900 ms, avant les latences CAN et affichage. Lorsque les deux voies sont
+  retombées, l'acquisition longue portée redevient possible.
 - Cette normalisation locale ne dépend pas du niveau lumineux absolu ni du
   gain choisi automatiquement par l'OPT4060. Elle vise notamment le signal à
   5 m, environ dix fois plus faible que celui mesuré à 50 cm lorsque la balise
@@ -1352,17 +1363,31 @@ Les seuils numériques actuels sont volontairement des valeurs de bring-up. Ils 
 - I2C standard 100 kHz et Fast mode 400 kHz sont acceptés ; 400 kHz reste recommandé. Le Fast-mode Plus 1 MHz est refusé car l'OPT4060 passe directement du Fast mode au protocole High-Speed 2,6 MHz, non activé ici.
 - Un NACK d'un capteur absent ne réinitialise pas le bus partagé. Seuls un timeout ou une faute électrique/protocolaire déclenchent la récupération sérialisée.
 
-Le test H7 du 1er septembre 2026, antérieur au passage sur l'interruption PA8,
+Le test H7 du 1er septembre 2026, antérieur au passage sur l'interruption PA8
+et à l'activation de la voie rapide dans `lit`,
 contient 10 s éteintes, la montée réelle de
 l'alarme puis plus de 30 s au régime final. Sur 64,3 s, les 6 335 groupes
-optiques sont continus, sans trou de compteur, surcharge ni erreur I2C. `lit`
-reste exactement nul avant l'établissement de la cadence finale. Après son
+optiques sont continus, sans trou de compteur, surcharge ni erreur I2C. Avec
+la voie spectrale seule de ce firmware, `lit` reste exactement nul avant
+l'établissement de la cadence finale. Après son
 apparition, il franchit 0,5 à 30,632 s, 0,8 à 31,038 s et atteint 1 à
 31,443 s. En régime établi, le pic reste verrouillé à 3,0 Hz, sa proéminence
 vaut 24,1 à 31,0 dB, sa cohérence moyenne 0,65 et sa fraction rouge périodique
 0,76. La capture locale, non versionnée en raison de son volume, est
 `tools/imav_monitor/captures/imav_spectral_ramp_20260901T_light.csv`, SHA-256
 `eb982de2e15696d2e45050085f0e4cbeabfd64434164972ac605ff6749648cc7`.
+
+Le test attaque/relâchement du 2 septembre 2026 utilise l'interruption PA8 et
+la fusion rapide/lente. Sur 41,8 s, 4 522 groupes RGBW sont reçus sans perte,
+surcharge ni erreur I2C. Pendant la préalarme à 2 Hz, `lit` dépasse 0,7 au
+troisième flash accepté, 1,00 s après le premier ; le même nombre de flashs
+demande environ 0,67 s au régime 3 Hz rencontré en approche. À l'extinction,
+le dernier front est publié à 23,358 s, `lit` passe sous 0,3 à 24,145 s et
+atteint zéro à 24,358 s : la décroissance observée sur CAN prend donc environ
+0,79 s jusqu'au seuil bas et 1,00 s jusqu'à zéro. La capture locale non
+versionnée est
+`tools/imav_monitor/captures/imav_fast_attack_release_20260902.csv`, SHA-256
+`178581350bdc683734569a73b93648c945af7aee2b34e6bd72793d1cc69ab494`.
 
 Une simulation prudente réinjecte le fondamental mesuré à 10 % de son
 amplitude dans le résidu de cette même séquence, conformément à l'hypothèse
@@ -1415,7 +1440,7 @@ Les clés publiées sont :
 | `aud` | optionnel : score de signature spectrale audio, maintenu pendant les silences |
 | `frq` | optionnel : fréquence dominante en hertz |
 | `cad` | optionnel : cadence de salves estimée en hertz |
-| `lit` | score nominal spectral de flash rouge proche de 3 Hz, normalisé par le bruit optique local, entre 0 et 1 et zéro après 200 ms sans nouvel échantillon |
+| `lit` | score lumineux combiné : acquisition longue portée, puis suivi rapide des flashs rouges à 2/3 Hz après verrouillage de proximité ; entre 0 et 1 et zéro après 200 ms sans nouvel échantillon |
 | `lrd` | optionnel, jusqu'à environ 139 Hz : code ADC rouge linéarisé |
 | `lgn` | optionnel, jusqu'à environ 139 Hz : code ADC vert linéarisé |
 | `lbl` | optionnel, jusqu'à environ 139 Hz : code ADC bleu linéarisé |
@@ -1428,6 +1453,7 @@ Les clés publiées sont :
 | `lis` | optionnel 5 Hz : score instantané d'une impulsion rouge, entre 0 et 1 |
 | `lhz` | optionnel 5 Hz : cadence mesurée des fronts lumineux, en hertz |
 | `lcs` | optionnel 5 Hz : confiance dans la cadence 2/3 Hz, entre 0 et 1 |
+| `lfs` | optionnel 5 Hz : score de proximité rapide combinant cadence et force des flashs, entre 0 et 1 |
 | `lps` | optionnel 5 Hz : force du flash courant ou du dernier flash, entre 0 et 1 |
 | `lpc` | optionnel 5 Hz : compteur cumulé de fronts lumineux acceptés |
 | `lsa` | optionnel 5 Hz : compteur cumulé d'épisodes de saturation OPT4060 |
@@ -1444,9 +1470,9 @@ Les clés publiées sont :
 
 Les clés font trois caractères afin que chaque message tienne dans une seule
 trame CAN classique. Le mode nominal produit 15 trames/s (`det`, `snr` et
-`lit` à 5 Hz). Le débogage optionnel produit en plus 110 trames/s dérivées et
-jusqu'à environ 973 trames/s optiques brutes, soit 1 098 trames/s sans ToF et
-1 108 trames/s avec ToF. Cette charge d'essai représente approximativement
+`lit` à 5 Hz). Le débogage optionnel produit en plus 115 trames/s dérivées et
+jusqu'à environ 973 trames/s optiques brutes, soit 1 103 trames/s sans ToF et
+1 113 trames/s avec ToF. Cette charge d'essai représente approximativement
 15 % du CAN
 classique à 1 Mbit/s ; toutes ces trames gardent une priorité basse. Le
 plancher de `snr` apprend les blocs non reconnus comme
@@ -1458,7 +1484,7 @@ décroissance de fraîcheur que `aud` après 750 ms sans tonalité.
 La réception SocketCAN avec PyDroneCAN confirme cinq groupes nominaux par
 seconde, espacés alternativement d'environ 192 et 213 ms à cause des blocs DSP
 de 21,33 ms. Avec l'option à `false`, seuls `det`, `snr` et `lit` sont
-observés. Son passage à `true` ajoute immédiatement les vingt-deux clés dérivées à
+observés. Son passage à `true` ajoute immédiatement les vingt-trois clés dérivées à
 5 Hz, les sept clés optiques lossless au rythme data-ready et, le cas échéant, deux clés
 ToF à 5 Hz, sans
 redémarrage. Sur le banc, trois fichiers séparés par pas de 6 dBFS donnent des

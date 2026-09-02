@@ -75,13 +75,15 @@ l'hôte, le temps monotone depuis le début, le nœud source, le transfer-ID, la
 clé et sa valeur flottante.
 
 Avec `role.imav.debug.publish.optional=true`, les diagnostics dérivés restent à
-5 Hz. Les sept clés optiques lossless sont à 100 Hz et leurs groupes se
-reconstruisent avec `lct`; `ltu` donne leur temps matériel en microsecondes
+5 Hz. Les sept clés optiques lossless suivent le data-ready, jusqu'à environ
+139 Hz, et leurs groupes se reconstruisent avec `lct`; `ltu` donne leur temps
+MCU en microsecondes
 modulo 2^24. `lrd/lgn/lbl/lwh` contiennent les canaux RGBW bruts linéarisés
 nécessaires aux FFT, filtres adaptés et autres post-traitements.
 
-Le firmware publie aussi à 5 Hz `lsc` (score spectral), `lsn` (proéminence
-locale en dB), `lco` (cohérence), `lrf` (fraction rouge périodique), `lfq`
+Le firmware publie aussi à 5 Hz `lfs` (voie rapide), `lsc` (voie spectrale
+lente), `lsn` (proéminence locale en dB), `lco` (cohérence), `lrf` (fraction
+rouge périodique), `lfq`
 (fréquence du pic) et `lhr` (rapport deuxième harmonique/fondamental). Ces
 grandeurs permettent de recaler les seuils sur une capture extérieure sans
 modifier la sortie nominale `lit` à 5 Hz.

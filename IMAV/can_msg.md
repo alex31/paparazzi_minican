@@ -44,7 +44,7 @@ sont plus renouvelées.
 |---|---|---|
 | `det` | exactement `0.0` ou `1.0` | État de détection audio après filtrage spectral, cohérence de blocs et hystérésis. `1.0` signifie que la signature sonore de la balise est actuellement reconnue. |
 | `snr` | dB relatifs | Force de la dernière salve sonore reconnue au-dessus du plancher de bruit adaptatif dans la bande 2–3 kHz. La valeur est maintenue entre les bips, puis revient vers zéro lorsque la mesure devient périmée. |
-| `lit` | score continu de `0.0` à `1.0` | Confiance dans une modulation lumineuse rouge proche de 3 Hz. Le score provient d'une DFT glissante, normalisée par le bruit spectral optique local et qualifiée par la cohérence et la couleur périodique. |
+| `lit` | score continu de `0.0` à `1.0` | Confiance lumineuse finale. Une voie lente acquiert le signal faible autour de 3 Hz ; après trois flashs rouges cohérents, une voie rapide suit la proximité et la décroissance. |
 
 ### 2.1 Interprétation de `det`
 
@@ -71,15 +71,21 @@ réflexions acoustiques modifient la valeur.
 ### 2.3 Interprétation de `lit`
 
 `lit` est également un score continu, pas un booléen et pas une mesure de lux.
-Le fond lumineux continu est retiré. Le détecteur recherche un pic entre 2,8
-et 3,2 Hz et l'évalue par rapport aux fréquences voisines ; il reste ainsi
-utilisable lorsque le signal est faible devant la lumière réfléchie par le
-sol.
+Il combine deux détecteurs complémentaires. En acquisition, le maximum des
+deux conserve la portée de la voie lente tout en permettant à la voie rapide
+de réagir. Celle-ci mesure les fronts rouges et demande deux intervalles
+cohérents, donc trois flashs : à 3 Hz, elle peut décider en environ 0,67 s
+avant la latence CAN.
 
-L'intégration spectrale est volontairement lente, avec une mémoire de l'ordre
-de dix secondes, mais une balise forte peut faire monter le score beaucoup
-plus vite. Le firmware force `lit` à zéro si aucun nouvel échantillon OPT4060
-n'a été reçu depuis 200 ms.
+La voie lente retire le fond lumineux, recherche un pic entre 2,8 et 3,2 Hz
+et l'évalue par rapport aux fréquences voisines. Sa mémoire d'environ dix
+secondes conserve la sensibilité lorsque le signal est faible devant la
+lumière réfléchie par le sol. Dès que la voie rapide dépasse 0,55, le rôle
+passe en suivi de proximité : la contribution lente est alors pondérée par la
+preuve rapide courante. Après le dernier front, `lit` commence à décroître vers
+450 ms et atteint normalement zéro vers 900 ms, avant les latences CAN et
+affichage. Le firmware force aussi `lit` à zéro si aucun nouvel échantillon
+OPT4060 n'a été reçu depuis 200 ms.
 
 ### 2.4 Utilisation recommandée par le contrôleur de vol
 
@@ -140,11 +146,11 @@ rester désactivés pendant l'épreuve IMAV 2026.
 | `frq` | 5 Hz | Hz | Fréquence audio dominante estimée. |
 | `cad` | 5 Hz | Hz | Cadence estimée des salves audio. Elle est diagnostique et ne conditionne pas directement `det`. |
 
-## A.3 Diagnostics optiques historiques — 5 Hz
+## A.3 Diagnostics de la voie optique rapide — 5 Hz
 
-Ces clés décrivent l'ancien détecteur temporel par seuils et fronts. Elles
-restent utiles pour comparer les algorithmes, mais elles ne produisent plus le
-score nominal `lit`.
+Ces clés décrivent le détecteur temporel par seuils et fronts. Cette voie
+qualifie rapidement une balise proche et participe maintenant au score nominal
+`lit`.
 
 | Clé | Cadence | Unité/domaine | Description de mise au point |
 |---|---:|---|---|
@@ -152,7 +158,8 @@ score nominal `lit`.
 | `lac` | 5 Hz | rapport | Excursion rouge positive rapportée au fond lumineux. |
 | `lis` | 5 Hz | `0..1` | Score instantané d'une impulsion rouge. |
 | `lhz` | 5 Hz | Hz | Cadence mesurée entre les fronts lumineux acceptés. |
-| `lcs` | 5 Hz | `0..1` | Confiance de l'ancien détecteur dans une cadence proche de 2 ou 3 Hz. |
+| `lcs` | 5 Hz | `0..1` | Confiance dans une cadence proche de 2 ou 3 Hz ; deux intervalles cohérents apportent le support complet. |
+| `lfs` | 5 Hz | `0..1` | Score final de la voie rapide, après combinaison de la cadence et de la force des flashs. |
 | `lps` | 5 Hz | `0..1` | Force du flash courant ou du dernier flash accepté. |
 | `lpc` | 5 Hz | compteur | Nombre cumulé de fronts lumineux acceptés depuis le démarrage. |
 | `lsa` | 5 Hz | compteur | Nombre cumulé d'épisodes de surcharge OPT4060. |
@@ -163,7 +170,7 @@ score nominal `lit`.
 
 | Clé | Cadence | Unité/domaine | Description de mise au point |
 |---|---:|---|---|
-| `lsc` | 5 Hz | `0..1` | Score spectral interne utilisé pour produire `lit`, avant le contrôle de fraîcheur effectué au moment de la publication nominale. |
+| `lsc` | 5 Hz | `0..1` | Score propre de la voie spectrale lente. Il contribue directement à `lit` pendant l'acquisition, puis est pondéré par la voie rapide pendant le suivi de proximité. |
 | `lsn` | 5 Hz | dB | Proéminence du meilleur bin entre 2,8 et 3,2 Hz par rapport à la médiane du bruit spectral local. |
 | `lco` | 5 Hz | `0..1` | Cohérence du fondamental périodique dans le contraste rouge. |
 | `lrf` | 5 Hz | `0..1` | Fraction rouge de la composante RGB périodique complexe. |
@@ -215,12 +222,12 @@ chaque acquisition et reste indépendant des clés de débogage `rng/rsg`.
 Avec le débogage activé et sans télémètre :
 
 - 15 trames/s nominales pour `det`, `snr` et `lit` ;
-- 110 trames/s pour les 22 diagnostics dérivés à 5 Hz ;
+- 115 trames/s pour les 23 diagnostics dérivés à 5 Hz ;
 - jusqu'à environ 973 trames/s pour les sept clés brutes à 139 Hz ;
-- total maximal voisin de 1 098 trames/s.
+- total maximal voisin de 1 103 trames/s.
 
 Le télémètre ajoute dix trames `rng/rsg` par seconde,
-soit environ 1 108 trames/s, en plus de son message UAVCAN standard. Cette charge
+soit environ 1 113 trames/s, en plus de son message UAVCAN standard. Cette charge
 reste techniquement supportable sur le banc à 1 Mbit/s, mais elle consomme
 environ 15 % du réseau et noie les outils avec des données inutiles pour
 la mission. C'est la raison principale, en plus de la stabilité de l'interface,

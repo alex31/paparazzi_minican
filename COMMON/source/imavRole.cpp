@@ -900,12 +900,13 @@ void ImavRole::publishMeasurements()
   publish("lis", sensors.lightInstantScore);
   publish("lhz", sensors.lightCadenceHz);
   publish("lcs", sensors.lightCadenceScore);
+  publish("lfs", sensors.lightFastScore);
   publish("lps", sensors.lightPulseStrength);
   publish("lpc", static_cast<float>(sensors.lightPulses));
   publish("lsa", static_cast<float>(sensors.lightSaturations));
   publish("ler", static_cast<float>(sensors.lightReadErrors));
   publish("lgp", static_cast<float>(sensors.lightGaps));
-  publish("lsc", sensors.lightFlashScore);
+  publish("lsc", sensors.lightSpectralScore);
   publish("lsn", sensors.lightSpectralSnrDb);
   publish("lco", sensors.lightSpectralCoherence);
   publish("lrf", sensors.lightSpectralRedFraction);

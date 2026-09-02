@@ -167,14 +167,15 @@ Params:
 Outputs:
 
 - `det` (audio detection, 0 or 1), `snr` (held beacon burst strength in dB
-  above the adaptive 2--3 kHz motor-noise floor) and `lit` (locally
-  noise-normalized red-flash spectral score near 3 Hz) are always broadcast as
+  above the adaptive 2--3 kHz motor-noise floor) and `lit` (long-range
+  acquisition followed by fast 2/3 Hz proximity tracking) are always broadcast as
   `uavcan.protocol.debug.KeyValue` at 5 Hz.
 - When `role.imav.debug.publish.optional` is true, `a0`, `p0`, `sdb`, `aud`,
   `frq` and `cad` provide the accompanying audio tuning measurements at 5 Hz.
   Light tuning at 5 Hz adds red ratio `lrr`, relative red AC `lac`,
-  instantaneous score `lis`, flash cadence `lhz`, cadence score `lcs`, pulse
-  strength `lps`, pulse count `lpc`, saturation count `lsa`, read-error count
+  instantaneous score `lis`, flash cadence `lhz`, cadence score `lcs`,
+  fast-path score `lfs`, pulse strength `lps`, pulse count `lpc`, saturation count
+  `lsa`, read-error count
   `ler` and sample-gap count `lgp`. Spectral tuning adds score `lsc`, local
   prominence in dB `lsn`, coherence `lco`, periodic red fraction `lrf`, peak
   frequency `lfq` and second-harmonic ratio `lhr`. Each data-ready optical
@@ -200,12 +201,15 @@ frequency continuity, can detect either prealarm or full alarm. Broadband
 energy rises without prominence over the reference bands are rejected. The
 measured 2/3 Hz burst cadence is diagnostic and does not gate audio validity.
 
-The independent optical detector applies a streaming DFT to red contrast. A
-dense 2.2--3.8 Hz bank estimates local colored noise around the searched
-2.8--3.2 Hz alarm fundamental; coherence and periodic color qualify the peak,
-while 6 Hz is retained as a diagnostic harmonic. Its roughly 10-second
-integration avoids absolute-light thresholds and is designed for weak outdoor
-signals. The former 2/3 Hz edge detector remains available for diagnostics.
+The independent optical detector combines two paths. Three coherent red
+flashes at 2 or 3 Hz feed a fast proximity score, reaching full temporal
+support after about 0.67 seconds at 3 Hz. A streaming DFT on red contrast uses
+a dense 2.2--3.8 Hz bank to estimate local colored noise around the searched
+2.8--3.2 Hz alarm fundamental; its roughly 10-second integration remains
+available for weak outdoor signals. Once the fast score reaches 0.55, it gates
+the slow contribution so a stale DFT cannot hide the decrease after an
+overflight; the output normally falls within about 0.9 seconds of the last
+accepted flash.
 The sensor emits a 1 us interrupt after each complete RGBW group. The optical
 thread waits synchronously on PA8 and reads the group over I2C after the edge;
 a 25 ms timeout prints a warning on the serial shell and performs a fallback
