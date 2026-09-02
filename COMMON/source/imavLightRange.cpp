@@ -39,15 +39,18 @@ namespace {
     optRangeAuto | optConversionTime1p8Ms | optInterruptLatch;
   constexpr uint16_t optConfigurationContinuous =
     optConfigurationPowerDown | optOperatingContinuous;
-  // Keep required bits at their reset value, INT as an output and burst reads
-  // enabled. INT_CFG=0 means no data-ready pulses are needed by this design.
-  constexpr uint16_t optConfiguration2 = 0x8011U;
+  // Keep required bits at their reset value, INT as an open-drain output and
+  // burst reads enabled. INT_CFG=3 emits one active-low 1 us pulse after all
+  // four RGBW channels have completed a conversion.
+  constexpr uint16_t optInterruptDataReadyAllChannels = 3U << 2U;
+  constexpr uint16_t optConfiguration2 =
+    0x8011U | optInterruptDataReadyAllChannels;
   constexpr uint16_t optStatusOverload = 1U << 3U;
   constexpr size_t optChannelCount = 4U;
   constexpr size_t optResultBytes = optChannelCount * 4U;
   constexpr uint32_t optPollPeriodMs = 10U;
-  constexpr uint32_t optPollPeriodUs = 9400U;
   constexpr uint32_t optFirstConversionDelayMs = 8U;
+  constexpr uint32_t optDataReadyTimeoutMs = 25U;
 
   // Streaming DFT bins in tenths of hertz. The dense 2.2..3.8 Hz bank makes
   // the noise estimate local and rejects broad outdoor flicker or spectral
@@ -60,15 +63,13 @@ namespace {
   constexpr size_t lightFirstTargetBin = 6U;
   constexpr size_t lightTargetBinCount = 5U;
   constexpr size_t lightHarmonicBin = 17U;
-  constexpr float lightSpectralDcAlpha = 0.01f;
-  constexpr float lightSpectralAlpha = 0.001f;
   constexpr uint32_t lightSpectralUpdateDivider = 20U;
-  constexpr uint32_t lightSpectralSupportSamples = 1000U;
   constexpr uint32_t lightSpectralResetGapMs = 100U;
   constexpr float twoPi = 6.2831853071795864769f;
 
   static_assert(optConfigurationPowerDown == 0x3088U);
   static_assert(optConfigurationContinuous == 0x30B8U);
+  static_assert(optConfiguration2 == 0x801DU);
 
   struct Opt4060ChannelSample {
     uint32_t adcCode;
@@ -138,6 +139,12 @@ extern "C" uint8_t *imav_vl53l4cx_work_buffer(const void *device,
 
 void ImavLightRange::initialize()
 {
+  // INT is an active-low open-drain output. PAL's synchronous wait API lets
+  // the sensor thread sleep directly on EXTI8 without an application ISR or
+  // a periodic polling loop.
+  palSetLineMode(LINE_OPT4060_INT, PAL_MODE_INPUT_PULLUP);
+  palEnableLineEvent(LINE_OPT4060_INT, PAL_EVENT_MODE_FALLING_EDGE);
+
   // Ref-SPAD initialization can emit 940 nm light. Configure it before the
   // OPT4060 starts, so the two sensors are never acquiring simultaneously.
   rangeAvailable = timeOfFlightEnabled && initializeRange();
@@ -402,6 +409,7 @@ void ImavLightRange::resetLightSpectrum()
   lightSpectralFrequencyHz = 0.0f;
   lightHarmonicRatio = 0.0f;
   lightSpectralSamples = 0U;
+  lightSpectralStartSample = 0U;
   lightSpectralLastSample = 0U;
   lightFlashScore = 0.0f;
 }
@@ -415,15 +423,29 @@ void ImavLightRange::updateLightSpectrum(
     resetLightSpectrum();
   }
 
+  float samplePeriodSeconds = 0.0072f;
+  if (lightSpectralLastSample != 0U) {
+    samplePeriodSeconds = 1.0e-6f * static_cast<float>(TIME_I2US(
+      chTimeDiffX(lightSpectralLastSample, now)));
+  }
+  // Preserve the original approximately 0.94 s DC and 9.4 s spectral time
+  // constants when data-ready sampling runs near 139 Hz. A gap of 100 ms or
+  // more has already reset the spectral state above.
+  samplePeriodSeconds = std::clamp(
+    samplePeriodSeconds, 0.0001f, 0.099f);
+  const float dcAlpha = -std::expm1(-samplePeriodSeconds / 0.94f);
+  const float spectralAlpha = -std::expm1(-samplePeriodSeconds / 9.4f);
+
   if (lightSpectralSamples == 0U) {
     lightSpectralBaseline = {scaled[0], scaled[1], scaled[2]};
+    lightSpectralStartSample = now;
   }
   lightSpectralLastSample = now;
   ++lightSpectralSamples;
 
   std::array<float, 3U> ac = {};
   for (size_t channel = 0U; channel < ac.size(); ++channel) {
-    lightSpectralBaseline[channel] += lightSpectralDcAlpha *
+    lightSpectralBaseline[channel] += dcAlpha *
       (scaled[channel] - lightSpectralBaseline[channel]);
     ac[channel] = scaled[channel] - lightSpectralBaseline[channel];
   }
@@ -432,7 +454,7 @@ void ImavLightRange::updateLightSpectrum(
   // spectrum on the real motionSCOUT. The periodic color is checked again
   // from the complex RGB amplitudes below.
   const float redContrast = ac[0] - 0.5f * (ac[1] + ac[2]);
-  lightSpectralEnergy += lightSpectralAlpha *
+  lightSpectralEnergy += spectralAlpha *
     (redContrast * redContrast - lightSpectralEnergy);
 
   // All requested frequencies are integer multiples of 0.1 Hz, hence their
@@ -462,9 +484,9 @@ void ImavLightRange::updateLightSpectrum(
 
     LightSpectralBin& bin = lightSpectralBins[binIndex++];
     const auto update = [=](float value, float& real, float& imag) {
-      real += lightSpectralAlpha *
+      real += spectralAlpha *
         (value * oscillatorReal - real);
-      imag += lightSpectralAlpha *
+      imag += spectralAlpha *
         (value * oscillatorImag - imag);
     };
     update(ac[0], bin.redReal, bin.redImag);
@@ -545,8 +567,8 @@ void ImavLightRange::updateLightSpectrum(
   const float redScore =
     knee(lightSpectralRedFraction, 0.55f, 0.72f);
   const float support = std::min(
-    static_cast<float>(lightSpectralSamples) /
-      static_cast<float>(lightSpectralSupportSamples), 1.0f);
+    static_cast<float>(TIME_I2MS(chTimeDiffX(
+      lightSpectralStartSample, now))) / 10000.0f, 1.0f);
   // SNR and coherence are both mandatory evidence. Using their minimum keeps
   // a weak random peak from being inflated by a geometric mean. Color is a
   // softer qualifier because ground reflection and the real beacon lens can
@@ -773,7 +795,7 @@ void ImavLightRange::processLightMeasurement(
   publishLightDebugSample(overloaded);
 }
 
-bool ImavLightRange::sampleLight()
+bool ImavLightRange::sampleLight(systime_t sampleTime)
 {
   if (not lightRunning) {
     return true;
@@ -820,7 +842,7 @@ bool ImavLightRange::sampleLight()
   }
   processLightMeasurement(
     adcCodes, (status & optStatusOverload) != 0U,
-    chVTGetSystemTimeX());
+    sampleTime);
   return true;
 }
 
@@ -1074,7 +1096,6 @@ uint32_t ImavLightRange::nextRangeIntervalMs()
 [[noreturn]] void ImavLightRange::run()
 {
   systime_t now = chVTGetSystemTimeX();
-  systime_t previousPoll = now;
   systime_t lastLightRetry = now;
   systime_t lastRangeRetry = now;
   systime_t lastRangeStart = now;
@@ -1110,7 +1131,21 @@ uint32_t ImavLightRange::nextRangeIntervalMs()
     }
 
     if (lightRunning) {
-      if (sampleLight()) {
+      // INT_CFG=3 produces a falling edge only after a coherent RGBW group is
+      // ready. A timeout retains a degraded polling path so a broken INT wire
+      // cannot make the optical detector fail silently.
+      const msg_t ready = palWaitLineTimeout(
+        LINE_OPT4060_INT, TIME_MS2I(optDataReadyTimeoutMs));
+      const systime_t sampleTime = chVTGetSystemTimeX();
+      if (ready == MSG_TIMEOUT) {
+        // Node::infoCb is routed to DebugTrace by the application and repeated
+        // identical messages are rate-limited there, avoiding serial floods.
+        node.infoCb("WARN: OPT4060 INT timeout, polling fallback");
+      } else if (ready != MSG_OK) {
+        node.infoCb("WARN: OPT4060 INT wait reset, polling fallback");
+      }
+
+      if (sampleLight(sampleTime)) {
         lightConsecutiveErrors = 0U;
       } else if (++lightConsecutiveErrors >= 3U) {
         lightAvailable = false;
@@ -1140,7 +1175,7 @@ uint32_t ImavLightRange::nextRangeIntervalMs()
       lastRangeStart = now;
       bool lightPaused = not lightRunning;
       if (lightRunning) {
-        (void) sampleLight();
+        (void) sampleLight(chVTGetSystemTimeX());
         lightPaused = stopLight();
         if (lightPaused) {
           lightRestartPending = true;
@@ -1171,21 +1206,9 @@ uint32_t ImavLightRange::nextRangeIntervalMs()
       rangeInterval = nextRangeIntervalMs();
     }
 
-    const systime_t nextPoll = previousPoll + TIME_US2I(optPollPeriodUs);
-    now = chVTGetSystemTimeX();
-    if (chTimeIsInRangeX(now, previousPoll, nextPoll)) {
-      previousPoll = chThdSleepUntilWindowed(previousPoll, nextPoll);
-    } else {
-      const sysinterval_t overrun = chTimeDiffX(nextPoll, now);
-      if (overrun < TIME_US2I(optPollPeriodUs)) {
-        // Keep the original grid after a single late cycle. The next sample
-        // absorbs the delay instead of shifting every subsequent timestamp.
-        previousPoll = nextPoll;
-      } else {
-        // A ToF transaction or a recovery may miss several deadlines. Restart
-        // the grid instead of emitting a catch-up burst.
-        previousPoll = now;
-      }
+    if (not lightRunning) {
+      // Avoid a busy loop while the OPT4060 is absent or awaiting recovery.
+      chThdSleepMilliseconds(optPollPeriodMs);
     }
   }
 }

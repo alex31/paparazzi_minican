@@ -142,7 +142,7 @@ bon fonctionnement avant l'épreuve.
   sera mesurée mais ne conditionnera pas la décision : préalarme et alarme
   complète sont toutes deux valides.
 - La voie optique cherchera des variations rouges rapides et répétées. Une
-  acquisition voisine de 100 Hz donnera environ dix mesures pendant un
+  acquisition data-ready voisine de 139 Hz donnera environ quatorze mesures pendant un
   allumage de 100 ms observé dans la vidéo, sans imposer de FIFO.
 - La LED d'état à 1 Hz n'est pas un indice de présence de la balise. Son
   éventuelle contribution au signal du capteur est un parasite qui ne doit pas
@@ -192,8 +192,9 @@ Décisions déjà raisonnablement établies :
 - pull-up I²C de 2,2 kΩ déjà présentes sur la MicroCAN ;
 - aucune mesure de lumière pendant une mesure ToF ;
 - tous les capteurs alimentés directement par le rail 3,3 V ;
-- acquisition du capteur de lumière par lecture périodique, sans FIFO ;
-- sortie d'interruption de l'OPT4060 facultative pour le premier prototype.
+- acquisition du capteur de lumière en mode continu, synchronisée par la
+  sortie data-ready, sans FIFO ;
+- sortie d'interruption de l'OPT4060 reliée à PA8, ancien signal SRV1.
 
 Ce choix supprime le régulateur 1,8 V et la dépendance au TCS34103M en phase
 « Last Time Buy ». Il conserve une information de couleur utile pour distinguer
@@ -246,12 +247,13 @@ de l'ombre au soleil sans réglage permanent du gain.
 Pour le premier prototype, la configuration proposée est :
 
 - temps de conversion de 1,8 ms par voie, soit 7,2 ms pour un cycle RGBW ;
-- mode continu et lecture périodique proche de 100 Hz sur l'I²C à 400 kHz ;
+- mode continu et lecture sur interruption data-ready, jusqu'à environ 139 Hz
+  sur l'I²C à 400 kHz ;
 - plage automatique activée ;
-- pas de FIFO et pas d'interruption obligatoire.
+- pas de FIFO.
 
-À 100 Hz, un allumage d'environ 100 ms observé dans la vidéo produit une dizaine
-de mesures. La détection pourra combiner :
+À environ 139 Hz, un allumage de 100 ms observé dans la vidéo produit jusqu'à
+quatorze mesures. La détection pourra combiner :
 
 - une variation positive de la voie rouge par rapport à un fond ambiant lent ;
 - un seuil minimal absolu pour rejeter le bruit de mesure ;
@@ -295,7 +297,7 @@ plausible, mais son acceptabilité devra être vérifiée sur la vraie balise.
 IM68A130A OUT -- 100 Ω -- MIC_ADC -- PA4 / ADC2_IN17               |
                                                                    |
 OPT4060 ADDR ------------------------------------------------ GND   |
-OPT4060 INT ------------------------------------------ point de test|
+OPT4060 INT -------------------------------- PA8 / J7 SRV1 (broche 4)|
                                                                    |
 MicroCAN SDA ------------------- OPT4060 SDA + VL53L4CX SDA         |
 MicroCAN SCL ------------------- OPT4060 SCL + VL53L4CX SCL         |
@@ -310,7 +312,7 @@ Points à conserver dans le schéma du premier prototype :
 | Microphone | alimentation via 22 Ω, 1 µF + 100 nF, sortie via 100 Ω |
 | Filtre ADC optionnel | empreinte 47 à 100 pF, non montée initialement |
 | OPT4060 | VDD sur 3,3 V, 100 nF au plus près, ADDR à GND pour l'adresse 0x44 |
-| OPT4060 INT | point de test ou broche optionnelle, non nécessaire au fonctionnement initial |
+| OPT4060 INT | sortie open-drain vers PA8/J7 broche 4, pull-up 10 kΩ vers 3,3 V recommandé |
 | VL53L4CX | 100 nF + 4,7 µF, XSHUT tiré à 3,3 V par 10 kΩ |
 | SDA/SCL | résistances série 0 Ω ; pull-up locales prévues mais non montées |
 
@@ -319,8 +321,8 @@ faisceau et le rail 3,3 V seront dimensionnés pour au moins 60 mA.
 
 ## 6. Connexion à la MicroCAN
 
-La proposition utilise un connecteur verrouillable à six contacts et un petit
-faisceau en Y vers J6 et J5 de la MicroCAN.
+La proposition utilise un connecteur verrouillable et un petit faisceau vers
+J6, J5 et le signal PA8 de J7 sur la MicroCAN.
 
 | Signal carte capteurs | Destination MicroCAN |
 |---|---|
@@ -330,8 +332,9 @@ faisceau en Y vers J6 et J5 de la MicroCAN.
 | +3V3 | J5 broche 3 |
 | SDA | J5 broche 4 — PB7 / I2C1_SDA |
 | SCL | J5 broche 5 — PA15 / I2C1_SCL |
+| OPT4060_INT | J7 broche 4 — PA8 / ancien SRV1 |
 
-Le +5 V de J5 n'est pas utilisé. MIC_ADC devra cheminer avec GND_AUDIO et être
+Les +5 V de J5 et J7 ne sont pas utilisés. MIC_ADC devra cheminer avec GND_AUDIO et être
 tenu à distance des fils moteur, PWM et alimentation de puissance.
 
 La famille exacte du connecteur reste à choisir avec l'équipe mécanique et en
@@ -405,7 +408,8 @@ comparés sur les fiches techniques officielles avant substitution.
   l'alarme complète pour mesurer précisément durée, cadence et synchronisation.
 - Vérifier que la LED d'état seule, verte ou rouge à 1 Hz, ne valide jamais une
   détection de flash.
-- Tester l'OPT4060 à 1,8 ms par voie avec une lecture proche de 100 Hz, à
+- Tester l'OPT4060 à 1,8 ms par voie avec l'interruption data-ready proche de
+  139 Hz, à
   l'ombre puis au soleil, avec plusieurs durées d'allumage et à environ 1 m.
 - Enregistrer les quatre voies RGBW pour définir le seuil absolu et le critère
   de dominance rouge.

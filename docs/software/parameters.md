@@ -19,7 +19,8 @@ Important parameters:
   enabled; default 200 ms before deterministic jitter)
 - role.imav.debug.publish.optional (publish the optional IMAV tuning keys in
   addition to the mandatory `det`/`snr`/`lit` values; derived tuning remains
-  at 5 Hz while lossless RGBW samples are sent at 100 Hz; default false,
+  at 5 Hz while lossless RGBW samples follow OPT4060 data ready at up to about
+  139 Hz; default false,
   applied live)
 - ROLE.* toggles for each role
 

@@ -466,8 +466,9 @@ Caractéristiques utiles :
 - jusqu'à quatre adresses sur un même bus I2C ;
 - interruption matérielle disponible.
 
-Les quatre voies sont converties séquentiellement en environ 7,2 ms, puis lues
-par burst à une cadence proche de 100 Hz. Les canaux couleur permettent de
+Les quatre voies sont converties séquentiellement en environ 7,2 ms. Une
+impulsion data-ready sur PA8 réveille le thread, qui les lit alors par burst à
+une cadence pouvant approcher 139 Hz. Les canaux couleur permettent de
 calculer une dominance rouge moins sensible aux changements globaux de lumière.
 
 Utilisation recommandée :
@@ -582,8 +583,8 @@ Le build `-Og` donne les tailles effectives suivantes :
 
 | Élément alloué lorsque le rôle démarre | Taille |
 |---|---:|
-| `ImavAudioState`, buffer DMA mono inclus | 2 624 octets |
-| `ImavLightRange`, contexte ST et buffers I2C inclus | 10 304 octets |
+| `ImavAudioState`, buffer DMA mono inclus | 2 652 octets |
+| `ImavLightRange`, contexte ST et buffers I2C inclus | 10 816 octets |
 | Pile utile du thread audio | 1 536 octets |
 | Pile utile du thread lumière/ToF | 2 048 octets |
 
@@ -889,7 +890,7 @@ dernière salve reconnue en dB au-dessus du plancher adaptatif de la bande
 sont toujours envoyées. Le paramètre booléen
 `role.imav.debug.publish.optional`, faux par défaut et appliqué immédiatement,
 ajoute seulement les valeurs de mise au point : audio à 5 Hz et échantillons
-optiques dérivés à 5 Hz, plus RGBW lossless à 100 Hz pour le post-traitement. Cette interface
+optiques dérivés à 5 Hz, plus RGBW lossless au rythme data-ready pour le post-traitement. Cette interface
 fonctionne avec DroneCAN sans allouer un nouvel identifiant DSDL.
 
 Un message DSDL dédié pourra remplacer les `KeyValue` après avoir choisi le
@@ -1187,7 +1188,7 @@ L'implémentation actuelle du rôle MicroCAN utilise :
   erreur ;
 - énergie cumulée entre 2,0 et 3,0 kHz et confirmation sur deux blocs ;
 - cadence 2/3 Hz mesurée sans conditionner la validité audio ;
-- lecture OPT4060 proche de 100 Hz, détecteur spectral optique adaptatif autour
+- lecture OPT4060 pilotée par data-ready jusqu'à environ 139 Hz, détecteur spectral optique adaptatif autour
   de 3 Hz et ancienne cadence par fronts conservée en diagnostic ;
 - one-shot VL53L4CX typiquement toutes les 200 ms, sans mesure de lumière
   simultanée ;
@@ -1311,11 +1312,15 @@ Les seuils numériques actuels sont volontairement des valeurs de bring-up. Ils 
 
 - Un unique OPT4060 orienté vers le sol est recherché aux adresses 0x44 à 0x47 ; `ADDR=GND` et l'adresse 0x44 sont les valeurs nominales.
 - Le registre de configuration vaut `0x30B8` en acquisition : plage automatique, 1,8 ms par voie, mode continu et quatre voies séquentielles. Un cycle RGBW typique dure donc 7,2 ms.
-- Le thread suit une grille monotone de 9,4 ms avec
-  `chThdSleepUntilWindowed` et lit les huit registres de résultat par un unique
-  transfert burst. Le débit mesuré est proche de 99 Hz. Exposant et mantisse
-  sont linéarisés en codes ADC 26 bits ; les compteurs de conversion empêchent
-  de mélanger un cycle incomplet et permettent de détecter un capteur bloqué.
+- `INT_CFG=3` fait émettre par l'OPT4060 une impulsion active-bas de 1 µs après
+  chaque groupe RGBW complet. PA8, ancien signal SRV1, est configuré en
+  `OPT4060_INT` avec pull-up et EXTI8. Le thread attend le front descendant avec
+  `palWaitLineTimeout`, puis lit les huit registres de résultat par un unique
+  transfert burst. Un timeout de 25 ms écrit un avertissement sur le shell
+  série et effectue une lecture de secours. Le débit nominal maximal est
+  d'environ 139 Hz. Exposant et mantisse sont linéarisés en codes ADC 26 bits ;
+  les compteurs de conversion restent vérifiés afin de détecter une donnée
+  périmée ou un capteur bloqué.
 - Les coefficients TI `R=2,4×CH0`, `G=CH1` et `B=1,3×CH2` sont appliqués avant de calculer la dominance rouge de la variation. Le score instantané combine amplitude absolue, variation relative, élévation au-dessus du bruit et chromaticité rouge.
 - Deux mesures hautes puis deux mesures basses valident les fronts. Six fronts
   au maximum alimentent un score acceptant 2 Hz pour la préalarme et 3 Hz pour
@@ -1325,8 +1330,11 @@ Les seuils numériques actuels sont volontairement des valeurs de bring-up. Ils 
   `R - (G+B)/2`. Une banque dense par pas de 0,1 Hz couvre 2,2 à 3,8 Hz ; le
   meilleur bin de 2,8 à 3,2 Hz est comparé à la médiane des bins non adjacents.
   Le fond continu est retiré, l'intégration exponentielle a une constante de
-  temps voisine de 10 s, et le support monte progressivement sur les 1 000
-  premiers échantillons. Le score exige simultanément une proéminence locale
+  temps voisine de 10 s, et le support monte progressivement pendant les dix
+  premières secondes. Les coefficients exponentiels sont calculés à partir
+  des horodatages, de sorte que le débit data-ready et ses éventuelles
+  irrégularités ne changent pas les constantes de temps. Le score exige
+  simultanément une proéminence locale
   du pic et une cohérence périodique ; la couleur rouge est un qualificatif
   souple pour tolérer les réflexions du sol. Le bin 6 Hz mesure la deuxième
   harmonique attendue sans la rendre obligatoire.
@@ -1344,7 +1352,8 @@ Les seuils numériques actuels sont volontairement des valeurs de bring-up. Ils 
 - I2C standard 100 kHz et Fast mode 400 kHz sont acceptés ; 400 kHz reste recommandé. Le Fast-mode Plus 1 MHz est refusé car l'OPT4060 passe directement du Fast mode au protocole High-Speed 2,6 MHz, non activé ici.
 - Un NACK d'un capteur absent ne réinitialise pas le bus partagé. Seuls un timeout ou une faute électrique/protocolaire déclenchent la récupération sérialisée.
 
-Le test H7 du 1er septembre 2026 contient 10 s éteintes, la montée réelle de
+Le test H7 du 1er septembre 2026, antérieur au passage sur l'interruption PA8,
+contient 10 s éteintes, la montée réelle de
 l'alarme puis plus de 30 s au régime final. Sur 64,3 s, les 6 335 groupes
 optiques sont continus, sans trou de compteur, surcharge ni erreur I2C. `lit`
 reste exactement nul avant l'établissement de la cadence finale. Après son
@@ -1373,7 +1382,7 @@ La lumière et le son restent deux preuves indépendantes. Il n'y a pas de condi
 Mesures contrôlées sur le build `-Og` :
 
 - `sizeof(ImavAudioState) = 2 652` octets sur le heap DMA de 12 288 octets ; ce total contient le buffer audio mono de 2 048 octets ;
-- `sizeof(ImavLightRange) = 10 808` octets sur le heap standard de 20 480 octets ; ce total contient le contexte officiel ST de 9 480 octets, les tampons I2C et la banque DFT optique ;
+- `sizeof(ImavLightRange) = 10 816` octets sur le heap standard de 20 480 octets ; ce total contient le contexte officiel ST de 9 480 octets, les tampons I2C et la banque DFT optique ;
 - thread audio : pile utile configurée à 1 536 octets ;
 - thread capteurs : pile utile configurée à 2 048 octets ;
 - firmware : 284 296 octets de texte et 100 048 octets de BSS, heaps réservés inclus ;
@@ -1407,13 +1416,13 @@ Les clés publiées sont :
 | `frq` | optionnel : fréquence dominante en hertz |
 | `cad` | optionnel : cadence de salves estimée en hertz |
 | `lit` | score nominal spectral de flash rouge proche de 3 Hz, normalisé par le bruit optique local, entre 0 et 1 et zéro après 200 ms sans nouvel échantillon |
-| `lrd` | optionnel 100 Hz : code ADC rouge linéarisé |
-| `lgn` | optionnel 100 Hz : code ADC vert linéarisé |
-| `lbl` | optionnel 100 Hz : code ADC bleu linéarisé |
-| `lwh` | optionnel 100 Hz : code ADC large bande linéarisé |
-| `lov` | optionnel 100 Hz : indicateur de surcharge de l'échantillon, 0 ou 1 |
-| `lct` | optionnel 100 Hz : compteur d'échantillons permettant de reconstruire les groupes et les pertes |
-| `ltu` | optionnel 100 Hz : horodatage matériel en microsecondes modulo 2^24, exact en float et déroulable toutes les 16,78 s |
+| `lrd` | optionnel, jusqu'à environ 139 Hz : code ADC rouge linéarisé |
+| `lgn` | optionnel, jusqu'à environ 139 Hz : code ADC vert linéarisé |
+| `lbl` | optionnel, jusqu'à environ 139 Hz : code ADC bleu linéarisé |
+| `lwh` | optionnel, jusqu'à environ 139 Hz : code ADC large bande linéarisé |
+| `lov` | optionnel, jusqu'à environ 139 Hz : indicateur de surcharge de l'échantillon, 0 ou 1 |
+| `lct` | optionnel, jusqu'à environ 139 Hz : compteur d'échantillons permettant de reconstruire les groupes et les pertes |
+| `ltu` | optionnel, jusqu'à environ 139 Hz : horodatage matériel en microsecondes modulo 2^24, exact en float et déroulable toutes les 16,78 s |
 | `lrr` | optionnel 5 Hz : fraction rouge de l'excursion RGB positive, entre 0 et 1 |
 | `lac` | optionnel 5 Hz : excursion rouge positive rapportée au fond lumineux |
 | `lis` | optionnel 5 Hz : score instantané d'une impulsion rouge, entre 0 et 1 |
@@ -1436,8 +1445,9 @@ Les clés publiées sont :
 Les clés font trois caractères afin que chaque message tienne dans une seule
 trame CAN classique. Le mode nominal produit 15 trames/s (`det`, `snr` et
 `lit` à 5 Hz). Le débogage optionnel produit en plus 110 trames/s dérivées et
-700 trames/s optiques brutes, soit 825 trames/s sans ToF et 835 trames/s avec
-ToF. Cette charge d'essai représente approximativement 10 à 12 % du CAN
+jusqu'à environ 973 trames/s optiques brutes, soit 1 098 trames/s sans ToF et
+1 108 trames/s avec ToF. Cette charge d'essai représente approximativement
+15 % du CAN
 classique à 1 Mbit/s ; toutes ces trames gardent une priorité basse. Le
 plancher de `snr` apprend les blocs non reconnus comme
 balise : il suit le bruit blanc continu des moteurs mais n'absorbe pas les
@@ -1449,7 +1459,7 @@ La réception SocketCAN avec PyDroneCAN confirme cinq groupes nominaux par
 seconde, espacés alternativement d'environ 192 et 213 ms à cause des blocs DSP
 de 21,33 ms. Avec l'option à `false`, seuls `det`, `snr` et `lit` sont
 observés. Son passage à `true` ajoute immédiatement les vingt-deux clés dérivées à
-5 Hz, les sept clés optiques lossless à 100 Hz et, le cas échéant, deux clés
+5 Hz, les sept clés optiques lossless au rythme data-ready et, le cas échéant, deux clés
 ToF à 5 Hz, sans
 redémarrage. Sur le banc, trois fichiers séparés par pas de 6 dBFS donnent des
 plateaux `snr` d'environ 12,0, 17,6 et 23,7 dB : les écarts mesurés de 5,6 et

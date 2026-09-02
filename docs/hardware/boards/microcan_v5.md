@@ -11,6 +11,8 @@ Core peripherals:
 - Onboard RGB LED for node ID and status
 - Debug pads with SWD and UART
 - ADC monitoring for battery and 5V
+- In the IMAV branch, PA8/SRV1 is repurposed as the OPT4060 active-low
+  data-ready input; servo and DShot roles are compiled out
 
 Key files:
 - [microcan/cfg/MICROCAN.cfg](../../../microcan/cfg/MICROCAN.cfg) (pin map)

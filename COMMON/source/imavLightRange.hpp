@@ -88,7 +88,7 @@ private:
   bool initializeLight();
   bool startLight();
   bool stopLight();
-  bool sampleLight();
+  bool sampleLight(systime_t sampleTime);
   void processLightMeasurement(const std::array<uint32_t, 4U>& adcCodes,
                                bool overloaded, systime_t now);
   void clearLightCadence();
@@ -161,6 +161,7 @@ private:
   float lightSpectralFrequencyHz = 0.0f;
   float lightHarmonicRatio = 0.0f;
   uint32_t lightSpectralSamples = 0U;
+  systime_t lightSpectralStartSample = 0U;
   systime_t lightSpectralLastSample = 0U;
 
   float lightNoiseFloor = 0.0f;

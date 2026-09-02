@@ -160,9 +160,9 @@ Params:
 - `role.imav.light.i2c_address` (0x44..0x47)
 - `role.imav.time_of_flight` (enable the optional VL53L4CX, default false)
 - `role.imav.tof.period_ms` (100..1000 ms, default 200 ms when enabled)
-- `role.imav.debug.publish.optional` (add 5 Hz derived tuning and 100 Hz
-  lossless optical samples to the mandatory navigation output, default false
-  and applied live)
+- `role.imav.debug.publish.optional` (add 5 Hz derived tuning and data-ready
+  optical samples at up to about 139 Hz to the mandatory navigation output,
+  default false and applied live)
 
 Outputs:
 
@@ -177,9 +177,9 @@ Outputs:
   strength `lps`, pulse count `lpc`, saturation count `lsa`, read-error count
   `ler` and sample-gap count `lgp`. Spectral tuning adds score `lsc`, local
   prominence in dB `lsn`, coherence `lco`, periodic red fraction `lrf`, peak
-  frequency `lfq` and second-harmonic ratio `lhr`. Each 100 Hz lossless optical sample adds
-  raw `lrd/lgn/lbl/lwh`, overload `lov`, sample counter `lct` and modulo-2^24
-  microsecond timestamp `ltu`.
+  frequency `lfq` and second-harmonic ratio `lhr`. Each data-ready optical
+  sample adds raw `lrd/lgn/lbl/lwh`, overload `lov`, sample counter `lct` and
+  modulo-2^24 microsecond timestamp `ltu`.
   Optional ToF also adds `rng` and `rsg`.
 
 Wiring and resources:
@@ -187,6 +187,7 @@ Wiring and resources:
 - one microphone: PA4 / ADC2_IN17
 - 23.9977 kHz trigger: TIM6
 - OPT4060: shared I2C1 on PA15/PB07, address 0x44 by default
+- OPT4060 active-low data ready: PA8 / EXTI8, former SRV1 signal
 - optional VL53L4CX: shared I2C1 on PA15/PB07, address 0x29
 - ADC1 remains dedicated to continuous voltage and core-temperature monitoring
 - PA2/PA3 retain the complete debug console
@@ -205,12 +206,18 @@ dense 2.2--3.8 Hz bank estimates local colored noise around the searched
 while 6 Hz is retained as a diagnostic harmonic. Its roughly 10-second
 integration avoids absolute-light thresholds and is designed for weak outdoor
 signals. The former 2/3 Hz edge detector remains available for diagnostics.
+The sensor emits a 1 us interrupt after each complete RGBW group. The optical
+thread waits synchronously on PA8 and reads the group over I2C after the edge;
+a 25 ms timeout prints a warning on the serial shell and performs a fallback
+read. DFT time constants are derived from sample timestamps, so auto-ranging,
+timeouts and the nominal 7.2 ms group interval do not change the integration
+time.
 When
 `role.imav.time_of_flight` is true, OPT4060 acquisition is stopped during each
 VL53L4CX one-shot so the 940 nm emitter cannot pollute a light sample, and
 ground range is published as `uavcan.equipment.range_sensor.Measurement`.
 
-The role, its 2652-byte DMA audio state, its 10304-byte sensor context and both
+The role, its 2652-byte DMA audio state, its 10816-byte sensor context and both
 thread working areas are allocated only when the runtime role is enabled.
 Current thresholds and measurements must still be calibrated with the real
 beacon and the drone motors running.

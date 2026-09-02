@@ -170,21 +170,23 @@ score nominal `lit`.
 | `lfq` | 5 Hz | Hz | Fréquence du meilleur bin spectral, entre 2,8 et 3,2 Hz. |
 | `lhr` | 5 Hz | rapport d'amplitudes | Rapport entre la deuxième harmonique à 6 Hz et le fondamental sélectionné. La deuxième harmonique est observée mais n'est pas obligatoire pour valider `lit`. |
 
-## A.5 Échantillons optiques bruts — environ 100 Hz
+## A.5 Échantillons optiques bruts — jusqu'à environ 139 Hz
 
-Ces sept clés sont envoyées pour chaque échantillon OPT4060. Sans télémètre,
-le débit mesuré est proche de 99 à 100 groupes/s. Lorsque le VL53L4CX est
-activé, l'acquisition optique est suspendue pendant chaque mesure de distance.
+Ces sept clés sont envoyées pour chaque échantillon OPT4060. À 1,8 ms par voie,
+l'interruption data-ready signale un groupe RGBW toutes les 7,2 ms, soit au
+plus environ 139 groupes/s hors reprises automatiques de plage. Lorsque le
+VL53L4CX est activé, l'acquisition optique est suspendue pendant chaque mesure
+de distance.
 
 | Clé | Cadence | Unité/domaine | Description de mise au point |
 |---|---:|---|---|
-| `lrd` | ~100 Hz | code ADC linéarisé | Canal rouge brut OPT4060. |
-| `lgn` | ~100 Hz | code ADC linéarisé | Canal vert brut OPT4060. |
-| `lbl` | ~100 Hz | code ADC linéarisé | Canal bleu brut OPT4060. |
-| `lwh` | ~100 Hz | code ADC linéarisé | Canal large bande brut OPT4060. |
-| `lov` | ~100 Hz | `0` ou `1` | Indique que l'échantillon est en surcharge. |
-| `lct` | ~100 Hz | compteur | Compteur d'échantillons permettant de reconstruire les groupes et de détecter les pertes. |
-| `ltu` | ~100 Hz | microsecondes modulo 2^24 | Horodatage MCU associé à l'échantillon. La représentation reste exacte dans le flottant UAVCAN et reboucle toutes les 16,777216 s. |
+| `lrd` | jusqu'à ~139 Hz | code ADC linéarisé | Canal rouge brut OPT4060. |
+| `lgn` | jusqu'à ~139 Hz | code ADC linéarisé | Canal vert brut OPT4060. |
+| `lbl` | jusqu'à ~139 Hz | code ADC linéarisé | Canal bleu brut OPT4060. |
+| `lwh` | jusqu'à ~139 Hz | code ADC linéarisé | Canal large bande brut OPT4060. |
+| `lov` | jusqu'à ~139 Hz | `0` ou `1` | Indique que l'échantillon est en surcharge. |
+| `lct` | jusqu'à ~139 Hz | compteur | Compteur d'échantillons permettant de reconstruire les groupes et de détecter les pertes. |
+| `ltu` | jusqu'à ~139 Hz | microsecondes modulo 2^24 | Horodatage MCU associé à l'échantillon. La représentation reste exacte dans le flottant UAVCAN et reboucle toutes les 16,777216 s. |
 
 Les quatre codes RGBW ont au plus 20 bits significatifs après application de
 l'exposant OPT4060 ; ils restent donc représentables exactement malgré leur
@@ -214,13 +216,13 @@ Avec le débogage activé et sans télémètre :
 
 - 15 trames/s nominales pour `det`, `snr` et `lit` ;
 - 110 trames/s pour les 22 diagnostics dérivés à 5 Hz ;
-- environ 700 trames/s pour les sept clés brutes à 100 Hz ;
-- total voisin de 825 trames/s.
+- jusqu'à environ 973 trames/s pour les sept clés brutes à 139 Hz ;
+- total maximal voisin de 1 098 trames/s.
 
 Le télémètre ajoute dix trames `rng/rsg` par seconde,
-soit environ 835 trames/s, en plus de son message UAVCAN standard. Cette charge
+soit environ 1 108 trames/s, en plus de son message UAVCAN standard. Cette charge
 reste techniquement supportable sur le banc à 1 Mbit/s, mais elle consomme
-environ 10 à 12 % du réseau et noie les outils avec des données inutiles pour
+environ 15 % du réseau et noie les outils avec des données inutiles pour
 la mission. C'est la raison principale, en plus de la stabilité de l'interface,
 pour laquelle `role.imav.debug.publish.optional` doit rester à `false` pendant
 l'épreuve.

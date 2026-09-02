@@ -638,7 +638,8 @@ DeviceStatus ImavRole::start(UAVCAN::Node& node)
   m_node = &node;
 
   using HR = HWResource;
-  if (not boardResource.tryAcquire(HR::PA04, HR::ADC_2, HR::TIM_6)) {
+  if (not boardResource.tryAcquire(
+        HR::PA04, HR::PA08, HR::ADC_2, HR::TIM_6)) {
     return DeviceStatus(DeviceStatus::RESOURCE, DeviceStatus::CONFLICT,
 			std::to_underlying(HR::ADC_2));
   }
@@ -758,8 +759,8 @@ DeviceStatus ImavRole::start(UAVCAN::Node& node)
   node.infoCb("IMAV audio started: PA4/ADC2, 24kHz, OVS x4, band=%u-%uHz",
 	      audio->detector.band.lowFrequencyHz, audioBandHighHz);
   if (initialSensors.lightAvailable) {
-    node.infoCb("IMAV light started: OPT4060 addr=0x%02x id=0x%04x 100Hz",
-		initialSensors.lightAddress,
+    node.infoCb("IMAV light started: OPT4060 addr=0x%02x id=0x%04x INT=PA8",
+			initialSensors.lightAddress,
 		static_cast<unsigned>(initialSensors.lightDeviceId));
   } else {
     node.infoCb("IMAV light unavailable: OPT4060 addr=0x44..0x47");
