@@ -112,6 +112,15 @@
       // OPT4060 address selected by ADDR: GND=0x44, VDD=0x45,
       // SDA=0x46, SCL=0x47. Invalid persisted values fall back to probing.
       {"role.imav.light.i2c_address", {.min = 0x44, .max = 0x47, .v = 0x44}},
+      // The competition beacon should already be in its steady pattern. Enable
+      // this only for bench tests which must also recognize its startup mode.
+      {"role.imav.light.beginning_pattern", {.v = false}},
+      // Nominal optical pulse timing. Both patterns share the high time but
+      // have distinct low times. Read when the role starts; reboot after a
+      // change. The detector derives frequency, duty cycle and harmonics.
+      {"role.imav.light.high_ms", {.min = 50, .max = 200, .v = 100}},
+      {"role.imav.light.steady_low_ms", {.min = 150, .max = 400, .v = 233}},
+      {"role.imav.light.beginning_low_ms", {.min = 250, .max = 600, .v = 400}},
       // The VL53L4CX is optional and not fitted on the first IMAV assembly.
       // When disabled, no ToF initialization, retry or light pause occurs.
       {"role.imav.time_of_flight", {.v = false}},

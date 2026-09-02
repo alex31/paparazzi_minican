@@ -1,0 +1,61 @@
+{
+  "imav_spectral_ramp_20260901T_light.csv": {
+    "segments": [
+      {"label": "off", "start_s": 1.0, "end_s": 11.0},
+      {"label": "beginning", "start_s": 13.0, "end_s": 27.0},
+      {"label": "steady", "start_s": 31.0, "end_s": 63.0}
+    ],
+    "events": [
+      {"kind": "steady_on", "time_s": 28.5, "maximum_delay_s": 0.75}
+    ]
+  },
+  "imav_fast_attack_release_20260902.csv": {
+    "segments": [
+      {"label": "off", "start_s": 0.2, "end_s": 2.5},
+      {"label": "beginning", "start_s": 4.0, "end_s": 18.0},
+      {"label": "steady", "start_s": 20.0, "end_s": 23.0},
+      {"label": "off", "start_s": 25.0, "end_s": 35.0}
+    ],
+    "events": [
+      {"kind": "steady_on", "time_s": 19.3, "maximum_delay_s": 0.75},
+      {"kind": "off", "time_s": 23.5, "maximum_delay_s": 0.75}
+    ]
+  },
+  "imav_pattern_filter_20260902.csv": {
+    "segments": [
+      {"label": "off", "start_s": 2.0, "end_s": 30.0},
+      {"label": "beginning", "start_s": 38.0, "end_s": 50.0},
+      {"label": "steady", "start_s": 54.0, "end_s": 87.0},
+      {"label": "off", "start_s": 95.0, "end_s": 112.0},
+      {"label": "beginning", "start_s": 118.0, "end_s": 131.0},
+      {"label": "steady", "start_s": 135.0, "end_s": 190.0}
+    ],
+    "events": [
+      {"kind": "steady_on", "time_s": 52.0, "maximum_delay_s": 0.75},
+      {"kind": "off", "time_s": 89.0, "maximum_delay_s": 0.75},
+      {"kind": "steady_on", "time_s": 132.8, "maximum_delay_s": 0.75}
+    ]
+  },
+  "imav_pattern_nominal_20260902.csv": {
+    "segments": [
+      {"label": "off", "start_s": 2.0, "end_s": 82.0},
+      {"label": "beginning", "start_s": 103.0, "end_s": 108.5}
+    ],
+    "events": []
+  },
+  "imav_pattern_corrected_active_20260902.csv": {
+    "segments": [
+      {"label": "steady", "start_s": 2.0, "end_s": 96.0},
+      {"label": "off", "start_s": 100.0, "end_s": 120.0}
+    ],
+    "events": [
+      {"kind": "off", "time_s": 98.25, "maximum_delay_s": 0.75}
+    ]
+  },
+  "imav_20260901T125834Z.csv": {
+    "segments": [
+      {"label": "steady", "start_s": 2.0, "end_s": 55.0}
+    ],
+    "events": []
+  }
+}

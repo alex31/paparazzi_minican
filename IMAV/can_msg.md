@@ -44,7 +44,7 @@ sont plus renouvelées.
 |---|---|---|
 | `det` | exactement `0.0` ou `1.0` | État de détection audio après filtrage spectral, cohérence de blocs et hystérésis. `1.0` signifie que la signature sonore de la balise est actuellement reconnue. |
 | `snr` | dB relatifs | Force de la dernière salve sonore reconnue au-dessus du plancher de bruit adaptatif dans la bande 2–3 kHz. La valeur est maintenue entre les bips, puis revient vers zéro lorsque la mesure devient périmée. |
-| `lit` | score continu de `0.0` à `1.0` | Confiance lumineuse finale. Une voie lente acquiert le signal faible autour de 3 Hz ; après trois flashs rouges cohérents, une voie rapide suit la proximité et la décroissance. |
+| `lit` | score continu de `0.0` à `1.0` | Confiance lumineuse finale. Une voie lente acquiert le signal faible autour de 3 Hz ; une fenêtre spectrale courte suit ensuite la proximité et la décroissance. |
 
 ### 2.1 Interprétation de `det`
 
@@ -73,18 +73,21 @@ réflexions acoustiques modifient la valeur.
 `lit` est également un score continu, pas un booléen et pas une mesure de lux.
 Il combine deux détecteurs complémentaires. En acquisition, le maximum des
 deux conserve la portée de la voie lente tout en permettant à la voie rapide
-de réagir. Celle-ci mesure les fronts rouges et demande deux intervalles
-cohérents, donc trois flashs : à 3 Hz, elle peut décider en environ 0,67 s
-avant la latence CAN.
+de réagir. Celle-ci analyse une fenêtre glissante d'une seconde du contraste
+rouge avec cinq couples fondamental/H2. Sa mémoire finie lui permet de valider
+le régime établi en moins d'une seconde et d'oublier rapidement une balise
+dépassée.
 
-La voie lente retire le fond lumineux, recherche un pic entre 2,8 et 3,2 Hz
-et l'évalue par rapport aux fréquences voisines. Sa mémoire d'environ dix
-secondes conserve la sensibilité lorsque le signal est faible devant la
-lumière réfléchie par le sol. Dès que la voie rapide dépasse 0,55, le rôle
+La voie lente retire le fond lumineux, recherche le fondamental autour de la
+fréquence déduite des temps configurés et vérifie aussi le rapport et la phase
+de sa deuxième harmonique. Elle exploite ainsi l'asymétrie du motif, dont le
+temps allumé diffère du temps éteint, plutôt qu'une simple raie à 3 Hz. Sa
+mémoire d'environ dix secondes conserve la sensibilité lorsque le signal est
+faible devant la lumière réfléchie par le sol. Dès que la voie rapide dépasse 0,55, le rôle
 passe en suivi de proximité : la contribution lente est alors pondérée par la
-preuve rapide courante. Après le dernier front, `lit` commence à décroître vers
-450 ms et atteint normalement zéro vers 900 ms, avant les latences CAN et
-affichage. Le firmware force aussi `lit` à zéro si aucun nouvel échantillon
+preuve rapide courante. Sur les captures de banc, `lit` passe sous 0,30 entre
+0,16 et 0,50 s après l'extinction ; la fenêtre ne peut conserver aucun
+échantillon pendant plus d'une seconde. Le firmware force aussi `lit` à zéro si aucun nouvel échantillon
 OPT4060 n'a été reçu depuis 200 ms.
 
 ### 2.4 Utilisation recommandée par le contrôleur de vol
@@ -107,6 +110,7 @@ La configuration normale de mission est :
 
 ```text
 ROLE.imav.beacon = true
+role.imav.light.beginning_pattern = false
 role.imav.debug.publish.optional = false
 ```
 
@@ -148,20 +152,19 @@ rester désactivés pendant l'épreuve IMAV 2026.
 
 ## A.3 Diagnostics de la voie optique rapide — 5 Hz
 
-Ces clés décrivent le détecteur temporel par seuils et fronts. Cette voie
-qualifie rapidement une balise proche et participe maintenant au score nominal
-`lit`.
+Ces clés décrivent le détecteur spectral court à mémoire finie. Cette voie
+qualifie rapidement une balise proche et participe au score nominal `lit`.
 
 | Clé | Cadence | Unité/domaine | Description de mise au point |
 |---|---:|---|---|
 | `lrr` | 5 Hz | `0..1` | Fraction rouge de l'excursion RGB positive. |
 | `lac` | 5 Hz | rapport | Excursion rouge positive rapportée au fond lumineux. |
 | `lis` | 5 Hz | `0..1` | Score instantané d'une impulsion rouge. |
-| `lhz` | 5 Hz | Hz | Cadence mesurée entre les fronts lumineux acceptés. |
-| `lcs` | 5 Hz | `0..1` | Confiance dans une cadence proche de 2 ou 3 Hz ; deux intervalles cohérents apportent le support complet. |
-| `lfs` | 5 Hz | `0..1` | Score final de la voie rapide, après combinaison de la cadence et de la force des flashs. |
-| `lps` | 5 Hz | `0..1` | Force du flash courant ou du dernier flash accepté. |
-| `lpc` | 5 Hz | compteur | Nombre cumulé de fronts lumineux acceptés depuis le démarrage. |
+| `lhz` | 5 Hz | Hz | Fréquence du meilleur fondamental dans la fenêtre rapide. |
+| `lcs` | 5 Hz | `0..1` | Cohérence du fondamental rapide dans le contraste rouge. |
+| `lfs` | 5 Hz | `0..1` | Score final de la fenêtre rapide : cohérence, couleur, rapport H2/H1 et phase relative. |
+| `lps` | 5 Hz | `0..1` | Amplitude du fondamental rapide rapportée au niveau rouge moyen. |
+| `lpc` | 5 Hz | compteur | Nombre cumulé d'épisodes où la voie rapide s'est verrouillée depuis le démarrage. |
 | `lsa` | 5 Hz | compteur | Nombre cumulé d'épisodes de surcharge OPT4060. |
 | `ler` | 5 Hz | compteur | Nombre cumulé d'erreurs de lecture OPT4060. |
 | `lgp` | 5 Hz | compteur | Nombre cumulé de trous détectés dans l'acquisition lumineuse. |
@@ -171,11 +174,24 @@ qualifie rapidement une balise proche et participe maintenant au score nominal
 | Clé | Cadence | Unité/domaine | Description de mise au point |
 |---|---:|---|---|
 | `lsc` | 5 Hz | `0..1` | Score propre de la voie spectrale lente. Il contribue directement à `lit` pendant l'acquisition, puis est pondéré par la voie rapide pendant le suivi de proximité. |
-| `lsn` | 5 Hz | dB | Proéminence du meilleur bin entre 2,8 et 3,2 Hz par rapport à la médiane du bruit spectral local. |
+| `lsn` | 5 Hz | dB | Proéminence du meilleur bin autour de la fréquence configurée par rapport à la médiane du bruit spectral local. |
 | `lco` | 5 Hz | `0..1` | Cohérence du fondamental périodique dans le contraste rouge. |
 | `lrf` | 5 Hz | `0..1` | Fraction rouge de la composante RGB périodique complexe. |
-| `lfq` | 5 Hz | Hz | Fréquence du meilleur bin spectral, entre 2,8 et 3,2 Hz. |
-| `lhr` | 5 Hz | rapport d'amplitudes | Rapport entre la deuxième harmonique à 6 Hz et le fondamental sélectionné. La deuxième harmonique est observée mais n'est pas obligatoire pour valider `lit`. |
+| `lfq` | 5 Hz | Hz | Fréquence du meilleur bin spectral autour du motif sélectionné. |
+| `lhr` | 5 Hz | rapport d'amplitudes | Rapport entre la deuxième harmonique associée et le fondamental sélectionné. |
+| `lhs` | 5 Hz | `0..1` | Ressemblance harmonique au créneau asymétrique attendu : rapport H2/H1, phase relative et visibilité de H2. Une fondamentale sans H2 reste utilisable à confiance réduite. |
+| `lon` | 5 Hz | ms | Durée haute estimée dans la fenêtre rapide à partir de H2/H1. |
+| `lof` | 5 Hz | ms | Durée basse estimée dans la fenêtre rapide à partir de H2/H1. |
+| `lts` | 5 Hz | `0..1` | Ressemblance harmonique de la fenêtre rapide au créneau asymétrique attendu. |
+| `lpt` | 5 Hz | entier | Motif ayant fourni le score courant : `0` aucun, `1` démarrage, `2` régime établi. |
+
+Les valeurs nominales sont `high_ms=100`, `steady_low_ms=233` et
+`beginning_low_ms=400`. `role.imav.light.beginning_pattern=false` ne construit
+et n'évalue que la banque du régime établi ; sa valeur par défaut évite qu'un
+leurre à environ 2 Hz soit accepté pendant l'épreuve. La valeur `true`, utile
+sur le banc lorsque la balise est allumée pendant l'acquisition, autorise les
+deux banques et retient la meilleure. Ces quatre paramètres sont lus au
+démarrage du rôle : il faut redémarrer après modification.
 
 ## A.5 Échantillons optiques bruts — jusqu'à environ 139 Hz
 
@@ -222,14 +238,14 @@ chaque acquisition et reste indépendant des clés de débogage `rng/rsg`.
 Avec le débogage activé et sans télémètre :
 
 - 15 trames/s nominales pour `det`, `snr` et `lit` ;
-- 115 trames/s pour les 23 diagnostics dérivés à 5 Hz ;
+- 140 trames/s pour les 28 diagnostics dérivés à 5 Hz ;
 - jusqu'à environ 973 trames/s pour les sept clés brutes à 139 Hz ;
-- total maximal voisin de 1 103 trames/s.
+- total maximal voisin de 1 128 trames/s.
 
 Le télémètre ajoute dix trames `rng/rsg` par seconde,
-soit environ 1 113 trames/s, en plus de son message UAVCAN standard. Cette charge
+soit environ 1 138 trames/s, en plus de son message UAVCAN standard. Cette charge
 reste techniquement supportable sur le banc à 1 Mbit/s, mais elle consomme
-environ 15 % du réseau et noie les outils avec des données inutiles pour
+environ 16 % du réseau et noie les outils avec des données inutiles pour
 la mission. C'est la raison principale, en plus de la stabilité de l'interface,
 pour laquelle `role.imav.debug.publish.optional` doit rester à `false` pendant
 l'épreuve.

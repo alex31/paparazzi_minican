@@ -84,7 +84,9 @@ nécessaires aux FFT, filtres adaptés et autres post-traitements.
 Le firmware publie aussi à 5 Hz `lfs` (voie rapide), `lsc` (voie spectrale
 lente), `lsn` (proéminence locale en dB), `lco` (cohérence), `lrf` (fraction
 rouge périodique), `lfq`
-(fréquence du pic) et `lhr` (rapport deuxième harmonique/fondamental). Ces
+(fréquence du pic), `lhr` (rapport deuxième harmonique/fondamental), `lhs`
+(ressemblance harmonique), `lon/lof` (durées haute/basse), `lts` (accord
+temporel) et `lpt` (`0` aucun motif, `1` démarrage, `2` établi). Ces
 grandeurs permettent de recaler les seuils sur une capture extérieure sans
 modifier la sortie nominale `lit` à 5 Hz.
 
@@ -100,3 +102,45 @@ explicites peuvent également être donnés :
 ```sh
 ./record_imav_can.py --duration 60 --output /tmp/imav_50cm.csv
 ```
+
+## Rejeu offline du détecteur lumineux
+
+`offline_light_detector.py` ne consomme que les sept clés brutes RGBW. Il
+reconstruit les groupes avec `ltu`, puis applique une fenêtre glissante d'une
+seconde à cinq fréquences autour de celle déduite des temps haut/bas. Chaque
+fréquence possède sa propre voie H2. Le score combine la cohérence du
+fondamental dans le contraste rouge, le rapport H2/H1, la phase relative et la
+couleur de la composante périodique.
+
+La fenêtre est finie : contrairement à la DFT lente d'acquisition, une preuve
+disparue ne peut pas rester mémorisée plus d'une seconde. Cette voie est
+destinée au verrouillage et au suivi de proximité ; elle ne remplace pas la
+voie lente pour acquérir à grande distance un signal noyé dans le bruit.
+
+Le manifeste `light_capture_segments.json` annote les phases éteintes, de
+démarrage et de régime établi des captures locales. Le test complet se lance
+ainsi :
+
+```sh
+./offline_light_detector.py --check
+```
+
+Avec les six acquisitions disponibles le 2 septembre 2026, il rejoue 62 514
+groupes RGBW. Sur les fenêtres entièrement contenues dans un segment annoté,
+le maximum éteint vaut 0,038, le maximum du motif de démarrage rejeté vaut
+0,147 et le minimum du régime établi vaut 0,864. Les attaques franchissent
+0,55 en 0,25 à 0,56 s et les extinctions passent sous 0,30 en 0,16 à 0,50 s.
+
+Le comportement alternatif et les temps nominaux se règlent sans modifier le
+script :
+
+```sh
+./offline_light_detector.py --beginning-pattern \
+  --high-ms 100 --steady-low-ms 233 --beginning-low-ms 400 \
+  --output /tmp/imav_light_scores.csv
+```
+
+Avec la banque de démarrage activée, elle est choisie pour 100 % des fenêtres
+2 Hz annotées et la banque établie pour 100 % des fenêtres 3 Hz. Le calcul a
+ensuite été porté dans le firmware avec des sommes glissantes en `float32` ; il
+reste à vérifier son résultat et sa charge CPU sur la cible.

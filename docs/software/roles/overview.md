@@ -158,6 +158,12 @@ Params:
 - `role.imav.audio.band_low_hz` (2000..2600 Hz, default 2000; reboot after
   changing it)
 - `role.imav.light.i2c_address` (0x44..0x47)
+- `role.imav.light.beginning_pattern` (recognize the startup pattern in
+  addition to the steady pattern; default false, reboot after changing it)
+- `role.imav.light.high_ms` (50..200, default 100),
+  `role.imav.light.steady_low_ms` (150..400, default 233) and
+  `role.imav.light.beginning_low_ms` (250..600, default 400): pulse timings
+  used by the temporal and harmonic filters; reboot after changing them
 - `role.imav.time_of_flight` (enable the optional VL53L4CX, default false)
 - `role.imav.tof.period_ms` (100..1000 ms, default 200 ms when enabled)
 - `role.imav.debug.publish.optional` (add 5 Hz derived tuning and data-ready
@@ -173,12 +179,14 @@ Outputs:
 - When `role.imav.debug.publish.optional` is true, `a0`, `p0`, `sdb`, `aud`,
   `frq` and `cad` provide the accompanying audio tuning measurements at 5 Hz.
   Light tuning at 5 Hz adds red ratio `lrr`, relative red AC `lac`,
-  instantaneous score `lis`, flash cadence `lhz`, cadence score `lcs`,
-  fast-path score `lfs`, pulse strength `lps`, pulse count `lpc`, saturation count
+  instantaneous score `lis`, finite-window frequency `lhz`, coherence `lcs`,
+  fast-path score `lfs`, relative periodic strength `lps`, lock count `lpc`, saturation count
   `lsa`, read-error count
   `ler` and sample-gap count `lgp`. Spectral tuning adds score `lsc`, local
   prominence in dB `lsn`, coherence `lco`, periodic red fraction `lrf`, peak
-  frequency `lfq` and second-harmonic ratio `lhr`. Each data-ready optical
+  frequency `lfq`, second-harmonic ratio `lhr`, harmonic-shape score `lhs`,
+  high/low durations inferred from H2/H1 `lon/lof`, fast harmonic-shape score `lts` and
+  selected pattern `lpt` (`0` none, `1` startup, `2` steady). Each data-ready optical
   sample adds raw `lrd/lgn/lbl/lwh`, overload `lov`, sample counter `lct` and
   modulo-2^24 microsecond timestamp `ltu`.
   Optional ToF also adds `rng` and `rsg`.

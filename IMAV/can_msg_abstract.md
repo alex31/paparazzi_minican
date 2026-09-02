@@ -4,14 +4,14 @@
 — `det`, c'est simple : 0 ou 1, selon que le son de la balise est reconnu ou pas.
 — `snr`, c'est la force du bip par rapport au bruit moteur appris autour, pas un niveau sonore absolu.
 — Donc pour remonter vers la balise, on compare surtout son évolution pendant le déplacement du drone.
-— `lit` utilise la DFT lente pour trouver la balise, puis trois flashs cohérents suffisent pour suivre vite le passage dessus.
+— `lit` utilise la DFT lente pour trouver la balise, puis une fenêtre courte suit vite le passage dessus et oublie en moins d'une seconde.
 — Ce n'est ni une mesure de lux ni un seuil brut : le fond lumineux et le bruit local sont retirés.
 — Et on n'impose pas `det ET lit` : un des deux capteurs peut être masqué sans que l'autre raconte n'importe quoi.
 — Les trois valeurs arrivent séparément, sans timestamp commun, donc l'autopilote surveille leur fraîcheur.
 — Pour l'épreuve, on met `role.imav.debug.publish.optional` à `false` et on ne dépend que de ces trois clés.
 — Le gros paquet de messages optionnels, c'est uniquement pour bricoler et comprendre ce qui se passe au banc.
 — On y trouve les détails audio : score instantané, fréquence, cadence, énergie et autres valeurs de réglage.
-— On a aussi les détails lumière : voie rapide par fronts, score spectral lent, cohérence, couleur et harmonique.
+— Côté lumière, on voit aussi les temps haut/bas, le motif choisi et si ses harmoniques ont vraiment la bonne forme.
 — Les canaux RGBW bruts montent jusqu'à environ 139 Hz pour refaire les FFT tranquillement sur le PC.
 — `lct` sert à recoller les groupes et repérer une perte ; `ltu` donne le temps MCU modulo 2^24 microsecondes.
 — Si le ToF est activé, `rng` et `rsg` aident au debug, mais la vraie distance passe dans le message UAVCAN standard.

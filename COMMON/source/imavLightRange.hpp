@@ -38,6 +38,11 @@ struct ImavLightRangeSnapshot {
   float lightSpectralRedFraction = 0.0f;
   float lightSpectralFrequencyHz = 0.0f;
   float lightHarmonicRatio = 0.0f;
+  float lightHarmonicShapeScore = 0.0f;
+  float lightHighDurationMs = 0.0f;
+  float lightLowDurationMs = 0.0f;
+  float lightTemporalShapeScore = 0.0f;
+  uint8_t lightPattern = 0U;
   uint32_t lightSamples = 0U;
   uint32_t lightPulses = 0U;
   uint32_t lightSaturations = 0U;
@@ -64,7 +69,10 @@ struct ImavLightRangeSnapshot {
 class ImavLightRange final {
 public:
   ImavLightRange(UAVCAN::Node& node, uint8_t lightAddress,
-                 uint32_t rangePeriodMs, bool timeOfFlightEnabled);
+                 uint32_t rangePeriodMs, bool timeOfFlightEnabled,
+                 bool beginningPatternEnabled, uint16_t lightHighMs,
+                 uint16_t lightSteadyLowMs,
+                 uint16_t lightBeginningLowMs);
 
   /** @brief Optionally configure ToF, then start light sampling. */
   void initialize();
@@ -76,6 +84,9 @@ public:
   ImavLightRangeSnapshot snapshot() const;
 
 private:
+  struct LightFastSample;
+  struct LightFastPatternState;
+
   friend uint8_t *imav_vl53l4cx_work_buffer(const void *device,
                                             uint32_t requiredSize);
 
@@ -93,9 +104,13 @@ private:
   bool sampleLight(systime_t sampleTime);
   void processLightMeasurement(const std::array<uint32_t, 4U>& adcCodes,
                                bool overloaded, systime_t now);
-  void clearLightCadence();
-  void appendLightOnset(systime_t now);
-  void updateLightCadence(float instantScore, systime_t now);
+  void resetLightFastSpectrum();
+  void accumulateLightFastSample(const LightFastSample& sample,
+                                 float direction);
+  void scoreLightFastPattern(LightFastPatternState& pattern,
+                             uint16_t lowMs, uint8_t identifier);
+  void updateLightFastSpectrum(const std::array<float, 4U>& scaled,
+                               systime_t now);
   void resetLightSpectrum();
   void updateLightSpectrum(const std::array<float, 4U>& scaled,
                            systime_t now);
@@ -122,6 +137,10 @@ private:
   uint8_t lightAddress;
   const uint32_t rangePeriodMs;
   const bool timeOfFlightEnabled;
+  const bool beginningPatternEnabled;
+  const uint16_t lightHighMs;
+  const uint16_t lightSteadyLowMs;
+  const uint16_t lightBeginningLowMs;
   VL53L4CX_Object_t rangeDevice = {};
 
   // This object is allocated in SRAM1, which is DMA-accessible on STM32G491.
@@ -139,13 +158,11 @@ private:
   bool lightBaselineValid = false;
   bool lightNoiseValid = false;
   bool lightCountersValid = false;
-  bool lightPulseArmed = false;
-  bool lightPulseActive = false;
   bool lightOverloadActive = false;
   bool lightFastTracking = false;
+  bool lightFastDetected = false;
   std::array<float, 4U> lightBaseline = {};
   std::array<uint8_t, 4U> lightCounters = {};
-  std::array<systime_t, 6U> lightOnsets = {};
 
   struct LightSpectralBin {
     float redReal = 0.0f;
@@ -155,7 +172,19 @@ private:
     float blueReal = 0.0f;
     float blueImag = 0.0f;
   };
-  std::array<LightSpectralBin, 18U> lightSpectralBins = {};
+  struct LightSpectralPatternState {
+    std::array<LightSpectralBin, 17U> fundamentalBins = {};
+    std::array<LightSpectralBin, 5U> harmonicBins = {};
+    float score = 0.0f;
+    float snrDb = 0.0f;
+    float coherence = 0.0f;
+    float redFraction = 0.0f;
+    float frequencyHz = 0.0f;
+    float harmonicRatio = 0.0f;
+    float harmonicShapeScore = 0.0f;
+  };
+  LightSpectralPatternState lightSteadySpectrum = {};
+  LightSpectralPatternState lightBeginningSpectrum = {};
   std::array<float, 3U> lightSpectralBaseline = {};
   float lightSpectralEnergy = 0.0f;
   float lightSpectralScore = 0.0f;
@@ -164,9 +193,47 @@ private:
   float lightSpectralRedFraction = 0.0f;
   float lightSpectralFrequencyHz = 0.0f;
   float lightHarmonicRatio = 0.0f;
+  float lightHarmonicShapeScore = 0.0f;
   uint32_t lightSpectralSamples = 0U;
   systime_t lightSpectralStartSample = 0U;
   systime_t lightSpectralLastSample = 0U;
+
+  struct LightFastSample {
+    systime_t timestamp = 0U;
+    std::array<float, 3U> rgb = {};
+  };
+  struct LightFastBin {
+    std::array<float, 3U> fundamentalReal = {};
+    std::array<float, 3U> fundamentalImag = {};
+    std::array<float, 3U> harmonicReal = {};
+    std::array<float, 3U> harmonicImag = {};
+    float fundamentalOscillatorReal = 0.0f;
+    float fundamentalOscillatorImag = 0.0f;
+    float harmonicOscillatorReal = 0.0f;
+    float harmonicOscillatorImag = 0.0f;
+  };
+  struct LightFastPatternState {
+    std::array<LightFastBin, 5U> bins = {};
+    float score = 0.0f;
+    float coherence = 0.0f;
+    float frequencyHz = 0.0f;
+    float harmonicRatio = 0.0f;
+    float phaseAlignment = 0.0f;
+    float redFraction = 0.0f;
+    float harmonicShape = 0.0f;
+    float fundamentalAmplitude = 0.0f;
+    uint8_t identifier = 0U;
+  };
+  std::array<LightFastSample, 144U> lightFastSamples = {};
+  LightFastPatternState lightFastSteadySpectrum = {};
+  LightFastPatternState lightFastBeginningSpectrum = {};
+  std::array<float, 3U> lightFastRgbSum = {};
+  float lightFastContrastSum = 0.0f;
+  float lightFastContrastSquareSum = 0.0f;
+  size_t lightFastFirstSample = 0U;
+  size_t lightFastSampleCount = 0U;
+  uint32_t lightFastEvaluationCounter = 0U;
+  systime_t lightFastLastSample = 0U;
 
   float lightNoiseFloor = 0.0f;
   float lightRedRatio = 0.0f;
@@ -176,7 +243,9 @@ private:
   float lightCadenceScore = 0.0f;
   float lightFastScore = 0.0f;
   float lightFlashScore = 0.0f;
-  float lightPulsePeakScore = 0.0f;
+  float lightHighDurationMs = 0.0f;
+  float lightLowDurationMs = 0.0f;
+  float lightTemporalShapeScore = 0.0f;
   float lightRecentPulseStrength = 0.0f;
   uint32_t lightRed = 0U;
   uint32_t lightGreen = 0U;
@@ -190,10 +259,9 @@ private:
   uint32_t lightGaps = 0U;
   uint8_t lightConsecutiveErrors = 0U;
   uint8_t lightStalePolls = 0U;
-  uint8_t lightOnsetCount = 0U;
-  uint8_t lightHighSamples = 0U;
-  uint8_t lightLowSamples = 0U;
-  systime_t lightLastOnset = 0U;
+  uint8_t lightFastPattern = 0U;
+  uint8_t lightSlowPattern = 0U;
+  uint8_t lightPattern = 0U;
   systime_t lightLastSample = 0U;
 
   bool rangeAvailable = false;
