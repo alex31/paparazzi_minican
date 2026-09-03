@@ -1319,10 +1319,14 @@ Les seuils numériques actuels sont volontairement des valeurs de bring-up. Ils 
   `OPT4060_INT` avec pull-up et EXTI8. Le thread attend le front descendant avec
   `palWaitLineTimeout`, puis lit les huit registres de résultat par un unique
   transfert burst. Un timeout de 25 ms écrit un avertissement sur le shell
-  série et effectue une lecture de secours. Le débit nominal maximal est
-  d'environ 139 Hz. Exposant et mantisse sont linéarisés en codes ADC 26 bits ;
-  les compteurs de conversion restent vérifiés afin de détecter une donnée
-  périmée ou un capteur bloqué.
+  série et effectue une lecture de secours. Le débit nominal maximal reste
+  d'environ 139 Hz. Exposant et mantisse sont
+  linéarisés en codes ADC 26 bits. Le CRC matériel protège les 20 bits de
+  mantisse, les 4 bits d'exposant et les 4 bits du compteur ; une discordance
+  invalide tout le groupe. Les compteurs restent ensuite vérifiés afin de
+  détecter une donnée périmée ou un capteur bloqué. Le registre de statut
+  `0x0C` n'est lu que si un canal atteint l'exposant maximal 6 ou la mantisse
+  maximale ; la transaction I2C supplémentaire disparaît en régime nominal.
 - Les coefficients TI `R=2,4×CH0`, `G=CH1` et `B=1,3×CH2` sont appliqués avant de calculer la dominance rouge de la variation. Le score instantané combine amplitude absolue, variation relative, élévation au-dessus du bruit et chromaticité rouge.
 - La voie rapide conserve exactement la dernière seconde de RGB dans un
   anneau de 144 échantillons. Des sommes glissantes évaluent cinq couples

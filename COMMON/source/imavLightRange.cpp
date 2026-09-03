@@ -32,6 +32,8 @@ namespace {
   constexpr uint8_t optRegDeviceId = 0x11U;
 
   constexpr uint16_t optRangeAuto = 0x0CU << 10U;
+  // Keep 1.8 ms fixed: conversion time changes effective resolution and
+  // cadence, not the maximum full-scale illuminance handled by auto-range.
   constexpr uint16_t optConversionTime1p8Ms = 2U << 6U;
   constexpr uint16_t optOperatingContinuous = 3U << 4U;
   constexpr uint16_t optInterruptLatch = 1U << 3U;
@@ -48,6 +50,8 @@ namespace {
   constexpr uint16_t optStatusOverload = 1U << 3U;
   constexpr size_t optChannelCount = 4U;
   constexpr size_t optResultBytes = optChannelCount * 4U;
+  constexpr uint8_t optMaximumExponent = 6U;
+  constexpr uint32_t optMaximumMantissa = 0x000FFFFFU;
   constexpr uint32_t optPollPeriodMs = 10U;
   constexpr uint32_t optFirstConversionDelayMs = 8U;
   constexpr uint32_t optDataReadyTimeoutMs = 25U;
@@ -83,7 +87,9 @@ namespace {
 
   struct Opt4060ChannelSample {
     uint32_t adcCode;
+    uint32_t mantissa;
     uint8_t counter;
+    uint8_t exponent;
     bool valid;
   };
 
@@ -93,6 +99,33 @@ namespace {
       static_cast<uint16_t>(bytes[0]) << 8U | bytes[1]);
   }
 
+  constexpr uint8_t parity(uint32_t value)
+  {
+    return static_cast<uint8_t>(__builtin_parity(value));
+  }
+
+  /**
+   * @brief Calculate TI's unrolled x^4+x+1 OPT4060 output CRC.
+   *
+   * The protected word contains the 20-bit mantissa, four exponent bits and
+   * the four-bit rolling sample counter. These masks are the direct, compact
+   * form of the four equations in the channel-result register description.
+   */
+  constexpr uint8_t calculateOpt4060Crc(uint8_t exponent,
+                                         uint32_t mantissa,
+                                         uint8_t counter)
+  {
+    const uint32_t parityColumns = mantissa ^ exponent ^ counter;
+    uint8_t crc = parity(parityColumns);
+    crc |= static_cast<uint8_t>(
+      parity(parityColumns & 0x000AAAAAU) << 1U);
+    crc |= static_cast<uint8_t>(
+      parity(parityColumns & 0x00088888U) << 2U);
+    crc |= static_cast<uint8_t>(
+      parity(mantissa & 0x00080808U) << 3U);
+    return crc;
+  }
+
   constexpr Opt4060ChannelSample decodeOpt4060Channel(uint16_t msb,
                                                        uint16_t lsb)
   {
@@ -100,17 +133,29 @@ namespace {
     const uint32_t mantissa =
       (static_cast<uint32_t>(msb & 0x0FFFU) << 8U) |
       static_cast<uint32_t>(lsb >> 8U);
+    const uint8_t counter = static_cast<uint8_t>((lsb >> 4U) & 0x0FU);
+    const uint8_t receivedCrc = static_cast<uint8_t>(lsb & 0x0FU);
+    const bool valid =
+      (exponent <= optMaximumExponent) &&
+      (calculateOpt4060Crc(exponent, mantissa, counter) == receivedCrc);
     return {
-      .adcCode = exponent <= 6U ? mantissa << exponent : 0U,
-      .counter = static_cast<uint8_t>((lsb >> 4U) & 0x0FU),
-      .valid = exponent <= 6U,
+      .adcCode = valid ? mantissa << exponent : 0U,
+      .mantissa = mantissa,
+      .counter = counter,
+      .exponent = exponent,
+      .valid = valid,
     };
   }
 
   static_assert(
-    decodeOpt4060Channel(0x3123U, 0x45A0U).adcCode ==
+    decodeOpt4060Channel(0x3123U, 0x45A7U).adcCode ==
       (0x12345U << 3U));
-  static_assert(decodeOpt4060Channel(0x3123U, 0x45A0U).counter == 0x0AU);
+  static_assert(decodeOpt4060Channel(0x3123U, 0x45A7U).counter == 0x0AU);
+  static_assert(decodeOpt4060Channel(0x3123U, 0x45A7U).valid);
+  static_assert(not decodeOpt4060Channel(0x3123U, 0x45A6U).valid);
+  static_assert(
+    calculateOpt4060Crc(7U, 0x12345U, 0x0AU) == 0x06U);
+  static_assert(not decodeOpt4060Channel(0x7123U, 0x45A6U).valid);
 
   constexpr uint32_t sensorRetryPeriodMs = 5000U;
   constexpr uint32_t rangeTimingBudgetMs = 30U;
@@ -1201,6 +1246,7 @@ bool ImavLightRange::sampleLight(systime_t sampleTime)
 
   std::array<uint32_t, optChannelCount> adcCodes = {};
   std::array<uint8_t, optChannelCount> counters = {};
+  bool checkOverload = false;
   for (size_t channel = 0U; channel < optChannelCount; ++channel) {
     const size_t offset = channel * 4U;
     const Opt4060ChannelSample sample = decodeOpt4060Channel(
@@ -1212,6 +1258,9 @@ bool ImavLightRange::sampleLight(systime_t sampleTime)
     }
     adcCodes[channel] = sample.adcCode;
     counters[channel] = sample.counter;
+    checkOverload = checkOverload ||
+      (sample.exponent == optMaximumExponent) ||
+      (sample.mantissa == optMaximumMantissa);
   }
 
   if (lightCountersValid) {
@@ -1231,13 +1280,15 @@ bool ImavLightRange::sampleLight(systime_t sampleTime)
   lightCounters = counters;
   lightCountersValid = true;
 
-  uint16_t status = 0U;
-  if (not readLightRegister(optRegStatus, status)) {
-    return false;
+  bool overloaded = false;
+  if (checkOverload) {
+    uint16_t status = 0U;
+    if (not readLightRegister(optRegStatus, status)) {
+      return false;
+    }
+    overloaded = (status & optStatusOverload) != 0U;
   }
-  processLightMeasurement(
-    adcCodes, (status & optStatusOverload) != 0U,
-    sampleTime);
+  processLightMeasurement(adcCodes, overloaded, sampleTime);
   return true;
 }
 

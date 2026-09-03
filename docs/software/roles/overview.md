@@ -221,9 +221,11 @@ accepted flash.
 The sensor emits a 1 us interrupt after each complete RGBW group. The optical
 thread waits synchronously on PA8 and reads the group over I2C after the edge;
 a 25 ms timeout prints a warning on the serial shell and performs a fallback
-read. DFT time constants are derived from sample timestamps, so auto-ranging,
-timeouts and the nominal 7.2 ms group interval do not change the integration
-time.
+read. The result CRC covers mantissa, exponent and sample counter;
+invalid groups are rejected. Register 0x0C is read only at exponent 6 or at a
+maximum mantissa, avoiding a second I2C transaction under nominal light. DFT
+time constants are derived from sample timestamps, so auto-ranging, timeouts
+and the nominal 7.2 ms group interval do not change the integration time.
 When
 `role.imav.time_of_flight` is true, OPT4060 acquisition is stopped during each
 VL53L4CX one-shot so the 940 nm emitter cannot pollute a light sample, and
