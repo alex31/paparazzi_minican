@@ -109,6 +109,9 @@
       // near 2.43 kHz, below the 2.6--3.0 kHz band quoted by the rulebook.
       // Read when the role starts; reboot after changing it at runtime.
       {"role.imav.audio.band_low_hz", {.min = 2000, .max = 2600, .v = 2000}},
+      // Weight of the newest recognized burst in the reported audio SNR IIR.
+      // 1 disables smoothing; the value is read live for every completed burst.
+      {"role.imav.audio.snr_alpha", {.min = 0.5f, .max = 1.0f, .v = 1.0f}},
       // OPT4060 address selected by ADDR: GND=0x44, VDD=0x45,
       // SDA=0x46, SCL=0x47. Invalid persisted values fall back to probing.
       {"role.imav.light.i2c_address", {.min = 0x44, .max = 0x47, .v = 0x44}},

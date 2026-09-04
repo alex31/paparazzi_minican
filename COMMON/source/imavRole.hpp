@@ -28,6 +28,7 @@ private:
   void startAudioAcquisition();
   void stopAudioAcquisition();
   void processAudioHalf(size_t offset, bool discontinuity);
+  void publishAudioBurst();
   void publishMeasurements();
 
   ImavAudioState *audio = nullptr;

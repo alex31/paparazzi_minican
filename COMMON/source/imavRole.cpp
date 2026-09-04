@@ -32,7 +32,6 @@ namespace {
   constexpr float audioOnsetMinimumBlockScore = 0.45f;
   constexpr float audioOnsetMinimumPairScore = 1.20f;
   constexpr float audioOnsetMaximumFrequencyStepHz = 250.0f;
-  constexpr float audioSnrBurstAlpha = 0.5f;
   constexpr sysinterval_t measurementPublishPeriod = TIME_MS2I(200U);
 
   // Derive the configurable range from the persistent parameter metadata so
@@ -227,7 +226,6 @@ struct AudioDetector {
   float cadenceHz = 0.0f;
   float cadenceScore = 0.0f;
   float audioScore = 0.0f;
-  float audioSnrDb = 0.0f;
   float burstPeakSnrDb = 0.0f;
   float recentBurstSnrDb = 0.0f;
   float previousBlockScore = 0.0f;
@@ -427,7 +425,6 @@ namespace {
     detector.cadenceHz = 0.0f;
     detector.cadenceScore = 0.0f;
     detector.audioScore = 0.0f;
-    detector.audioSnrDb = 0.0f;
     detector.recentBurstStrength = 0.0f;
     detector.burstPeakScore = 0.0f;
     detector.burstPeakSnrDb = 0.0f;
@@ -467,9 +464,10 @@ namespace {
   }
 
   /** @brief Validate the spectral signature and measure burst cadence. */
-  void updateAudioCadence(AudioDetector& detector, bool discontinuity,
-			  systime_t now)
+  bool updateAudioCadence(AudioDetector& detector, bool discontinuity,
+                          systime_t now)
   {
+    bool burstCompleted = false;
     if ((detector.lastBlockTime != 0U) &&
 	(chTimeDiffX(detector.lastBlockTime, now) >= TIME_MS2I(200U))) {
       clearAudioCadence(detector);
@@ -482,7 +480,6 @@ namespace {
       detector.burstPeakScore = 0.0f;
       detector.burstPeakSnrDb = 0.0f;
       detector.recentBurstSnrDb = 0.0f;
-      detector.audioSnrDb = 0.0f;
       detector.previousBlockScore = 0.0f;
       detector.previousDominantFrequencyHz = 0.0f;
       detector.previousSignalToNoiseDb = 0.0f;
@@ -540,19 +537,20 @@ namespace {
       // 21 ms block below the low threshold is nevertheless an unambiguous
       // gap, and is needed to separate 120 ms bursts repeated at 3 Hz.
       if (detector.lowBlocks >= audioBurstEndLowBlocks) {
-	detector.burstState = AudioBurstState::Off;
-	detector.lowBlocks = 0U;
-	detector.recentBurstStrength = detector.burstPeakScore;
-	if (detector.burstPeakSnrDb > 0.0f) {
-	  if (detector.recentBurstSnrDb <= 0.0f) {
-	    detector.recentBurstSnrDb = detector.burstPeakSnrDb;
-	  } else {
-	    detector.recentBurstSnrDb += audioSnrBurstAlpha *
-	      (detector.burstPeakSnrDb - detector.recentBurstSnrDb);
-	  }
-	}
-	detector.burstPeakScore = 0.0f;
-	detector.burstPeakSnrDb = 0.0f;
+        detector.burstState = AudioBurstState::Off;
+        detector.lowBlocks = 0U;
+        detector.recentBurstStrength = detector.burstPeakScore;
+        if (detector.recentBurstSnrDb <= 0.0f) {
+          detector.recentBurstSnrDb = detector.burstPeakSnrDb;
+        } else {
+          const float alpha = std::clamp(
+            param_cget<"role.imav.audio.snr_alpha">(), 0.5f, 1.0f);
+          detector.recentBurstSnrDb += alpha *
+            (detector.burstPeakSnrDb - detector.recentBurstSnrDb);
+        }
+        burstCompleted = true;
+        detector.burstPeakScore = 0.0f;
+        detector.burstPeakSnrDb = 0.0f;
       }
       break;
     }
@@ -612,18 +610,12 @@ namespace {
 	  (1500.0f - static_cast<float>(toneAgeMs)) / 750.0f);
     }
     detector.audioScore = strength * toneFreshness;
-    const float peakSnrDb = detector.burstState == AudioBurstState::On
-      ? std::max(detector.recentBurstSnrDb, detector.burstPeakSnrDb)
-      : detector.recentBurstSnrDb;
-    // Keep the latest burst peak stable across the 333/500 ms silent gaps.
-    // Once the burst train stops, decay it with the same freshness envelope as
-    // the normalized audio score so the navigation input cannot remain stale.
-    detector.audioSnrDb = std::max(0.0f, peakSnrDb) * toneFreshness;
     if (detector.detected) {
       detector.detected = detector.audioScore >= 0.25f;
     } else {
       detector.detected = detector.audioScore >= 0.60f;
     }
+    return burstCompleted;
   }
 }
 
@@ -847,10 +839,15 @@ void ImavRole::processAudioHalf(size_t offset, bool discontinuity)
     static_cast<uint16_t>(deviation / audioHalfDepth);
   analyzeAudioBlock(*audio, offset, mean);
   const systime_t now = chVTGetSystemTimeX();
-  updateAudioCadence(audio->detector, discontinuity, now);
+  const bool burstCompleted =
+    updateAudioCadence(audio->detector, discontinuity, now);
   ++audio->processedBlocks;
   if (discontinuity) {
     ++audio->discontinuities;
+  }
+
+  if (burstCompleted) {
+    publishAudioBurst();
   }
 
   if (chTimeDiffX(audio->lastMeasurementPublishTime, now) >=
@@ -868,6 +865,15 @@ void ImavRole::processAudioHalf(size_t offset, bool discontinuity)
   // Keep the serial debug link quiet during normal operation.
 }
 
+/** @brief Publish one finalized SNR measurement for each recognized burst. */
+void ImavRole::publishAudioBurst()
+{
+  uavcan_protocol_debug_KeyValue message = {};
+  message.value = audio->detector.recentBurstSnrDb;
+  UAVCAN::dsdlAssign(message.key, "snr");
+  m_node->sendBroadcast(message, CANARD_TRANSFER_PRIORITY_LOW);
+}
+
 /** @brief Publish navigation measurements as compact single-frame values. */
 void ImavRole::publishMeasurements()
 {
@@ -878,7 +884,6 @@ void ImavRole::publishMeasurements()
     m_node->sendBroadcast(message, CANARD_TRANSFER_PRIORITY_LOW);
   };
   publish("det", audio->detector.detected ? 1.0f : 0.0f);
-  publish("snr", audio->detector.audioSnrDb);
 
   const ImavLightRangeSnapshot sensors = audio->lightRange != nullptr
     ? audio->lightRange->snapshot() : ImavLightRangeSnapshot{};

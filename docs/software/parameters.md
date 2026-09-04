@@ -13,6 +13,9 @@ Important parameters:
 - ROLE.imav.beacon (enable the IMAV sound/light role)
 - role.imav.audio.band_low_hz (2000..2600 Hz, default 2000; applied when the
   IMAV role starts, so reboot after changing it)
+- role.imav.audio.snr_alpha (weight of the newest recognized burst in the SNR
+  first-order IIR, 0.5..1.0, default 1.0; applied live, where 1.0 disables
+  smoothing)
 - role.imav.light.i2c_address (0x44..0x47, default 0x44 for OPT4060 ADDR=GND)
 - role.imav.light.beginning_pattern (also recognize the roughly 2 Hz startup
   flash pattern; default false so the competition detector only accepts the

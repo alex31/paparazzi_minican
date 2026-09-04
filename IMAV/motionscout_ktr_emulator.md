@@ -105,9 +105,10 @@ La MicroCAN a été testée avec une enceinte reliée à la carte son du PC :
 - tonalité à 1 kHz, bruit blanc continu et bruit blanc pulsé à 3 Hz : rejetés ;
 - bruit blanc continu à -30 dBFS appris pendant 3 s, puis chirp à -24 dBFS :
   détection stable à 3 Hz.
-- publication CAN permanente à 5 Hz : `det` suit la détection avec hystérésis
-  et `snr` reste stable entre les bips ; trois niveaux espacés de 6 dBFS ont
-  produit environ 12,0, 17,6 et 23,7 dB de SNR relatif mesuré.
+- lors de la validation initiale à publication CAN permanente, trois niveaux
+  espacés de 6 dBFS ont produit environ 12,0, 17,6 et 23,7 dB de SNR relatif.
+  La publication `snr` est désormais déclenchée à la fin de chaque bip reconnu
+  et doit être revalidée avec `role.imav.audio.snr_alpha=1`.
 
 Les dBFS décrivent seulement les fichiers numériques. Ils ne donnent ni le
 SNR acoustique au microphone, ni un niveau SPL transposable au drone.
