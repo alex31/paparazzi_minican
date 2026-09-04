@@ -24,8 +24,9 @@ sudo ip link set can0 down 2>/dev/null || true
 sudo ip link set can0 up type can bitrate 1000000 fd off
 ```
 
-Le rôle `ROLE.imav.beacon` doit être actif. `det`, `snr` et `lit` sont émis
-systématiquement à 5 Hz ; il n'est pas nécessaire d'activer
+Le rôle `ROLE.imav.beacon` doit être actif. `det` est émis à 5 Hz ; `snr` est
+émis à la fin de chaque salve reconnue et `lit` sur le front descendant estimé
+de chaque flash reconnu. Il n'est pas nécessaire d'activer
 `role.imav.debug.publish.optional`.
 
 ## Compilation
@@ -81,14 +82,12 @@ MCU en microsecondes
 modulo 2^24. `lrd/lgn/lbl/lwh` contiennent les canaux RGBW bruts linéarisés
 nécessaires aux FFT, filtres adaptés et autres post-traitements.
 
-Le firmware publie aussi à 5 Hz `lfs` (voie rapide), `lsc` (voie spectrale
-lente), `lsn` (proéminence locale en dB), `lco` (cohérence), `lrf` (fraction
-rouge périodique), `lfq`
-(fréquence du pic), `lhr` (rapport deuxième harmonique/fondamental), `lhs`
-(ressemblance harmonique), `lon/lof` (durées haute/basse), `lts` (accord
-temporel) et `lpt` (`0` aucun motif, `1` démarrage, `2` établi). Ces
+Le firmware publie aussi à 5 Hz `lfs` (score de la fenêtre lumineuse de 1 s),
+`lhz` (fréquence du pic), `lcs` (cohérence), `lps` (amplitude périodique),
+`lon/lof` (durées haute/basse), `lts` (accord temporel) et `lpt` (`0` aucun
+motif, `1` démarrage, `2` établi). `lit` reprend directement `lfs`. Ces
 grandeurs permettent de recaler les seuils sur une capture extérieure sans
-modifier la sortie nominale `lit` à 5 Hz.
+modifier la sortie nominale.
 
 Capture jusqu'à `Ctrl-C` :
 
@@ -112,10 +111,9 @@ fréquence possède sa propre voie H2. Le score combine la cohérence du
 fondamental dans le contraste rouge, le rapport H2/H1, la phase relative et la
 couleur de la composante périodique.
 
-La fenêtre est finie : contrairement à la DFT lente d'acquisition, une preuve
-disparue ne peut pas rester mémorisée plus d'une seconde. Cette voie est
-destinée au verrouillage et au suivi de proximité ; elle ne remplace pas la
-voie lente pour acquérir à grande distance un signal noyé dans le bruit.
+La fenêtre est finie : une preuve disparue ne peut pas rester mémorisée plus
+d'une seconde. Le firmware utilise exactement ce détecteur pour `lit`, afin de
+conserver un retard court et borné pour la localisation de secours.
 
 Le manifeste `light_capture_segments.json` annote les phases éteintes, de
 démarrage et de régime établi des captures locales. Le test complet se lance
@@ -130,6 +128,9 @@ groupes RGBW. Sur les fenêtres entièrement contenues dans un segment annoté,
 le maximum éteint vaut 0,038, le maximum du motif de démarrage rejeté vaut
 0,147 et le minimum du régime établi vaut 0,864. Les attaques franchissent
 0,55 en 0,25 à 0,56 s et les extinctions passent sous 0,30 en 0,16 à 0,50 s.
+Le même test vérifie les événements synchronisés : aucun hors régime établi,
+un intervalle de 0,316 à 0,351 s à 3 Hz et une erreur au front descendant
+inférieure à 11,7 ms pour 95 % des événements.
 
 Le comportement alternatif et les temps nominaux se règlent sans modifier le
 script :

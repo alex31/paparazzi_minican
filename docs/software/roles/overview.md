@@ -172,20 +172,19 @@ Params:
 
 Outputs:
 
-- `det` (audio detection, 0 or 1), `snr` (held beacon burst strength in dB
-  above the adaptive 2--3 kHz motor-noise floor) and `lit` (long-range
-  acquisition followed by fast 2/3 Hz proximity tracking) are always broadcast as
-  `uavcan.protocol.debug.KeyValue` at 5 Hz.
+- `det` (audio detection, 0 or 1) is broadcast as
+  `uavcan.protocol.debug.KeyValue` at 5 Hz. `snr` is broadcast once at the end
+  of each recognized audio burst. `lit`, the score of the finite one-second
+  2/3 Hz light window, is broadcast once per recognized optical flash at its
+  DFT-estimated falling edge; one zero marks loss of lock.
 - When `role.imav.debug.publish.optional` is true, `a0`, `p0`, `sdb`, `aud`,
   `frq` and `cad` provide the accompanying audio tuning measurements at 5 Hz.
   Light tuning at 5 Hz adds red ratio `lrr`, relative red AC `lac`,
   instantaneous score `lis`, finite-window frequency `lhz`, coherence `lcs`,
   fast-path score `lfs`, relative periodic strength `lps`, lock count `lpc`, saturation count
   `lsa`, read-error count
-  `ler` and sample-gap count `lgp`. Spectral tuning adds score `lsc`, local
-  prominence in dB `lsn`, coherence `lco`, periodic red fraction `lrf`, peak
-  frequency `lfq`, second-harmonic ratio `lhr`, harmonic-shape score `lhs`,
-  high/low durations inferred from H2/H1 `lon/lof`, fast harmonic-shape score `lts` and
+  `ler` and sample-gap count `lgp`, high/low durations inferred from H2/H1
+  `lon/lof`, harmonic-shape score `lts` and
   selected pattern `lpt` (`0` none, `1` startup, `2` steady). Each data-ready optical
   sample adds raw `lrd/lgn/lbl/lwh`, overload `lov`, sample counter `lct` and
   modulo-2^24 microsecond timestamp `ltu`.

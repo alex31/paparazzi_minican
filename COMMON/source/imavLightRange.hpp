@@ -31,14 +31,6 @@ struct ImavLightRangeSnapshot {
   float lightCadenceScore = 0.0f;
   float lightFastScore = 0.0f;
   float lightPulseStrength = 0.0f;
-  float lightFlashScore = 0.0f;
-  float lightSpectralScore = 0.0f;
-  float lightSpectralSnrDb = 0.0f;
-  float lightSpectralCoherence = 0.0f;
-  float lightSpectralRedFraction = 0.0f;
-  float lightSpectralFrequencyHz = 0.0f;
-  float lightHarmonicRatio = 0.0f;
-  float lightHarmonicShapeScore = 0.0f;
   float lightHighDurationMs = 0.0f;
   float lightLowDurationMs = 0.0f;
   float lightTemporalShapeScore = 0.0f;
@@ -109,12 +101,10 @@ private:
                                  float direction);
   void scoreLightFastPattern(LightFastPatternState& pattern,
                              uint16_t lowMs, uint8_t identifier);
+  void evaluateLightFastSpectrum();
   void updateLightFastSpectrum(const std::array<float, 4U>& scaled,
                                systime_t now);
-  void resetLightSpectrum();
-  void updateLightSpectrum(const std::array<float, 4U>& scaled,
-                           systime_t now);
-  void updateLightCombinedScore();
+  void updateSynchronizedLightEvent(systime_t now, bool scoreIsCurrent);
   bool readLightRegister(uint8_t reg, uint16_t& value);
   bool readLightBlock(uint8_t reg, size_t length);
   bool writeLightRegister(uint8_t reg, uint16_t value);
@@ -126,6 +116,7 @@ private:
   msg_t tofTransfer(uint16_t address, const uint8_t *tx, size_t txLength,
                     size_t rxLength);
   void recordI2cFailure(bool rangeSensor, msg_t result);
+  void publishLightScore(float score);
   void publishLightState();
   void publishLightDebugSample(bool overloaded);
   void publishAvailability();
@@ -159,44 +150,9 @@ private:
   bool lightNoiseValid = false;
   bool lightCountersValid = false;
   bool lightOverloadActive = false;
-  bool lightFastTracking = false;
   bool lightFastDetected = false;
   std::array<float, 4U> lightBaseline = {};
   std::array<uint8_t, 4U> lightCounters = {};
-
-  struct LightSpectralBin {
-    float redReal = 0.0f;
-    float redImag = 0.0f;
-    float greenReal = 0.0f;
-    float greenImag = 0.0f;
-    float blueReal = 0.0f;
-    float blueImag = 0.0f;
-  };
-  struct LightSpectralPatternState {
-    std::array<LightSpectralBin, 17U> fundamentalBins = {};
-    std::array<LightSpectralBin, 5U> harmonicBins = {};
-    float score = 0.0f;
-    float snrDb = 0.0f;
-    float coherence = 0.0f;
-    float redFraction = 0.0f;
-    float frequencyHz = 0.0f;
-    float harmonicRatio = 0.0f;
-    float harmonicShapeScore = 0.0f;
-  };
-  LightSpectralPatternState lightSteadySpectrum = {};
-  LightSpectralPatternState lightBeginningSpectrum = {};
-  std::array<float, 3U> lightSpectralBaseline = {};
-  float lightSpectralEnergy = 0.0f;
-  float lightSpectralScore = 0.0f;
-  float lightSpectralSnrDb = 0.0f;
-  float lightSpectralCoherence = 0.0f;
-  float lightSpectralRedFraction = 0.0f;
-  float lightSpectralFrequencyHz = 0.0f;
-  float lightHarmonicRatio = 0.0f;
-  float lightHarmonicShapeScore = 0.0f;
-  uint32_t lightSpectralSamples = 0U;
-  systime_t lightSpectralStartSample = 0U;
-  systime_t lightSpectralLastSample = 0U;
 
   struct LightFastSample {
     systime_t timestamp = 0U;
@@ -222,6 +178,7 @@ private:
     float redFraction = 0.0f;
     float harmonicShape = 0.0f;
     float fundamentalAmplitude = 0.0f;
+    float synchronizationPhase = 0.0f;
     uint8_t identifier = 0U;
   };
   std::array<LightFastSample, 144U> lightFastSamples = {};
@@ -234,6 +191,8 @@ private:
   size_t lightFastSampleCount = 0U;
   uint32_t lightFastEvaluationCounter = 0U;
   systime_t lightFastLastSample = 0U;
+  systime_t lightLastSynchronizedEvent = 0U;
+  uint16_t lightSynchronizationPeriodMs = 0U;
 
   float lightNoiseFloor = 0.0f;
   float lightRedRatio = 0.0f;
@@ -242,7 +201,6 @@ private:
   float lightCadenceHz = 0.0f;
   float lightCadenceScore = 0.0f;
   float lightFastScore = 0.0f;
-  float lightFlashScore = 0.0f;
   float lightHighDurationMs = 0.0f;
   float lightLowDurationMs = 0.0f;
   float lightTemporalShapeScore = 0.0f;
@@ -259,8 +217,6 @@ private:
   uint32_t lightGaps = 0U;
   uint8_t lightConsecutiveErrors = 0U;
   uint8_t lightStalePolls = 0U;
-  uint8_t lightFastPattern = 0U;
-  uint8_t lightSlowPattern = 0U;
   uint8_t lightPattern = 0U;
   systime_t lightLastSample = 0U;
 

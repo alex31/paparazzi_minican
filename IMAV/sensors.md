@@ -42,8 +42,8 @@ Les décisions suivantes font foi lorsqu'une section historique du document semb
 - liaison continue en tension entre la sortie déjà polarisée de l'IM68A130(A) et l'ADC, avec seulement découplage et petit réseau RC passif ;
 - suréchantillonnage matériel ADC envisagé en x4 ou x16, sans augmentation de la taille des tampons DMA ;
 - un seul OPT4060 sous le drone, sans sectorisation optique ;
-- score lumineux combinant une voie rapide spectrale à mémoire finie et une
-  voie DFT lente pour le signal lointain noyé dans le bruit ;
+- score lumineux provenant uniquement d'une fenêtre spectrale glissante de
+  1 s, afin de conserver un retard court et borné ;
 - VL53L4CX optionnel, piloté lorsqu'il est activé par le composant officiel ST provenant du sous-module `STMicroelectronics/x-cube-tof1` ;
 - pas de canaux injectés ni d'arbitrage entre audio et mesures lentes ;
 - acquisition lumière et mesure ToF strictement exclusives lorsque le ToF est activé.
@@ -586,7 +586,7 @@ Le build `-Og` donne les tailles effectives suivantes :
 | Élément alloué lorsque le rôle démarre | Taille |
 |---|---:|
 | `ImavAudioState`, buffer DMA mono inclus | 2 652 octets |
-| `ImavLightRange`, contexte ST, buffers I2C et fenêtres optiques inclus | 14 568 octets |
+| `ImavLightRange`, contexte ST, buffers I2C et fenêtre optique inclus | 13 376 octets |
 | Pile utile du thread audio | 1 536 octets |
 | Pile utile du thread lumière/ToF | 2 048 octets |
 
@@ -884,12 +884,13 @@ Une carte 1 m avec 8 octets par cellule prend environ 20 Kio. Elle tient dans le
 
 ## 16. Messages DroneCAN
 
-Le firmware diffuse systématiquement à 5 Hz des
-`uavcan.protocol.debug.KeyValue`. Les trois entrées destinées à la navigation
-sont `det`, booléen audio transporté comme 0,0 ou 1,0, `snr`, force de la
-dernière salve reconnue en dB au-dessus du plancher adaptatif de la bande
-2–3 kHz, et `lit`, score des flashs rouges qualifiés par leur cadence. Elles
-sont toujours envoyées. Le paramètre booléen
+Le firmware diffuse ses mesures sous forme de
+`uavcan.protocol.debug.KeyValue`. `det`, booléen audio transporté comme 0,0 ou
+1,0, est envoyé à 5 Hz. `snr`, force d'une salve reconnue en dB au-dessus du
+plancher adaptatif de la bande 2–3 kHz, est envoyé une seule fois à la clôture
+de cette salve. `lit`, score des flashs rouges qualifiés par leur cadence, est
+envoyé une fois par flash reconnu sur son front descendant estimé, puis une
+fois à zéro lorsque le verrouillage est perdu. Le paramètre booléen
 `role.imav.debug.publish.optional`, faux par défaut et appliqué immédiatement,
 ajoute seulement les valeurs de mise au point : audio à 5 Hz et échantillons
 optiques dérivés à 5 Hz, plus RGBW lossless au rythme data-ready pour le post-traitement. Cette interface
@@ -927,9 +928,10 @@ Flags possibles :
 - module suspendu instable ;
 - capteur en erreur.
 
-La fréquence de publication implémentée est de 5 Hz. Les événements de salve
-pourront éventuellement être publiés séparément si un timestamp plus précis
-devient nécessaire.
+L'état `det` reste publié à 5 Hz. Chaque salve sonore publie son `snr` lorsque
+son pic devient définitif et chaque flash reconnu publie son `lit` sur son
+front descendant estimé. Un futur message dédié pourra ajouter un timestamp
+explicite à ces événements.
 
 Ne pas transmettre le flux audio brut sur CAN pendant la mission. Avec un
 microphone à 24 kéch/s et 16 bits, il représenterait environ 48 ko/s hors
@@ -953,6 +955,7 @@ Paramètres runtime implémentés :
 
 ```text
 role.imav.audio.band_low_hz
+role.imav.audio.snr_alpha
 role.imav.light.i2c_address
 role.imav.time_of_flight
 role.imav.tof.period_ms
@@ -965,6 +968,10 @@ du rôle ; un redémarrage de la MicroCAN est donc nécessaire après modificati
 Une carte qui possède déjà la valeur 2 600 Hz en mémoire persistante la
 conservera après mise à jour : il faudra lui écrire explicitement 2 000 Hz et
 la redémarrer.
+`role.imav.audio.snr_alpha` est un réel persistant borné entre 0,5 et 1, avec
+1 par défaut. Il pondère le nouveau pic dans l'IIR appliqué entre salves : 1
+publie chaque pic brut sans lissage, tandis que 0,5 conserve l'ancien mélange
+moitié-moitié. Il est lu à chaque salve et prend effet immédiatement.
 Les autres seuils, la borne haute à 3 000 Hz, la fréquence d'échantillonnage et
 le temps de conversion OPT4060 sont pour l'instant des constantes du firmware.
 
@@ -1328,47 +1335,29 @@ Les seuils numériques actuels sont volontairement des valeurs de bring-up. Ils 
   `0x0C` n'est lu que si un canal atteint l'exposant maximal 6 ou la mantisse
   maximale ; la transaction I2C supplémentaire disparaît en régime nominal.
 - Les coefficients TI `R=2,4×CH0`, `G=CH1` et `B=1,3×CH2` sont appliqués avant de calculer la dominance rouge de la variation. Le score instantané combine amplitude absolue, variation relative, élévation au-dessus du bruit et chromaticité rouge.
-- La voie rapide conserve exactement la dernière seconde de RGB dans un
+- Le détecteur lumineux conserve exactement la dernière seconde de RGB dans un
   anneau de 144 échantillons. Des sommes glissantes évaluent cinq couples
   fondamental/H2 sans seuil de front ni niveau absolu. Cohérence, couleur,
   rapport H2/H1 et phase relative forment `lfs`; les sommes sont reconstruites
-  périodiquement pour borner les erreurs d'arrondi en vol long. Cette voie est
-  exposée par `lhz/lcs/lfs/lps/lpc/lon/lof/lts/lpt`.
-- La voie lente de `lit` provient d'une DFT glissante sur le contraste rouge
-  `R - (G+B)/2`. Chaque motif activé possède une banque fondamentale dense par
-  pas de 0,1 Hz, centrée sur la fréquence déduite de ses temps haut/bas et
-  large de ±0,8 Hz. Les cinq candidats centraux, à ±0,2 Hz, possèdent chacun
-  leur voie à la deuxième harmonique ; le meilleur est comparé à la médiane
-  des bins fondamentaux non adjacents.
-  Cette DFT horodatée joue le rôle de voies Goertzel parallèles tout en
-  acceptant les petites irrégularités de cadence de l'interruption data-ready.
-  Le fond continu est retiré, l'intégration exponentielle a une constante de
-  temps voisine de 10 s, et le support monte progressivement pendant les dix
-  premières secondes. Les coefficients exponentiels sont calculés à partir
-  des horodatages, de sorte que le débit data-ready et ses éventuelles
-  irrégularités ne changent pas les constantes de temps. Le score exige
-  simultanément une proéminence locale
-  du pic et une cohérence périodique ; la couleur rouge est un qualificatif
-  souple pour tolérer les réflexions du sol. Le rapport H2/H1 attendu vaut
-  `abs(cos(pi*duty_cycle))`; son accord, la phase de H2 par rapport au carré
-  complexe de H1 et la visibilité de H2 forment `lhs`. Une fondamentale
-  dépourvue de cette signature asymétrique reste exploitable à demi-confiance,
-  mais ne peut plus porter seule la voie spectrale à 1.
+  périodiquement pour borner les erreurs d'arrondi en vol long. Ce détecteur est
+  exposé par `lhz/lcs/lfs/lps/lpc/lon/lof/lts/lpt`.
 - `role.imav.light.high_ms=100`, `steady_low_ms=233` et
   `beginning_low_ms=400` décrivent la forme nominale sans recompilation. Avec
   `role.imav.light.beginning_pattern=false`, valeur de concours par défaut,
   seule la banque du régime établi est calculée ; `true` autorise en plus la
   phase de démarrage proche de 2 Hz et retient la meilleure banque. Ces
   paramètres sont lus au lancement du rôle et demandent donc un redémarrage.
-  La voie rapide en déduit également les durées `lon/lof` à partir de H2/H1.
-- En acquisition, le score nominal `lit` prend le maximum de la voie rapide
-  `lfs` et de la voie spectrale lente `lsc`. Lorsque `lfs` atteint 0,55, un
-  mode de suivi de proximité est mémorisé : `lfs` pondère alors la contribution
-  lente afin qu'elle ne masque pas l'éloignement après le survol. Lorsque la
-  fenêtre rapide retombe sous 0,15, l'état lent devenu périmé est effacé et une
-  nouvelle acquisition longue portée repart proprement. Dans les rejeux, `lit`
-  passe sous 0,30 entre 0,16 et 0,50 s après l'extinction ; aucun échantillon
-  rapide ne survit plus d'une seconde.
+  Le détecteur en déduit également les durées `lon/lof` à partir de H2/H1.
+- Le score nominal `lit` reprend directement `lfs`. Il n'existe plus de voie
+  lente ni de fusion susceptible de changer le retard pendant le vol. Le
+  centre temporel de la fenêtre se trouve environ 0,5 s avant le calcul. Le
+  bin central fournit une phase absolue stable, indépendante des changements
+  du meilleur bin entre les cinq candidats. Une hystérésis 0,55/0,30 active la
+  publication ; le score est alors recalculé et envoyé une fois par cycle dans
+  les 20 ms suivant le front descendant estimé. Un unique `lit=0` signale la
+  perte du verrouillage ou la remise à zéro du détecteur. Aucun échantillon ne
+  survit plus d'une seconde et le récepteur doit appliquer un timeout d'environ
+  0,8 s si le capteur ou le bus cesse de produire des événements.
 - Cette normalisation locale ne dépend pas du niveau lumineux absolu ni du
   gain choisi automatiquement par l'OPT4060. Elle vise notamment le signal à
   5 m, environ dix fois plus faible que celui mesuré à 50 cm lorsque la balise
@@ -1383,44 +1372,7 @@ Les seuils numériques actuels sont volontairement des valeurs de bring-up. Ils 
 - I2C standard 100 kHz et Fast mode 400 kHz sont acceptés ; 400 kHz reste recommandé. Le Fast-mode Plus 1 MHz est refusé car l'OPT4060 passe directement du Fast mode au protocole High-Speed 2,6 MHz, non activé ici.
 - Un NACK d'un capteur absent ne réinitialise pas le bus partagé. Seuls un timeout ou une faute électrique/protocolaire déclenchent la récupération sérialisée.
 
-Le test H7 du 1er septembre 2026, antérieur au passage sur l'interruption PA8
-et à l'activation de la voie rapide dans `lit`,
-contient 10 s éteintes, la montée réelle de
-l'alarme puis plus de 30 s au régime final. Sur 64,3 s, les 6 335 groupes
-optiques sont continus, sans trou de compteur, surcharge ni erreur I2C. Avec
-la voie spectrale seule de ce firmware, `lit` reste exactement nul avant
-l'établissement de la cadence finale. Après son
-apparition, il franchit 0,5 à 30,632 s, 0,8 à 31,038 s et atteint 1 à
-31,443 s. En régime établi, le pic reste verrouillé à 3,0 Hz, sa proéminence
-vaut 24,1 à 31,0 dB, sa cohérence moyenne 0,65 et sa fraction rouge périodique
-0,76. La capture locale, non versionnée en raison de son volume, est
-`tools/imav_monitor/captures/imav_spectral_ramp_20260901T_light.csv`, SHA-256
-`eb982de2e15696d2e45050085f0e4cbeabfd64434164972ac605ff6749648cc7`.
-
-Le test attaque/relâchement du 2 septembre 2026 utilise l'interruption PA8 et
-la fusion rapide/lente du point de retour `dd2b36a`, avant qualification des
-durées et harmoniques. Sur 41,8 s, 4 522 groupes RGBW sont reçus sans perte,
-surcharge ni erreur I2C. Pendant la préalarme à 2 Hz, `lit` dépasse 0,7 au
-troisième flash accepté, 1,00 s après le premier ; le même nombre de flashs
-demande environ 0,67 s au régime 3 Hz rencontré en approche. À l'extinction,
-le dernier front est publié à 23,358 s, `lit` passe sous 0,3 à 24,145 s et
-atteint zéro à 24,358 s : la décroissance observée sur CAN prend donc environ
-0,79 s jusqu'au seuil bas et 1,00 s jusqu'à zéro. La capture locale non
-versionnée est
-`tools/imav_monitor/captures/imav_fast_attack_release_20260902.csv`, SHA-256
-`178581350bdc683734569a73b93648c945af7aee2b34e6bd72793d1cc69ab494`.
-
-Un premier rejeu hors cible de cette capture avec les nouveaux paramètres par
-défaut rejetait la phase 2 Hz et atteignait 0,994 à 3 Hz. Le test suivant sur
-cible a cependant révélé une faiblesse que cette capture ne contenait pas :
-avec un fond lumineux différent, `lis` restait souvent entre 0,4 et 0,6 au
-niveau bas. Le seuil descendant fixe à 0,25 n'était plus franchi, l'automate
-restait bloqué dans l'impulsion et `lfs` demeurait nul. La DFT lente restait
-alors proche de 1 plus de vingt secondes après extinction puisqu'elle n'avait
-jamais été placée sous le contrôle de fraîcheur rapide. Cette implémentation
-temporelle par seuils n'est donc pas retenue en l'état.
-
-Le candidat offline suivant supprime entièrement les seuils de fronts. Une
+Le détecteur retenu supprime entièrement les seuils de fronts. Une
 fenêtre glissante finie de 1 s évalue cinq fréquences autour du motif établi et
 leur H2 associée sur les échantillons RGB bruts. Le score combine cohérence du
 fondamental, rapport H2/H1, phase H2 par rapport à H1² et couleur périodique.
@@ -1435,6 +1387,13 @@ Hz. Le rejeu reproductible est fourni par
 `light_capture_segments.json`. Le même calcul à sommes glissantes est
 maintenant reporté dans l'arbre de travail du firmware, mais cette version
 n'est pas encore validée sur la cible.
+
+Le rejeu de la publication synchrone ne produit aucun événement dans les
+segments éteints ni pendant le motif 2 Hz rejeté. Les événements 3 Hz sont
+espacés de 0,316 à 0,351 s ; 95 % sont placés à moins de 11,7 ms du front
+descendant mesuré dans les données RGB. Cette validation reste offline : le
+comportement temporel et la charge CPU doivent encore être contrôlés sur la
+MicroCAN.
 
 Sur la capture longue du 1er septembre, H2/H1 vaut 0,807 à 2 Hz pour 0,809
 attendu, puis 0,577 à 3 Hz pour 0,587 attendu ; les erreurs de phase
@@ -1460,10 +1419,10 @@ La lumière et le son restent deux preuves indépendantes. Il n'y a pas de condi
 Mesures contrôlées sur le build `-Og` :
 
 - `sizeof(ImavAudioState) = 2 652` octets sur le heap DMA de 12 288 octets ; ce total contient le buffer audio mono de 2 048 octets ;
-- `sizeof(ImavLightRange) = 14 568` octets sur le heap standard de 20 480 octets ; ce total contient le contexte officiel ST de 9 480 octets, les tampons I2C, les banques DFT lentes et l'anneau rapide ;
+- `sizeof(ImavLightRange) = 13 376` octets sur le heap standard de 20 480 octets ; ce total contient le contexte officiel ST de 9 480 octets, les tampons I2C et l'anneau lumineux de 1 s ;
 - thread audio : pile utile configurée à 1 536 octets ;
 - thread capteurs : pile utile configurée à 2 048 octets ;
-- firmware expérimental : 269 760 octets de texte et 100 096 octets de BSS,
+- firmware expérimental : 265 848 octets de texte et 100 096 octets de BSS,
   heaps réservés inclus ;
 - le shell de 2 000 octets n'est pas alloué en mode IMAV.
 
@@ -1476,8 +1435,9 @@ restent rendus au heap par le linker. Le total BSS synthétique vaut
 compilé mais désactivé, il ne reste en RAM que les deux pointeurs de trampoline
 de 4 octets ; tous ses buffers et états sont alloués à son lancement.
 
-La télémétrie fonctionnelle `uavcan.protocol.debug.KeyValue` est diffusée à
-5 Hz lorsque le rôle IMAV est actif.
+La télémétrie fonctionnelle `uavcan.protocol.debug.KeyValue` diffuse `det` à
+5 Hz, `snr` une fois à la fin de chaque salve reconnue et `lit` une fois par
+flash lumineux reconnu.
 
 Le contrat opérationnel et la séparation entre messages de mission et
 instrumentation de banc sont détaillés dans [can_msg.md](can_msg.md).
@@ -1487,14 +1447,14 @@ Les clés publiées sont :
 | Clé | Valeur |
 |---|---|
 | `det` | détection audio avec hystérésis, exactement 0,0 ou 1,0 ; entrée principale de l'autopilote |
-| `snr` | pic de la puissance excédentaire de la salve rapportée en dB au plancher adaptatif dans la bande 2–3 kHz ; maintenu entre les bips puis ramené à zéro lorsque le signal devient périmé |
+| `snr` | pic de la puissance excédentaire de la salve rapportée en dB au plancher adaptatif dans la bande 2–3 kHz ; publié une fois à la clôture de chaque salve reconnue |
 | `a0` | optionnel : score spectral instantané du microphone |
 | `p0` | optionnel : amplitude RMS estimée de la tonalité dominante, en comptes ADC 13 bits |
 | `sdb` | optionnel : rapport instantané en dB entre l'énergie de la bande balise et l'énergie globale de la fenêtre ; ce n'est pas le SNR moteur |
 | `aud` | optionnel : score de signature spectrale audio, maintenu pendant les silences |
 | `frq` | optionnel : fréquence dominante en hertz |
 | `cad` | optionnel : cadence de salves estimée en hertz |
-| `lit` | score lumineux combiné : acquisition longue portée, puis suivi rapide des flashs rouges à 2/3 Hz après verrouillage de proximité ; entre 0 et 1 et zéro après 200 ms sans nouvel échantillon |
+| `lit` | score de l'unique fenêtre lumineuse glissante de 1 s sur les flashs rouges à 2/3 Hz ; émis au front descendant estimé de chaque flash reconnu, puis une fois à zéro lors de la perte du verrouillage |
 | `lrd` | optionnel, jusqu'à environ 139 Hz : code ADC rouge linéarisé |
 | `lgn` | optionnel, jusqu'à environ 139 Hz : code ADC vert linéarisé |
 | `lbl` | optionnel, jusqu'à environ 139 Hz : code ADC bleu linéarisé |
@@ -1513,13 +1473,6 @@ Les clés publiées sont :
 | `lsa` | optionnel 5 Hz : compteur cumulé d'épisodes de saturation OPT4060 |
 | `ler` | optionnel 5 Hz : compteur cumulé d'erreurs de lecture OPT4060 |
 | `lgp` | optionnel 5 Hz : compteur cumulé de trous d'échantillonnage lumineux |
-| `lsc` | optionnel 5 Hz : score spectral brut utilisé par `lit`, sans le contrôle de fraîcheur CAN |
-| `lsn` | optionnel 5 Hz : proéminence du meilleur bin autour du motif configuré, en dB par rapport à la médiane spectrale locale |
-| `lco` | optionnel 5 Hz : cohérence du fondamental périodique dans le contraste rouge, entre 0 et 1 |
-| `lrf` | optionnel 5 Hz : fraction rouge de la composante périodique complexe, entre 0 et 1 |
-| `lfq` | optionnel 5 Hz : fréquence du meilleur bin spectral, en hertz |
-| `lhr` | optionnel 5 Hz : rapport d'amplitude H2/H1 du meilleur bin spectral |
-| `lhs` | optionnel 5 Hz : score de forme harmonique attendu pour le créneau asymétrique |
 | `lon` / `lof` | optionnel 5 Hz : durées haute et basse estimées par H2/H1, en ms |
 | `lts` | optionnel 5 Hz : score de forme harmonique de la fenêtre rapide |
 | `lpt` | optionnel 5 Hz : motif sélectionné, 0 aucun, 1 démarrage, 2 établi |
@@ -1527,22 +1480,26 @@ Les clés publiées sont :
 | `rsg` | optionnel avec ToF : signal VL53L4CX en kcps/SPAD |
 
 Les clés font trois caractères afin que chaque message tienne dans une seule
-trame CAN classique. Le mode nominal produit 15 trames/s (`det`, `snr` et
-`lit` à 5 Hz). Le débogage optionnel produit en plus 140 trames/s dérivées et
-jusqu'à environ 973 trames/s optiques brutes, soit 1 128 trames/s sans ToF et
-1 138 trames/s avec ToF. Cette charge d'essai représente approximativement
-16 % du CAN
+trame CAN classique. En régime établi, le mode nominal produit cinq trames
+`det`, environ trois trames `snr` et trois trames `lit` par seconde. Le
+débogage optionnel produit en plus 105 trames/s dérivées et jusqu'à environ
+973 trames/s optiques brutes, soit au maximum environ 1 089 trames/s sans ToF
+et 1 099 trames/s avec ToF.
+Cette charge d'essai représente approximativement
+15 % du CAN
 classique à 1 Mbit/s ; toutes ces trames gardent une priorité basse. Le
 plancher de `snr` apprend les blocs non reconnus comme
 balise : il suit le bruit blanc continu des moteurs mais n'absorbe pas les
-salves périodiques. Chaque pic de salve est lissé avec un coefficient de 0,5 ;
-la valeur reste stable dans les silences de 333/500 ms, puis suit la même
-décroissance de fraîcheur que `aud` après 750 ms sans tonalité.
+salves périodiques. Chaque pic de salve est filtré avec le coefficient réglable
+`role.imav.audio.snr_alpha`, qui pondère le nouveau pic entre 0,5 et 1. Sa
+valeur par défaut 1 supprime le lissage et son retard ; l'autopilote peut alors
+effectuer son propre filtrage après association de chaque événement à la pose.
 
-La réception SocketCAN avec PyDroneCAN confirme cinq groupes nominaux par
-seconde, espacés alternativement d'environ 192 et 213 ms à cause des blocs DSP
-de 21,33 ms. Avec l'option à `false`, seuls `det`, `snr` et `lit` sont
-observés. Son passage à `true` ajoute immédiatement les vingt-huit clés dérivées à
+La réception SocketCAN avec PyDroneCAN avait confirmé cinq groupes nominaux par
+seconde avant le passage de `snr` et `lit` en événementiel. Avec l'option à
+`false`, seuls `det`, `snr` et `lit` sont observés ; `snr` suit les salves
+sonores reconnues et `lit` les flashs reconnus. Son passage à `true` ajoute
+immédiatement les vingt et une clés dérivées à
 5 Hz, les sept clés optiques lossless au rythme data-ready et, le cas échéant, deux clés
 ToF à 5 Hz, sans
 redémarrage. Sur le banc, trois fichiers séparés par pas de 6 dBFS donnent des

@@ -56,26 +56,17 @@ namespace {
   constexpr uint32_t optFirstConversionDelayMs = 8U;
   constexpr uint32_t optDataReadyTimeoutMs = 25U;
 
-  // Each enabled optical pattern owns a timestamped streaming-DFT bank (the
-  // irregular-sampling equivalent of parallel Goertzel filters) centered on
-  // the frequency derived from its persisted high/low times. Seventeen
-  // fundamental bins span center +/-0.8 Hz in 0.1 Hz steps. Each of the five candidate alarm
-  // bins has its own second-harmonic bin at exactly twice its frequency.
-  constexpr size_t lightSpectralBinCount = 17U;
-  constexpr size_t lightSpectralCenterBin = 8U;
-  constexpr size_t lightFirstTargetBin = 6U;
-  constexpr size_t lightTargetBinCount = 5U;
-  constexpr float lightSpectralBinSpacingHz = 0.1f;
-  constexpr uint32_t lightSpectralUpdateDivider = 20U;
-  constexpr uint32_t lightSpectralResetGapMs = 100U;
+  constexpr float lightFastBinSpacingHz = 0.1f;
+  constexpr uint32_t lightFastResetGapMs = 100U;
   constexpr uint32_t lightFastWindowMs = 1000U;
   constexpr uint32_t lightFastMinimumWindowMs = 900U;
   constexpr uint32_t lightFastRebuildSamples = 2048U;
   constexpr uint32_t lightFastEvaluationDivider = 7U;
   constexpr size_t lightFastBinCount = 5U;
   constexpr size_t lightFastCenterBin = 2U;
-  constexpr float lightFastTrackingEnterScore = 0.55f;
-  constexpr float lightFastTrackingExitScore = 0.15f;
+  constexpr float lightFastDetectionEnterScore = 0.55f;
+  constexpr float lightFastDetectionExitScore = 0.30f;
+  constexpr uint32_t lightSynchronizationWindowMs = 20U;
   constexpr uint8_t lightPatternNone = 0U;
   constexpr uint8_t lightPatternBeginning = 1U;
   constexpr uint8_t lightPatternSteady = 2U;
@@ -252,14 +243,6 @@ void ImavLightRange::publishLightState()
   published.lightCadenceScore = lightCadenceScore;
   published.lightFastScore = lightFastScore;
   published.lightPulseStrength = lightRecentPulseStrength;
-  published.lightFlashScore = lightFlashScore;
-  published.lightSpectralScore = lightSpectralScore;
-  published.lightSpectralSnrDb = lightSpectralSnrDb;
-  published.lightSpectralCoherence = lightSpectralCoherence;
-  published.lightSpectralRedFraction = lightSpectralRedFraction;
-  published.lightSpectralFrequencyHz = lightSpectralFrequencyHz;
-  published.lightHarmonicRatio = lightHarmonicRatio;
-  published.lightHarmonicShapeScore = lightHarmonicShapeScore;
   published.lightHighDurationMs = lightHighDurationMs;
   published.lightLowDurationMs = lightLowDurationMs;
   published.lightTemporalShapeScore = lightTemporalShapeScore;
@@ -272,6 +255,14 @@ void ImavLightRange::publishLightState()
   published.lightGaps = lightGaps;
   published.lightLastSample = lightLastSample;
   chSysUnlock();
+}
+
+void ImavLightRange::publishLightScore(float score)
+{
+  uavcan_protocol_debug_KeyValue message = {};
+  message.value = score;
+  UAVCAN::dsdlAssign(message.key, "lit");
+  node.sendBroadcast(message, CANARD_TRANSFER_PRIORITY_LOW);
 }
 
 void ImavLightRange::publishLightDebugSample(bool overloaded)
@@ -404,7 +395,6 @@ bool ImavLightRange::initializeLight()
   lightNoiseValid = false;
   lightCountersValid = false;
   lightOverloadActive = false;
-  lightFastTracking = false;
   lightConsecutiveErrors = 0U;
   lightStalePolls = 0U;
   lightRedRatio = 0.0f;
@@ -412,7 +402,6 @@ bool ImavLightRange::initializeLight()
   lightInstantScore = 0.0f;
   lightLastSample = 0U;
   resetLightFastSpectrum();
-  resetLightSpectrum();
   if (not startLight()) {
     publishAvailability();
     return false;
@@ -452,6 +441,7 @@ bool ImavLightRange::stopLight()
 
 void ImavLightRange::resetLightFastSpectrum()
 {
+  const bool publishInactive = lightFastDetected;
   lightFastSamples = {};
   lightFastSteadySpectrum = {};
   lightFastBeginningSpectrum = {};
@@ -462,8 +452,9 @@ void ImavLightRange::resetLightFastSpectrum()
   lightFastSampleCount = 0U;
   lightFastEvaluationCounter = 0U;
   lightFastLastSample = 0U;
+  lightLastSynchronizedEvent = 0U;
+  lightSynchronizationPeriodMs = 0U;
   lightFastDetected = false;
-  lightFastTracking = false;
   lightFastScore = 0.0f;
   lightCadenceHz = 0.0f;
   lightCadenceScore = 0.0f;
@@ -471,8 +462,10 @@ void ImavLightRange::resetLightFastSpectrum()
   lightLowDurationMs = 0.0f;
   lightTemporalShapeScore = 0.0f;
   lightRecentPulseStrength = 0.0f;
-  lightFastPattern = lightPatternNone;
   lightPattern = lightPatternNone;
+  if (publishInactive) {
+    publishLightScore(0.0f);
+  }
 }
 
 void ImavLightRange::accumulateLightFastSample(
@@ -556,6 +549,7 @@ void ImavLightRange::scoreLightFastPattern(
   pattern.redFraction = 0.0f;
   pattern.harmonicShape = 0.0f;
   pattern.fundamentalAmplitude = 0.0f;
+  pattern.synchronizationPhase = 0.0f;
   pattern.identifier = identifier;
 
   const float count = static_cast<float>(lightFastSampleCount);
@@ -608,6 +602,14 @@ void ImavLightRange::scoreLightFastPattern(
     const float fundamentalPower =
       fundamentalContrastReal * fundamentalContrastReal +
       fundamentalContrastImag * fundamentalContrastImag;
+    if (index == lightFastCenterBin) {
+      // For a positive rectangular pulse and the exp(-jwt) convention, the
+      // coefficient angle is the opposite of the illuminated-pulse center.
+      // The configured center bin is deliberately used for synchronization:
+      // unlike the best-score bin, it cannot jump by 0.1 Hz between updates.
+      pattern.synchronizationPhase = std::atan2(
+        fundamentalContrastImag, fundamentalContrastReal);
+    }
     const float harmonicPower =
       harmonicContrastReal * harmonicContrastReal +
       harmonicContrastImag * harmonicContrastImag;
@@ -656,7 +658,7 @@ void ImavLightRange::scoreLightFastPattern(
       pattern.score = score;
       pattern.coherence = coherence;
       pattern.frequencyHz = centerFrequencyHz +
-        lightSpectralBinSpacingHz * static_cast<float>(
+        lightFastBinSpacingHz * static_cast<float>(
           static_cast<int>(index) -
           static_cast<int>(lightFastCenterBin));
       pattern.harmonicRatio = harmonicRatio;
@@ -668,12 +670,120 @@ void ImavLightRange::scoreLightFastPattern(
   }
 }
 
+void ImavLightRange::evaluateLightFastSpectrum()
+{
+  scoreLightFastPattern(
+    lightFastSteadySpectrum, lightSteadyLowMs, lightPatternSteady);
+  LightFastPatternState *selected = &lightFastSteadySpectrum;
+  uint16_t selectedLowMs = lightSteadyLowMs;
+  if (beginningPatternEnabled) {
+    scoreLightFastPattern(
+      lightFastBeginningSpectrum, lightBeginningLowMs,
+      lightPatternBeginning);
+    if ((lightFastBeginningSpectrum.score >
+         lightFastSteadySpectrum.score) ||
+        ((lightFastBeginningSpectrum.score ==
+          lightFastSteadySpectrum.score) &&
+         (lightFastBeginningSpectrum.coherence >
+          lightFastSteadySpectrum.coherence))) {
+      selected = &lightFastBeginningSpectrum;
+      selectedLowMs = lightBeginningLowMs;
+    }
+  }
+
+  lightFastScore = selected->score;
+  lightPattern = lightFastScore > 0.0f
+    ? selected->identifier : lightPatternNone;
+  lightCadenceHz = selected->frequencyHz;
+  lightCadenceScore = selected->coherence;
+  lightTemporalShapeScore = selected->harmonicShape;
+  lightSynchronizationPeriodMs = static_cast<uint16_t>(
+    lightHighMs + selectedLowMs);
+  const float estimatedDutyCycle = std::acos(std::clamp(
+    selected->harmonicRatio, 0.0f, 1.0f)) /
+    (0.5f * twoPi);
+  const float estimatedPeriodMs = selected->frequencyHz > 0.0f
+    ? 1000.0f / selected->frequencyHz : 0.0f;
+  lightHighDurationMs = estimatedDutyCycle * estimatedPeriodMs;
+  lightLowDurationMs = estimatedPeriodMs - lightHighDurationMs;
+  const float meanRed =
+    lightFastRgbSum[0] / static_cast<float>(lightFastSampleCount);
+  const float relativeAmplitude =
+    2.0f * selected->fundamentalAmplitude /
+    (std::abs(meanRed) + 1024.0f);
+  lightRecentPulseStrength = knee(relativeAmplitude, 0.01f, 0.25f);
+
+  if ((not lightFastDetected) &&
+      (lightFastScore >= lightFastDetectionEnterScore)) {
+    lightFastDetected = true;
+    lightLastSynchronizedEvent = 0U;
+    ++lightPulses;
+  } else if (lightFastDetected &&
+             (lightFastScore <= lightFastDetectionExitScore)) {
+    lightFastDetected = false;
+    lightLastSynchronizedEvent = 0U;
+    publishLightScore(0.0f);
+  }
+}
+
+void ImavLightRange::updateSynchronizedLightEvent(systime_t now,
+                                                   bool scoreIsCurrent)
+{
+  if ((not lightFastDetected) || (lightSynchronizationPeriodMs == 0U)) {
+    return;
+  }
+
+  const auto eventIsDue = [&]() {
+    const systime_t periodTicks =
+      TIME_MS2I(lightSynchronizationPeriodMs);
+    const float carrierPhase = twoPi *
+      (static_cast<float>(now % periodTicks) /
+       static_cast<float>(periodTicks));
+    const float fallingPhase = 0.5f * twoPi *
+      (static_cast<float>(lightHighMs) /
+       static_cast<float>(lightSynchronizationPeriodMs));
+    const LightFastPatternState& selected =
+      lightPattern == lightPatternBeginning
+      ? lightFastBeginningSpectrum : lightFastSteadySpectrum;
+    float phaseSinceFalling = std::fmod(
+      carrierPhase + selected.synchronizationPhase - fallingPhase, twoPi);
+    if (phaseSinceFalling < 0.0f) {
+      phaseSinceFalling += twoPi;
+    }
+    const float eventWindowPhase = twoPi *
+      (static_cast<float>(lightSynchronizationWindowMs) /
+       static_cast<float>(lightSynchronizationPeriodMs));
+    return phaseSinceFalling <= eventWindowPhase;
+  };
+
+  if (not eventIsDue()) {
+    return;
+  }
+  if (not scoreIsCurrent) {
+    // The phase estimate locates the edge from the continuously updated sums.
+    // Re-score on that exact RGBW group so the published value includes it.
+    evaluateLightFastSpectrum();
+    if ((not lightFastDetected) || (not eventIsDue())) {
+      return;
+    }
+  }
+
+  const uint32_t minimumIntervalMs = lightSynchronizationPeriodMs / 2U;
+  if ((lightLastSynchronizedEvent != 0U) &&
+      (chTimeDiffX(lightLastSynchronizedEvent, now) <
+       TIME_MS2I(minimumIntervalMs))) {
+    return;
+  }
+  lightLastSynchronizedEvent = now;
+  publishLightScore(lightFastScore);
+}
+
 void ImavLightRange::updateLightFastSpectrum(
   const std::array<float, 4U>& scaled, systime_t now)
 {
   if ((lightFastLastSample != 0U) &&
       (chTimeDiffX(lightFastLastSample, now) >=
-       TIME_MS2I(lightSpectralResetGapMs))) {
+       TIME_MS2I(lightFastResetGapMs))) {
     resetLightFastSpectrum();
   }
 
@@ -725,409 +835,15 @@ void ImavLightRange::updateLightFastSpectrum(
   if ((lightFastSampleCount < 50U) ||
       (coveredMs < lightFastMinimumWindowMs)) {
     lightFastScore = 0.0f;
-    lightFastPattern = lightPatternNone;
-    updateLightCombinedScore();
-    return;
-  }
-  if ((lightFastEvaluationCounter % lightFastEvaluationDivider) != 0U) {
-    updateLightCombinedScore();
-    return;
-  }
-
-  scoreLightFastPattern(
-    lightFastSteadySpectrum, lightSteadyLowMs, lightPatternSteady);
-  LightFastPatternState *selected = &lightFastSteadySpectrum;
-  if (beginningPatternEnabled) {
-    scoreLightFastPattern(
-      lightFastBeginningSpectrum, lightBeginningLowMs,
-      lightPatternBeginning);
-    if ((lightFastBeginningSpectrum.score >
-         lightFastSteadySpectrum.score) ||
-        ((lightFastBeginningSpectrum.score ==
-          lightFastSteadySpectrum.score) &&
-         (lightFastBeginningSpectrum.coherence >
-          lightFastSteadySpectrum.coherence))) {
-      selected = &lightFastBeginningSpectrum;
-    }
-  }
-
-  lightFastScore = selected->score;
-  lightFastPattern = lightFastScore > 0.0f
-    ? selected->identifier : lightPatternNone;
-  lightCadenceHz = selected->frequencyHz;
-  lightCadenceScore = selected->coherence;
-  lightTemporalShapeScore = selected->harmonicShape;
-  const float estimatedDutyCycle = std::acos(std::clamp(
-    selected->harmonicRatio, 0.0f, 1.0f)) /
-    (0.5f * twoPi);
-  const float estimatedPeriodMs = selected->frequencyHz > 0.0f
-    ? 1000.0f / selected->frequencyHz : 0.0f;
-  lightHighDurationMs = estimatedDutyCycle * estimatedPeriodMs;
-  lightLowDurationMs = estimatedPeriodMs - lightHighDurationMs;
-  const float meanRed =
-    lightFastRgbSum[0] / static_cast<float>(lightFastSampleCount);
-  const float relativeAmplitude =
-    2.0f * selected->fundamentalAmplitude /
-    (std::abs(meanRed) + 1024.0f);
-  lightRecentPulseStrength = knee(relativeAmplitude, 0.01f, 0.25f);
-
-  if ((not lightFastDetected) &&
-      (lightFastScore >= lightFastTrackingEnterScore)) {
-    lightFastDetected = true;
-    ++lightPulses;
-  } else if (lightFastDetected && (lightFastScore <= 0.30f)) {
-    lightFastDetected = false;
-  }
-
-  if (lightFastTracking &&
-      (lightFastScore <= lightFastTrackingExitScore)) {
-    // The finite window proves that the nearby beacon disappeared. Discard
-    // the stale long-memory acquisition state before allowing a new search.
-    lightFastTracking = false;
-    resetLightSpectrum();
-  }
-  updateLightCombinedScore();
-}
-
-void ImavLightRange::resetLightSpectrum()
-{
-  lightSteadySpectrum = {};
-  lightBeginningSpectrum = {};
-  lightSpectralBaseline = {};
-  lightSpectralEnergy = 0.0f;
-  lightSpectralScore = 0.0f;
-  lightSpectralSnrDb = 0.0f;
-  lightSpectralCoherence = 0.0f;
-  lightSpectralRedFraction = 0.0f;
-  lightSpectralFrequencyHz = 0.0f;
-  lightHarmonicRatio = 0.0f;
-  lightHarmonicShapeScore = 0.0f;
-  lightSlowPattern = lightPatternNone;
-  lightPattern = lightPatternNone;
-  lightSpectralSamples = 0U;
-  lightSpectralStartSample = 0U;
-  lightSpectralLastSample = 0U;
-  lightFlashScore = 0.0f;
-}
-
-void ImavLightRange::updateLightSpectrum(
-  const std::array<float, 4U>& scaled, systime_t now)
-{
-  if ((lightSpectralLastSample != 0U) &&
-      (chTimeDiffX(lightSpectralLastSample, now) >=
-       TIME_MS2I(lightSpectralResetGapMs))) {
-    resetLightSpectrum();
-  }
-
-  float samplePeriodSeconds = 0.0072f;
-  if (lightSpectralLastSample != 0U) {
-    samplePeriodSeconds = 1.0e-6f * static_cast<float>(TIME_I2US(
-      chTimeDiffX(lightSpectralLastSample, now)));
-  }
-  // Preserve the original approximately 0.94 s DC and 9.4 s spectral time
-  // constants when data-ready sampling runs near 139 Hz. A gap of 100 ms or
-  // more has already reset the spectral state above.
-  samplePeriodSeconds = std::clamp(
-    samplePeriodSeconds, 0.0001f, 0.099f);
-  const float dcAlpha = -std::expm1(-samplePeriodSeconds / 0.94f);
-  const float spectralAlpha = -std::expm1(-samplePeriodSeconds / 9.4f);
-
-  if (lightSpectralSamples == 0U) {
-    lightSpectralBaseline = {scaled[0], scaled[1], scaled[2]};
-    lightSpectralStartSample = now;
-  }
-  lightSpectralLastSample = now;
-  ++lightSpectralSamples;
-
-  std::array<float, 3U> ac = {};
-  for (size_t channel = 0U; channel < ac.size(); ++channel) {
-    lightSpectralBaseline[channel] += dcAlpha *
-      (scaled[channel] - lightSpectralBaseline[channel]);
-    ac[channel] = scaled[channel] - lightSpectralBaseline[channel];
-  }
-
-  // Red-sensitive, but deliberately broad enough for a different red LED
-  // spectrum on the real motionSCOUT. The periodic color is checked again
-  // from the complex RGB amplitudes below.
-  const float redContrast = ac[0] - 0.5f * (ac[1] + ac[2]);
-  lightSpectralEnergy += spectralAlpha *
-    (redContrast * redContrast - lightSpectralEnergy);
-
-  // The offsets are integer multiples of 0.1 Hz and repeat every ten seconds.
-  // The configured center repeats over the exact high+low period. Combining
-  // both oscillators avoids loss of precision on large absolute timestamps.
-  constexpr systime_t offsetPhasePeriod = TIME_S2I(10U);
-  const systime_t phaseTicks = now % offsetPhasePeriod;
-  const float baseAngle = twoPi *
-    (static_cast<float>(phaseTicks) /
-     static_cast<float>(offsetPhasePeriod));
-  const float baseReal = std::cos(baseAngle);
-  const float baseImag = -std::sin(baseAngle);
-
-  std::array<float, 9U> offsetReal = {};
-  std::array<float, 9U> offsetImag = {};
-  offsetReal[0] = 1.0f;
-  for (size_t index = 1U; index < offsetReal.size(); ++index) {
-    const float nextReal =
-      offsetReal[index - 1U] * baseReal -
-      offsetImag[index - 1U] * baseImag;
-    offsetImag[index] =
-      offsetReal[index - 1U] * baseImag +
-      offsetImag[index - 1U] * baseReal;
-    offsetReal[index] = nextReal;
-  }
-
-  const auto updateBin = [=, &ac](LightSpectralBin& bin,
-                                   float oscillatorReal,
-                                   float oscillatorImag) {
-    const auto updateChannel = [=](float value, float& real, float& imag) {
-      real += spectralAlpha *
-        (value * oscillatorReal - real);
-      imag += spectralAlpha *
-        (value * oscillatorImag - imag);
-    };
-    updateChannel(ac[0], bin.redReal, bin.redImag);
-    updateChannel(ac[1], bin.greenReal, bin.greenImag);
-    updateChannel(ac[2], bin.blueReal, bin.blueImag);
-  };
-
-  const auto updatePattern = [&](LightSpectralPatternState& pattern,
-                                 uint16_t lowMs) {
-    const uint16_t periodMs = static_cast<uint16_t>(lightHighMs + lowMs);
-    const systime_t centerPeriod = TIME_MS2I(periodMs);
-    const systime_t centerPhase = now % centerPeriod;
-    const float centerAngle = twoPi *
-      (static_cast<float>(centerPhase) /
-       static_cast<float>(centerPeriod));
-    const float centerReal = std::cos(centerAngle);
-    const float centerImag = -std::sin(centerAngle);
-
-    for (size_t index = 0U; index < lightSpectralBinCount; ++index) {
-      const int offset = static_cast<int>(index) -
-        static_cast<int>(lightSpectralCenterBin);
-      const size_t magnitude = static_cast<size_t>(std::abs(offset));
-      const float spacingReal = offsetReal[magnitude];
-      const float spacingImag = offset >= 0
-        ? offsetImag[magnitude] : -offsetImag[magnitude];
-      const float oscillatorReal =
-        centerReal * spacingReal - centerImag * spacingImag;
-      const float oscillatorImag =
-        centerReal * spacingImag + centerImag * spacingReal;
-      updateBin(pattern.fundamentalBins[index],
-                oscillatorReal, oscillatorImag);
-    }
-
-    for (size_t index = 0U; index < lightTargetBinCount; ++index) {
-      const size_t fundamentalIndex = lightFirstTargetBin + index;
-      const int offset = static_cast<int>(fundamentalIndex) -
-        static_cast<int>(lightSpectralCenterBin);
-      const size_t magnitude = static_cast<size_t>(std::abs(offset));
-      const float spacingReal = offsetReal[magnitude];
-      const float spacingImag = offset >= 0
-        ? offsetImag[magnitude] : -offsetImag[magnitude];
-      const float fundamentalReal =
-        centerReal * spacingReal - centerImag * spacingImag;
-      const float fundamentalImag =
-        centerReal * spacingImag + centerImag * spacingReal;
-      const float harmonicReal =
-        fundamentalReal * fundamentalReal -
-        fundamentalImag * fundamentalImag;
-      const float harmonicImag =
-        2.0f * fundamentalReal * fundamentalImag;
-      updateBin(pattern.harmonicBins[index],
-                harmonicReal, harmonicImag);
-    }
-  };
-
-  updatePattern(lightSteadySpectrum, lightSteadyLowMs);
-  if (beginningPatternEnabled) {
-    updatePattern(lightBeginningSpectrum, lightBeginningLowMs);
-  }
-
-  if ((lightSpectralSamples % lightSpectralUpdateDivider) != 0U) {
-    updateLightCombinedScore();
-    return;
-  }
-
-  const float support = std::min(
-    static_cast<float>(TIME_I2MS(chTimeDiffX(
-      lightSpectralStartSample, now))) / 10000.0f, 1.0f);
-
-  const auto scorePattern = [&](LightSpectralPatternState& pattern,
-                                uint16_t lowMs) {
-    const auto contrast = [](const LightSpectralBin& bin) {
-      return std::array<float, 2U>{
-        bin.redReal - 0.5f * (bin.greenReal + bin.blueReal),
-        bin.redImag - 0.5f * (bin.greenImag + bin.blueImag),
-      };
-    };
-    const auto power = [&contrast](const LightSpectralBin& bin) {
-      const auto value = contrast(bin);
-      return value[0] * value[0] + value[1] * value[1];
-    };
-
-    size_t bestBinIndex = lightFirstTargetBin;
-    float bestPower = 0.0f;
-    for (size_t index = lightFirstTargetBin;
-         index < lightFirstTargetBin + lightTargetBinCount; ++index) {
-      const float candidatePower = power(pattern.fundamentalBins[index]);
-      if (candidatePower > bestPower) {
-        bestPower = candidatePower;
-        bestBinIndex = index;
-      }
-    }
-
-    std::array<float, 14U> noiseAmplitudes = {};
-    size_t noiseIndex = 0U;
-    for (size_t index = 0U; index < lightSpectralBinCount; ++index) {
-      const int binDistance = std::abs(
-        static_cast<int>(index) - static_cast<int>(bestBinIndex));
-      if (binDistance <= 1) {
-        continue;
-      }
-      noiseAmplitudes[noiseIndex++] =
-        std::sqrt(power(pattern.fundamentalBins[index]));
-    }
-    chDbgAssert(noiseIndex == noiseAmplitudes.size(),
-                "unexpected optical DFT noise-bin count");
-    std::sort(noiseAmplitudes.begin(), noiseAmplitudes.end());
-    const float noiseAmplitude =
-      0.5f * (noiseAmplitudes[6] + noiseAmplitudes[7]);
-    const float signalAmplitude = std::sqrt(bestPower);
-    pattern.snrDb = 20.0f * std::log10(
-      (signalAmplitude + 1.0f) / (noiseAmplitude + 1.0f));
-    pattern.coherence = std::sqrt(std::clamp(
-      2.0f * bestPower / (lightSpectralEnergy + 1.0f), 0.0f, 1.0f));
-    const float centerFrequencyHz = 1000.0f /
-      static_cast<float>(lightHighMs + lowMs);
-    pattern.frequencyHz = centerFrequencyHz + lightSpectralBinSpacingHz *
-      static_cast<float>(static_cast<int>(bestBinIndex) -
-                         static_cast<int>(lightSpectralCenterBin));
-
-    const LightSpectralBin& bestBin =
-      pattern.fundamentalBins[bestBinIndex];
-    const float redAmplitude = std::hypot(
-      bestBin.redReal, bestBin.redImag);
-    const float inverseRedAmplitude = 1.0f / (redAmplitude + 1.0f);
-    const float greenProjection = std::max(0.0f,
-      (bestBin.greenReal * bestBin.redReal +
-       bestBin.greenImag * bestBin.redImag) * inverseRedAmplitude);
-    const float blueProjection = std::max(0.0f,
-      (bestBin.blueReal * bestBin.redReal +
-       bestBin.blueImag * bestBin.redImag) * inverseRedAmplitude);
-    pattern.redFraction = redAmplitude /
-      (redAmplitude + greenProjection + blueProjection + 1.0f);
-
-    const auto fundamental = contrast(bestBin);
-    const auto harmonic = contrast(pattern.harmonicBins[
-      bestBinIndex - lightFirstTargetBin]);
-    const float harmonicPower =
-      harmonic[0] * harmonic[0] + harmonic[1] * harmonic[1];
-    const float harmonicAmplitude = std::sqrt(harmonicPower);
-    pattern.harmonicRatio = harmonicAmplitude / (signalAmplitude + 1.0f);
-
-    const float dutyCycle = static_cast<float>(lightHighMs) /
-      static_cast<float>(lightHighMs + lowMs);
-    const float expectedHarmonicRatio = std::abs(std::cos(
-      0.5f * twoPi * dutyCycle));
-    const float ratioError =
-      (pattern.harmonicRatio - expectedHarmonicRatio) / 0.20f;
-    const float ratioScore = 1.0f /
-      (1.0f + ratioError * ratioError);
-    const float fundamentalSquaredReal =
-      fundamental[0] * fundamental[0] -
-      fundamental[1] * fundamental[1];
-    const float fundamentalSquaredImag =
-      2.0f * fundamental[0] * fundamental[1];
-    const float phaseAlignment =
-      (harmonic[0] * fundamentalSquaredReal +
-       harmonic[1] * fundamentalSquaredImag) /
-      (harmonicAmplitude * bestPower + 1.0f);
-    const float phaseScore = knee(phaseAlignment, 0.25f, 0.85f);
-    const float harmonicCoherence = std::sqrt(std::clamp(
-      2.0f * harmonicPower / (lightSpectralEnergy + 1.0f),
-      0.0f, 1.0f));
-    const float visibilityScore = knee(harmonicCoherence, 0.03f, 0.12f);
-    pattern.harmonicShapeScore = std::cbrt(
-      ratioScore * phaseScore * visibilityScore);
-
-    const float snrScore = knee(pattern.snrDb, 6.0f, 14.0f);
-    const float coherenceScore = knee(pattern.coherence, 0.04f, 0.14f);
-    const float redScore = knee(pattern.redFraction, 0.55f, 0.72f);
-    const float baseScore = support * std::min(snrScore, coherenceScore) *
-      (0.5f + 0.5f * redScore);
-    // A weak fundamental remains useful for long-range navigation, but only
-    // the expected asymmetric harmonic signature can raise this path to 1.
-    pattern.score = baseScore *
-      (0.5f + 0.5f * pattern.harmonicShapeScore);
-  };
-
-  scorePattern(lightSteadySpectrum, lightSteadyLowMs);
-  LightSpectralPatternState *selected = &lightSteadySpectrum;
-  lightSlowPattern = lightPatternSteady;
-  if (beginningPatternEnabled) {
-    scorePattern(lightBeginningSpectrum, lightBeginningLowMs);
-    if (lightBeginningSpectrum.score > lightSteadySpectrum.score) {
-      selected = &lightBeginningSpectrum;
-      lightSlowPattern = lightPatternBeginning;
-    }
-  }
-
-  lightSpectralScore = selected->score;
-  lightSpectralSnrDb = selected->snrDb;
-  lightSpectralCoherence = selected->coherence;
-  lightSpectralRedFraction = selected->redFraction;
-  lightSpectralFrequencyHz = selected->frequencyHz;
-  lightHarmonicRatio = selected->harmonicRatio;
-  lightHarmonicShapeScore = selected->harmonicShapeScore;
-  if (lightSpectralScore <= 0.0f) {
-    lightSlowPattern = lightPatternNone;
-  }
-  updateLightCombinedScore();
-}
-
-void ImavLightRange::updateLightCombinedScore()
-{
-  if ((not lightFastTracking) &&
-      (lightFastScore >= lightFastTrackingEnterScore)) {
-    // Once the nearby beacon is unambiguous, spatial tracking must favor
-    // current flash strength over the long-memory acquisition detector.
-    lightFastTracking = true;
-  }
-
-  if (not lightFastTracking) {
-    // Acquisition mode: retain maximum range, but allow a strong nearby
-    // cadence to produce a sub-second attack.
-    if (lightFastScore > lightSpectralScore) {
-      lightFlashScore = lightFastScore;
-      lightPattern = lightFastPattern;
-    } else {
-      lightFlashScore = lightSpectralScore;
-      lightPattern = lightSlowPattern;
-    }
-    if (lightFlashScore <= 0.0f) {
-      lightPattern = lightPatternNone;
-    }
-    return;
-  }
-
-  // Tracking mode: gate the stale slow DFT with the one-second finite-window
-  // evidence, so lit follows the beacon spatially after an overflight.
-  const float slowGate = knee(
-    lightFastScore, lightFastTrackingExitScore,
-    lightFastTrackingEnterScore);
-  const float gatedSpectralScore = lightSpectralScore * slowGate;
-  if (lightFastScore > gatedSpectralScore) {
-    lightFlashScore = lightFastScore;
-    lightPattern = lightFastPattern;
-  } else {
-    lightFlashScore = gatedSpectralScore;
-    lightPattern = lightSlowPattern;
-  }
-  if (lightFlashScore <= 0.0f) {
     lightPattern = lightPatternNone;
+    return;
   }
-
+  const bool scoreIsCurrent =
+    (lightFastEvaluationCounter % lightFastEvaluationDivider) == 0U;
+  if (scoreIsCurrent) {
+    evaluateLightFastSpectrum();
+  }
+  updateSynchronizedLightEvent(now, scoreIsCurrent);
 }
 
 void ImavLightRange::processLightMeasurement(
@@ -1157,7 +873,6 @@ void ImavLightRange::processLightMeasurement(
     lightRelativeAc = 0.0f;
     lightInstantScore = 0.0f;
     resetLightFastSpectrum();
-    resetLightSpectrum();
     lightLastSample = now;
     publishLightState();
     publishLightDebugSample(overloaded);
@@ -1172,7 +887,6 @@ void ImavLightRange::processLightMeasurement(
     lightRelativeAc = 0.0f;
     lightInstantScore = 0.0f;
     updateLightFastSpectrum(scaled, now);
-    updateLightSpectrum(scaled, now);
     lightLastSample = now;
     publishLightState();
     publishLightDebugSample(overloaded);
@@ -1227,9 +941,6 @@ void ImavLightRange::processLightMeasurement(
     }
   }
 
-  // Update the long acquisition detector after the finite-window path so
-  // their fusion sees evidence from the same RGBW sample.
-  updateLightSpectrum(scaled, now);
   lightLastSample = now;
   publishLightState();
   publishLightDebugSample(overloaded);

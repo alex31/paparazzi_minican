@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import argparse
 import csv
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import json
 import math
 from pathlib import Path
@@ -49,10 +49,22 @@ class Detection:
     phase_alignment: float
     red_fraction: float
     harmonic_shape: float
+    synchronization_phase: float
+
+
+@dataclass(frozen=True)
+class SynchronizedEvent:
+    elapsed_s: float
+    score: float
+    pattern: int
+    active: bool
 
 
 STEADY_PATTERN = Pattern(2, "steady", 100.0, 233.0)
 BEGINNING_PATTERN = Pattern(1, "beginning", 100.0, 400.0)
+DETECTION_ENTER_SCORE = 0.55
+DETECTION_EXIT_SCORE = 0.30
+SYNCHRONIZATION_WINDOW_S = 0.020
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -142,6 +154,7 @@ def pattern_detection(samples: np.ndarray, pattern: Pattern) -> Detection:
     contrast_energy = float(np.mean(red_contrast * red_contrast)) + 1.0
 
     best: Detection | None = None
+    synchronization_phase: float | None = None
     for offset_hz in (-0.2, -0.1, 0.0, 0.1, 0.2):
         frequency_hz = pattern.frequency_hz + offset_hz
         oscillator = np.exp(-2.0j * math.pi * frequency_hz * mcu_time)
@@ -154,6 +167,9 @@ def pattern_detection(samples: np.ndarray, pattern: Pattern) -> Detection:
         harmonic = harmonic_rgb[0] - 0.5 * (
             harmonic_rgb[1] + harmonic_rgb[2]
         )
+        if offset_hz == 0.0:
+            synchronization_phase = math.atan2(
+                fundamental.imag, fundamental.real)
         fundamental_amplitude = abs(fundamental)
         harmonic_amplitude = abs(harmonic)
         coherence = math.sqrt(min(
@@ -203,13 +219,14 @@ def pattern_detection(samples: np.ndarray, pattern: Pattern) -> Detection:
             phase_alignment=phase_alignment,
             red_fraction=red_fraction,
             harmonic_shape=harmonic_shape,
+            synchronization_phase=0.0,
         )
         if best is None or (candidate.score, candidate.coherence) > (
                 best.score, best.coherence):
             best = candidate
 
-    assert best is not None
-    return best
+    assert best is not None and synchronization_phase is not None
+    return replace(best, synchronization_phase=synchronization_phase)
 
 
 def replay(samples: np.ndarray, window_s: float, step_s: float,
@@ -236,6 +253,61 @@ def replay(samples: np.ndarray, window_s: float, step_s: float,
     return detections
 
 
+def synchronized_events(
+        samples: np.ndarray, detections: list[Detection],
+        patterns: list[Pattern]) -> list[SynchronizedEvent]:
+    """Generate one score at each DFT-estimated falling edge while locked."""
+    if not detections:
+        return []
+
+    pattern_by_identifier = {
+        pattern.identifier: pattern for pattern in patterns
+    }
+    events: list[SynchronizedEvent] = []
+    detection_index = 0
+    active = False
+    last_flash_time = -math.inf
+
+    for sample in samples:
+        elapsed_s = float(sample[0])
+        while (detection_index + 1 < len(detections) and
+               detections[detection_index + 1].elapsed_s <= elapsed_s):
+            detection_index += 1
+        detection = detections[detection_index]
+        if detection.elapsed_s > elapsed_s:
+            continue
+
+        if active and detection.score <= DETECTION_EXIT_SCORE:
+            active = False
+            events.append(SynchronizedEvent(
+                elapsed_s=elapsed_s, score=0.0,
+                pattern=detection.pattern, active=False))
+            continue
+        if not active and detection.score >= DETECTION_ENTER_SCORE:
+            active = True
+        if not active:
+            continue
+
+        pattern = pattern_by_identifier[detection.pattern]
+        frequency_hz = pattern.frequency_hz
+        falling_phase = math.pi * (
+            pattern.high_ms / (pattern.high_ms + pattern.low_ms))
+        phase_since_falling_edge = (
+            2.0 * math.pi * frequency_hz * float(sample[1]) +
+            detection.synchronization_phase - falling_phase
+        ) % (2.0 * math.pi)
+        time_since_falling_edge = (
+            phase_since_falling_edge / (2.0 * math.pi * frequency_hz))
+        if (time_since_falling_edge <= SYNCHRONIZATION_WINDOW_S and
+                elapsed_s - last_flash_time >= 0.5 / frequency_hz):
+            events.append(SynchronizedEvent(
+                elapsed_s=elapsed_s, score=detection.score,
+                pattern=detection.pattern, active=True))
+            last_flash_time = elapsed_s
+
+    return events
+
+
 def write_detections(path: Path,
                      captures: Iterable[tuple[Path, list[Detection]]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -244,7 +316,7 @@ def write_detections(path: Path,
         writer.writerow([
             "capture", "elapsed_s", "score", "pattern", "frequency_hz",
             "coherence", "harmonic_ratio", "phase_alignment",
-            "red_fraction", "harmonic_shape",
+            "red_fraction", "harmonic_shape", "synchronization_phase",
         ])
         for capture, detections in captures:
             for detection in detections:
@@ -257,6 +329,7 @@ def write_detections(path: Path,
                     f"{detection.phase_alignment:.6f}",
                     f"{detection.red_fraction:.6f}",
                     f"{detection.harmonic_shape:.6f}",
+                    f"{detection.synchronization_phase:.6f}",
                 ])
 
 
@@ -388,6 +461,90 @@ def check_beginning_mode(
     )
 
 
+def check_synchronized_events(
+        manifest: dict[str, dict[str, list[dict[str, float | str]]]],
+        samples_by_capture: dict[str, np.ndarray],
+        detections_by_capture: dict[str, list[Detection]],
+        patterns: list[Pattern]) -> bool:
+    """Check cadence and falling-edge alignment of operational light events."""
+    success = True
+    nonsteady_events = 0
+    spacings: list[float] = []
+    edge_errors: list[float] = []
+
+    for capture_name, annotations in manifest.items():
+        samples = samples_by_capture.get(capture_name)
+        detections = detections_by_capture.get(capture_name)
+        if samples is None or detections is None:
+            continue
+        events = synchronized_events(samples, detections, patterns)
+        positive_events = [event for event in events if event.active]
+
+        for segment in annotations.get("segments", []):
+            label = str(segment["label"])
+            start = float(segment["start_s"])
+            end = float(segment["end_s"])
+            selected = [
+                event for event in positive_events
+                if start <= event.elapsed_s <= end
+            ]
+            if label != "steady":
+                nonsteady_events += len(selected)
+                continue
+            if len(selected) < 2:
+                print(f"  {capture_name} synchronized steady: FAILED")
+                success = False
+                continue
+
+            segment_spacings = [
+                right.elapsed_s - left.elapsed_s
+                for left, right in zip(selected, selected[1:])
+            ]
+            spacings.extend(segment_spacings)
+
+            segment_samples = samples[
+                (samples[:, 0] >= start) & (samples[:, 0] <= end)
+            ]
+            contrast = segment_samples[:, 2] - 0.5 * (
+                segment_samples[:, 3] + segment_samples[:, 4])
+            low, high = np.quantile(contrast, [0.20, 0.80])
+            illuminated = contrast > 0.5 * (low + high)
+            falling_times = segment_samples[1:, 0][
+                illuminated[:-1] & ~illuminated[1:]
+            ]
+            if len(falling_times) == 0:
+                print(f"  {capture_name} raw falling edges: FAILED")
+                success = False
+                continue
+            edge_errors.extend(
+                float(np.min(np.abs(falling_times - event.elapsed_s)))
+                for event in selected
+                if start + 0.20 <= event.elapsed_s <= end - 0.20
+            )
+
+    spacing_array = np.asarray(spacings)
+    error_array = np.asarray(edge_errors)
+    if len(spacing_array) == 0 or len(error_array) == 0:
+        print("Synchronized light events: no usable event", file=sys.stderr)
+        return False
+    spacing_minimum = float(np.min(spacing_array))
+    spacing_median = float(np.median(spacing_array))
+    spacing_maximum = float(np.max(spacing_array))
+    edge_error_p95 = float(np.quantile(error_array, 0.95))
+    print(
+        "\nSynchronized light events: "
+        f"nonsteady={nonsteady_events}, "
+        f"spacing={spacing_minimum:.3f}/"
+        f"{spacing_median:.3f}/{spacing_maximum:.3f} s, "
+        f"falling-edge p95={1000.0 * edge_error_p95:.1f} ms"
+    )
+    success &= nonsteady_events == 0
+    success &= spacing_minimum >= 0.28
+    success &= spacing_maximum <= 0.39
+    success &= edge_error_p95 <= 0.025
+    return success
+
+
 def main() -> int:
     arguments = parse_arguments()
     with arguments.manifest.open() as manifest_file:
@@ -441,6 +598,8 @@ def main() -> int:
         result_map = {path.name: detections
                       for path, detections in computed}
         success = check_regressions(manifest, result_map, window_s)
+        success &= check_synchronized_events(
+            manifest, loaded_samples, result_map, [steady_pattern])
         beginning_results = {
             name: replay(samples, window_s, step_s,
                          [steady_pattern, beginning_pattern])

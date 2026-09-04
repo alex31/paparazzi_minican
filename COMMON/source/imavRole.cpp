@@ -885,20 +885,12 @@ void ImavRole::publishMeasurements()
   };
   publish("det", audio->detector.detected ? 1.0f : 0.0f);
 
-  const ImavLightRangeSnapshot sensors = audio->lightRange != nullptr
-    ? audio->lightRange->snapshot() : ImavLightRangeSnapshot{};
-  float lightFlashScore = sensors.lightFlashScore;
-  const systime_t now = chVTGetSystemTimeX();
-  if ((not sensors.lightAvailable) || (sensors.lightLastSample == 0U) ||
-      (chTimeDiffX(sensors.lightLastSample, now) >= TIME_MS2I(200U))) {
-    lightFlashScore = 0.0f;
-  }
-  publish("lit", lightFlashScore);
-
   if (not param_cget<"role.imav.debug.publish.optional">()) {
     return;
   }
 
+  const ImavLightRangeSnapshot sensors = audio->lightRange != nullptr
+    ? audio->lightRange->snapshot() : ImavLightRangeSnapshot{};
   publish("a0", audio->detector.channel.blockScore);
   publish("p0", audio->detector.channel.toneRms);
   publish("sdb", audio->detector.channel.spectralRatioDb);
@@ -916,13 +908,6 @@ void ImavRole::publishMeasurements()
   publish("lsa", static_cast<float>(sensors.lightSaturations));
   publish("ler", static_cast<float>(sensors.lightReadErrors));
   publish("lgp", static_cast<float>(sensors.lightGaps));
-  publish("lsc", sensors.lightSpectralScore);
-  publish("lsn", sensors.lightSpectralSnrDb);
-  publish("lco", sensors.lightSpectralCoherence);
-  publish("lrf", sensors.lightSpectralRedFraction);
-  publish("lfq", sensors.lightSpectralFrequencyHz);
-  publish("lhr", sensors.lightHarmonicRatio);
-  publish("lhs", sensors.lightHarmonicShapeScore);
   publish("lon", sensors.lightHighDurationMs);
   publish("lof", sensors.lightLowDurationMs);
   publish("lts", sensors.lightTemporalShapeScore);
