@@ -67,6 +67,8 @@ namespace {
   constexpr float lightFastDetectionEnterScore = 0.55f;
   constexpr float lightFastDetectionExitScore = 0.30f;
   constexpr uint32_t lightSynchronizationWindowMs = 20U;
+  constexpr uint8_t lightEventTimeoutPeriods = 2U;
+  constexpr sysinterval_t inactiveScorePublishPeriod = TIME_MS2I(1000U);
   constexpr uint8_t lightPatternNone = 0U;
   constexpr uint8_t lightPatternBeginning = 1U;
   constexpr uint8_t lightPatternSteady = 2U;
@@ -259,10 +261,38 @@ void ImavLightRange::publishLightState()
 
 void ImavLightRange::publishLightScore(float score)
 {
+  const systime_t now = chVTGetSystemTimeX();
+  if (score > 0.0f) {
+    lightScoreActive = true;
+    lightLastScoreEvent = now;
+  } else {
+    lightScoreActive = false;
+    lightLastZeroPublishTime = now;
+  }
   uavcan_protocol_debug_KeyValue message = {};
   message.value = score;
   UAVCAN::dsdlAssign(message.key, "lit");
   node.sendBroadcast(message, CANARD_TRANSFER_PRIORITY_LOW);
+}
+
+void ImavLightRange::serviceLightScore(systime_t now)
+{
+  const uint16_t maximumLowMs = beginningPatternEnabled
+    ? std::max(lightSteadyLowMs, lightBeginningLowMs)
+    : lightSteadyLowMs;
+  const sysinterval_t timeout = TIME_MS2I(
+    lightEventTimeoutPeriods *
+      (static_cast<uint32_t>(lightHighMs) + maximumLowMs));
+  const bool scoreExpired =
+    chTimeDiffX(lightLastScoreEvent, now) >= timeout;
+
+  if (lightScoreActive && scoreExpired) {
+    publishLightScore(0.0f);
+  } else if ((not lightScoreActive) && scoreExpired &&
+             (chTimeDiffX(lightLastZeroPublishTime, now) >=
+              inactiveScorePublishPeriod)) {
+    publishLightScore(0.0f);
+  }
 }
 
 void ImavLightRange::publishLightDebugSample(bool overloaded)
@@ -1257,8 +1287,13 @@ uint32_t ImavLightRange::nextRangeIntervalMs()
   systime_t lastRangeRetry = now;
   systime_t lastRangeStart = now;
   uint32_t rangeInterval = 100U;
+  lightLastScoreEvent = now;
+  lightLastZeroPublishTime = now;
 
   while (true) {
+    now = chVTGetSystemTimeX();
+    serviceLightScore(now);
+
     if (lightRestartPending) {
       bool rangeStopped = true;
       if (rangeDevice.IsRanging != 0U) {

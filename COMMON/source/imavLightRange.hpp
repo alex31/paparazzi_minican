@@ -105,6 +105,7 @@ private:
   void updateLightFastSpectrum(const std::array<float, 4U>& scaled,
                                systime_t now);
   void updateSynchronizedLightEvent(systime_t now, bool scoreIsCurrent);
+  void serviceLightScore(systime_t now);
   bool readLightRegister(uint8_t reg, uint16_t& value);
   bool readLightBlock(uint8_t reg, size_t length);
   bool writeLightRegister(uint8_t reg, uint16_t value);
@@ -151,6 +152,7 @@ private:
   bool lightCountersValid = false;
   bool lightOverloadActive = false;
   bool lightFastDetected = false;
+  bool lightScoreActive = false;
   std::array<float, 4U> lightBaseline = {};
   std::array<uint8_t, 4U> lightCounters = {};
 
@@ -192,6 +194,8 @@ private:
   uint32_t lightFastEvaluationCounter = 0U;
   systime_t lightFastLastSample = 0U;
   systime_t lightLastSynchronizedEvent = 0U;
+  systime_t lightLastScoreEvent = 0U;
+  systime_t lightLastZeroPublishTime = 0U;
   uint16_t lightSynchronizationPeriodMs = 0U;
 
   float lightNoiseFloor = 0.0f;

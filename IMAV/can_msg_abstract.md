@@ -1,15 +1,15 @@
 # CAN IMAV — version café
-— Sur le CAN, la MicroCAN envoie trois trucs vraiment utiles : `det`, `snr` et `lit`.
-— `det` part à 5 Hz ; `snr` part une fois par bip sonore reconnu et `lit` une fois par flash lumineux reconnu, donc chacun vers 3 Hz en régime établi.
-— `det`, c'est simple : 0 ou 1, selon que le son de la balise est reconnu ou pas.
+— Sur le CAN, la MicroCAN envoie deux scores utiles : `snr` pour le son et `lit` pour la lumière.
+— `snr` part une fois par bip sonore reconnu et `lit` une fois par flash lumineux reconnu, donc chacun vers 3 Hz en régime établi.
 — `snr`, c'est la force du bip par rapport au bruit moteur appris autour, pas un niveau sonore absolu.
 — Son IIR est réglé par `role.imav.audio.snr_alpha` : 1 donne le pic brut sans lissage, 0,5 conserve l'ancien comportement moitié-moitié.
 — Donc pour remonter vers la balise, on compare surtout son évolution pendant le déplacement du drone.
 — `lit` vient uniquement d'une fenêtre glissante d'une seconde et part sur le front descendant estimé : son retard reste proche de 0,5 s et ne change pas de régime.
 — Ce n'est ni une mesure de lux ni un seuil brut : le fond lumineux et le bruit local sont retirés.
-— Et on n'impose pas `det ET lit` : un des deux capteurs peut être masqué sans que l'autre raconte n'importe quoi.
-— Les trois valeurs arrivent séparément, sans timestamp commun, donc l'autopilote surveille leur fraîcheur ; l'arrivée de `snr` date la fin d'une salve reconnue.
-— Pour l'épreuve, on met `role.imav.debug.publish.optional` à `false` et on ne dépend que de ces trois clés.
+— `snr` guide la descente de gradient à longue portée ; `lit` sert à confirmer la proximité et déclencher le largage du medikit.
+— Après 1,5 s sans salve, `snr` passe à zéro ; `lit` passe à zéro après deux périodes sans flash reconnu.
+— Ces zéros sont ensuite répétés à 1 Hz : la perte d'une trame ne laisse donc pas un ancien score actif.
+— Pour l'épreuve, on met `role.imav.debug.publish.optional` à `false` et on ne dépend que de ces deux clés.
 — Le gros paquet de messages optionnels, c'est uniquement pour bricoler et comprendre ce qui se passe au banc.
 — On y trouve les détails audio : score instantané, fréquence, cadence, énergie et autres valeurs de réglage.
 — Côté lumière, on voit aussi les temps haut/bas, le motif choisi et si ses harmoniques ont vraiment la bonne forme.
@@ -18,4 +18,4 @@
 — Si le ToF est activé, `rng` et `rsg` aident au debug, mais la vraie distance passe dans le message UAVCAN standard.
 — Avec tout le debug ouvert, on approche 1 100 trames par seconde, donc aucune raison de garder ça en vol de concours.
 — L'appli Qt et l'enregistreur lisent directement `can0` ; la liaison série n'entre pas dans la chaîne de mesure.
-— Bref : en mission on consomme `det`, `snr`, `lit`, et le reste ne sert qu'à nous éviter de régler ça au doigt mouillé.
+— Bref : en mission on consomme `snr` et `lit`, et le reste ne sert qu'à nous éviter de régler ça au doigt mouillé.

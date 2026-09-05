@@ -29,10 +29,13 @@ namespace {
   constexpr uint8_t audioBurstEndLowBlocks = 1U;
   constexpr uint16_t minimumAudioOnsetIntervalMs = 250U;
   constexpr uint16_t maximumAudioOnsetIntervalMs = 750U;
+  constexpr uint16_t audioEventTimeoutMs =
+    2U * maximumAudioOnsetIntervalMs;
   constexpr float audioOnsetMinimumBlockScore = 0.45f;
   constexpr float audioOnsetMinimumPairScore = 1.20f;
   constexpr float audioOnsetMaximumFrequencyStepHz = 250.0f;
   constexpr sysinterval_t measurementPublishPeriod = TIME_MS2I(200U);
+  constexpr sysinterval_t inactiveScorePublishPeriod = TIME_MS2I(1000U);
 
   // Derive the configurable range from the persistent parameter metadata so
   // its validation and the DSP configuration cannot silently diverge.
@@ -255,11 +258,14 @@ struct ImavAudioState {
   uint32_t acquisitionRestarts = 0U;
   uint32_t discontinuities = 0U;
   systime_t lastMeasurementPublishTime = 0U;
+  systime_t lastSnrEventTime = 0U;
+  systime_t lastSnrZeroPublishTime = 0U;
   uint16_t mean = 0U;
   uint16_t meanAbsoluteDeviation = 0U;
   AudioDetector detector;
   ImavLightRange *lightRange = nullptr;
   bool timeOfFlightEnabled = false;
+  bool snrActive = false;
 };
 
 static_assert(sizeof(adcsample_t) == sizeof(uint16_t));
@@ -564,7 +570,7 @@ namespace {
     if (detector.lastOnsetTime != 0U) {
       const uint32_t onsetAgeMs = TIME_I2MS(
 	chTimeDiffX(detector.lastOnsetTime, now));
-      if (onsetAgeMs >= 1500U) {
+      if (onsetAgeMs >= audioEventTimeoutMs) {
 	detector.onsetCount = 0U;
 	detector.lastOnsetTime = 0U;
       } else {
@@ -607,7 +613,8 @@ namespace {
 	chTimeDiffX(detector.lastToneTime, now));
       toneFreshness = toneAgeMs <= 750U ? 1.0f :
 	std::max(0.0f,
-	  (1500.0f - static_cast<float>(toneAgeMs)) / 750.0f);
+	  (static_cast<float>(audioEventTimeoutMs) -
+	   static_cast<float>(toneAgeMs)) / 750.0f);
     }
     detector.audioScore = strength * toneFreshness;
     if (detector.detected) {
@@ -675,7 +682,10 @@ DeviceStatus ImavRole::start(UAVCAN::Node& node)
   audio->adcGroup = &adcAudioGroup;
   audio->timeOfFlightEnabled =
     param_cget<"role.imav.time_of_flight">();
-  audio->lastMeasurementPublishTime = chVTGetSystemTimeX();
+  const systime_t startTime = chVTGetSystemTimeX();
+  audio->lastMeasurementPublishTime = startTime;
+  audio->lastSnrEventTime = startTime;
+  audio->lastSnrZeroPublishTime = startTime;
   audio->detector.band = makeAudioBandConfiguration(static_cast<uint16_t>(
     param_cget<"role.imav.audio.band_low_hz">()));
 
@@ -868,6 +878,8 @@ void ImavRole::processAudioHalf(size_t offset, bool discontinuity)
 /** @brief Publish one finalized SNR measurement for each recognized burst. */
 void ImavRole::publishAudioBurst()
 {
+  audio->lastSnrEventTime = chVTGetSystemTimeX();
+  audio->snrActive = true;
   uavcan_protocol_debug_KeyValue message = {};
   message.value = audio->detector.recentBurstSnrDb;
   UAVCAN::dsdlAssign(message.key, "snr");
@@ -883,7 +895,21 @@ void ImavRole::publishMeasurements()
     UAVCAN::dsdlAssign(message.key, key);
     m_node->sendBroadcast(message, CANARD_TRANSFER_PRIORITY_LOW);
   };
-  publish("det", audio->detector.detected ? 1.0f : 0.0f);
+  const systime_t now = chVTGetSystemTimeX();
+  const bool snrExpired =
+    chTimeDiffX(audio->lastSnrEventTime, now) >=
+      TIME_MS2I(audioEventTimeoutMs);
+  if (audio->snrActive && snrExpired) {
+    audio->snrActive = false;
+    audio->detector.recentBurstSnrDb = 0.0f;
+    publish("snr", 0.0f);
+    audio->lastSnrZeroPublishTime = now;
+  } else if ((not audio->snrActive) && snrExpired &&
+             (chTimeDiffX(audio->lastSnrZeroPublishTime, now) >=
+              inactiveScorePublishPeriod)) {
+    publish("snr", 0.0f);
+    audio->lastSnrZeroPublishTime = now;
+  }
 
   if (not param_cget<"role.imav.debug.publish.optional">()) {
     return;

@@ -130,8 +130,8 @@
       // Nominal VL53L4CX one-shot period. Small deterministic jitter is added
       // so a periodic beacon flash cannot always fall in the ToF light gap.
       {"role.imav.tof.period_ms", {.min = 100, .max = 1000, .v = 200}},
-      // det is periodic; snr and lit follow recognized audio/light events.
-      // Enable the remaining channels only while diagnosing the sensors.
+      // Mission telemetry uses event-driven snr/lit scores. Once stale, each
+      // emitter repeats zero slowly; enable other channels only for diagnosis.
       {"role.imav.debug.publish.optional", {.v = false}},
 #endif
 
