@@ -48,6 +48,18 @@ namespace UBX {
     bool (*navDopCb)(const NavDop& msg);
     bool (*navSatCb)(const NavSat& msg);
   };
+
+  /**
+   * @brief Bind callbacks to a configuration whose address is constant.
+   * @details The immediate constructor rejects automatic, heap and temporary
+   * configurations at the call site. The configuration is still referenced,
+   * not copied. Forwarding APIs must pass this checked wrapper by value.
+   */
+  struct StaticDecoderConf {
+    const DecoderConf& conf;
+
+    consteval StaticDecoderConf(const DecoderConf& value) noexcept : conf(value) {}
+  };
   
   /**
    * @brief Incremental UBX decoder that validates checksums and dispatches NAV messages.
@@ -62,9 +74,9 @@ namespace UBX {
     static constexpr uint8_t Sync2 = 0x62;
 
     /**
-     * @brief Construct the decoder with a callback configuration.
+     * @brief Construct the decoder with a checked static callback configuration.
      */
-    Decoder(const DecoderConf& _cfg) : cfg(_cfg) {}
+    Decoder(StaticDecoderConf _cfg) : cfg(_cfg.conf) {}
     /**
      * @brief Feed a span of raw bytes into the state machine.
      */

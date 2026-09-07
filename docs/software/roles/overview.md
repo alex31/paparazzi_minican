@@ -96,6 +96,22 @@ Notes:
 - `bus.serial.baudrate = 0`: GNSS UBX auto-baud probing on `57600`, `115200`, `230400`.
 - Detect baud, then configure GPS while keeping that detected baud.
 
+The C++ decoder stores its callback configuration by reference. Its constructor
+accepts `UBX::StaticDecoderConf`, whose `consteval` conversion checks the binding
+at the call site. Keep the configuration in static storage, as in the existing
+`GpsUBX::config` (`inline static constexpr`). Automatic configurations, including
+local `constexpr` variables, heap configurations and temporaries are rejected.
+The decoder itself can still be allocated dynamically.
+
+Any intermediate factory must accept `UBX::StaticDecoderConf` by value rather
+than an unchecked `const UBX::DecoderConf&`, so the check occurs at the original
+call site. The wrapper is not stored in addition to the reference and does not
+add per-decoder RAM. It checks the configuration object's lifetime, not callback
+behavior or initialization of mutable global configurations.
+
+Run `make -C microcan test_ubx_config_lifetime` for the positive and negative
+compilation tests using the ARM compiler and the actual decoder header.
+
 Wiring:
 - USART2 TX/RX on PB03/PB04 (MicroCAN)
 

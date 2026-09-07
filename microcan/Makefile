@@ -382,6 +382,10 @@ ELF_OVERLAP_CHECKER := $(VARIOUS)/TOOLS/check_elf_overlap.pl
 
 CHECK_ELF_OVERLAP ?= yes
 
+.PHONY: test_ubx_config_lifetime
+test_ubx_config_lifetime:
+	$(PY) ../tests/ubx_config_lifetime/run.py $(ETL_LIB) --cxx "$(CPPC)"
+
 .PHONY: build_dsdlc
 
 build_dsdlc:
