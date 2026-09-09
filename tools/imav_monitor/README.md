@@ -6,12 +6,19 @@ n'utilise pas la console série de la MicroCAN.
 
 L'interface affiche :
 
-- la détection sonore issue de `det`, avec le `snr` relatif en dB ;
+- la présence sonore issue de `snr` (100 % si positif, 0 % si nul), avec
+  sa valeur relative en dB conservée sans lissage ;
 - le score lumineux `lit` ;
-- la corroboration des deux capteurs, calculée par `det × lit` ;
+- la corroboration des deux capteurs, calculée par `(snr > 0) × lit` ;
 - les trois courbes sur une fenêtre glissante de 30 secondes.
 
-Une valeur devient indisponible si sa clé n'a pas été reçue depuis une seconde.
+Le pourcentage sonore est un indicateur de présence, pas une normalisation
+du SNR ni une probabilité de détection. Le moniteur ne dépend pas de `det`,
+supprimé du firmware lors du passage à l'interface nominale `snr`/`lit`.
+
+Une valeur devient indisponible si sa clé n'a pas été reçue depuis deux secondes.
+Ce délai couvre l'expiration audio de 1,5 s, sa publication au prochain cycle
+de 200 ms et la répétition des zéros à 1 Hz avec une marge de réception.
 Les coupures apparaissent alors comme des trous dans le graphe, au lieu d'être
 interprétées comme une absence de balise.
 
@@ -24,10 +31,11 @@ sudo ip link set can0 down 2>/dev/null || true
 sudo ip link set can0 up type can bitrate 1000000 fd off
 ```
 
-Le rôle `ROLE.imav.beacon` doit être actif. `det` est émis à 5 Hz ; `snr` est
+Le rôle `ROLE.imav.beacon` doit être actif. `snr` est
 émis à la fin de chaque salve reconnue et `lit` sur le front descendant estimé
 de chaque flash reconnu. Il n'est pas nécessaire d'activer
-`role.imav.debug.publish.optional`.
+`role.imav.debug.publish.optional`. Après expiration, le firmware publie zéro
+puis le répète à 1 Hz pour chaque modalité inactive.
 
 ## Compilation
 

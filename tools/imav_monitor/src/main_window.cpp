@@ -131,7 +131,7 @@ void MainWindow::buildUi() {
     "height: 8px; text-align: center; }"
   );
 
-  setScoreCard(audioCard_, std::nullopt, "En attente de det / snr");
+  setScoreCard(audioCard_, std::nullopt, "En attente de snr");
   setScoreCard(lightCard_, std::nullopt, "En attente de lit");
   setScoreCard(combinedCard_, std::nullopt, "Son × lumière");
   updateStatus();
