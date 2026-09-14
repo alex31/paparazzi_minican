@@ -27,6 +27,7 @@ class Pattern:
     name: str
     high_ms: float
     low_ms: float
+    cree_test: bool = False
 
     @property
     def frequency_hz(self) -> float:
@@ -62,6 +63,7 @@ class SynchronizedEvent:
 
 STEADY_PATTERN = Pattern(2, "steady", 100.0, 233.0)
 BEGINNING_PATTERN = Pattern(1, "beginning", 100.0, 400.0)
+CREE_PATTERN = Pattern(3, "cree", 62.0, 63.0, cree_test=True)
 DETECTION_ENTER_SCORE = 0.55
 DETECTION_EXIT_SCORE = 0.30
 SYNCHRONIZATION_WINDOW_S = 0.020
@@ -84,6 +86,9 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--beginning-low-ms", type=float, default=400.0)
     parser.add_argument("--beginning-pattern", action="store_true",
                         help="also accept the approximately 2 Hz startup pattern")
+    parser.add_argument("--cree-test", action="store_true",
+                        help="use the white/red CREE 8 Hz bench profile, "
+                             "overriding MotionSCOUT timings and startup mode")
     parser.add_argument("--output", type=Path,
                         help="write every computed window to this CSV")
     parser.add_argument("--check", action="store_true",
@@ -150,7 +155,8 @@ def pattern_detection(samples: np.ndarray, pattern: Pattern) -> Detection:
     mcu_time = samples[:, 1]
     rgb = samples[:, 2:5]
     rgb_ac = rgb - np.mean(rgb, axis=0)
-    red_contrast = rgb_ac[:, 0] - 0.5 * (rgb_ac[:, 1] + rgb_ac[:, 2])
+    red_contrast = (np.mean(rgb_ac, axis=1) if pattern.cree_test else
+                    rgb_ac[:, 0] - 0.5 * (rgb_ac[:, 1] + rgb_ac[:, 2]))
     contrast_energy = float(np.mean(red_contrast * red_contrast)) + 1.0
 
     best: Detection | None = None
@@ -161,12 +167,12 @@ def pattern_detection(samples: np.ndarray, pattern: Pattern) -> Detection:
         fundamental_rgb = np.mean(rgb_ac * oscillator[:, None], axis=0)
         harmonic_rgb = np.mean(rgb_ac * (oscillator * oscillator)[:, None],
                                axis=0)
-        fundamental = fundamental_rgb[0] - 0.5 * (
-            fundamental_rgb[1] + fundamental_rgb[2]
-        )
-        harmonic = harmonic_rgb[0] - 0.5 * (
-            harmonic_rgb[1] + harmonic_rgb[2]
-        )
+        fundamental = (np.mean(fundamental_rgb) if pattern.cree_test else
+                       fundamental_rgb[0] - 0.5 * (
+                           fundamental_rgb[1] + fundamental_rgb[2]))
+        harmonic = (np.mean(harmonic_rgb) if pattern.cree_test else
+                    harmonic_rgb[0] - 0.5 * (
+                        harmonic_rgb[1] + harmonic_rgb[2]))
         if offset_hz == 0.0:
             synchronization_phase = math.atan2(
                 fundamental.imag, fundamental.real)
@@ -202,13 +208,17 @@ def pattern_detection(samples: np.ndarray, pattern: Pattern) -> Detection:
             harmonic_ratio - pattern.expected_harmonic_ratio
         ) / 0.20
         ratio_score = 1.0 / (1.0 + ratio_error * ratio_error)
-        phase_score = knee(phase_alignment, 0.40, 0.85)
+        phase_score = (1.0 if pattern.cree_test else
+                       knee(phase_alignment, 0.40, 0.85))
         harmonic_shape = math.sqrt(ratio_score * phase_score)
         coherence_score = knee(coherence, 0.35, 0.65)
-        red_score = knee(red_fraction, 0.55, 0.72)
+        red_score = 1.0 if pattern.cree_test else knee(red_fraction, 0.55, 0.72)
+        modulation_score = (knee(
+            2.0 * fundamental_amplitude / (abs(float(np.mean(rgb))) + 1024.0),
+            0.005, 0.02) if pattern.cree_test else 1.0)
         score = coherence_score * (0.5 + 0.5 * red_score) * (
             0.35 + 0.65 * harmonic_shape
-        )
+        ) * modulation_score
         candidate = Detection(
             elapsed_s=float(samples[-1, 0]),
             score=score,
@@ -569,6 +579,8 @@ def main() -> int:
     selected_patterns = [steady_pattern]
     if arguments.beginning_pattern:
         selected_patterns.append(beginning_pattern)
+    if arguments.cree_test:
+        selected_patterns = [CREE_PATTERN]
     computed: list[tuple[Path, list[Detection]]] = []
     loaded_samples: dict[str, np.ndarray] = {}
     for capture in captures:
@@ -586,8 +598,8 @@ def main() -> int:
         print(f"saved: {arguments.output.resolve()}")
 
     if arguments.check:
-        if arguments.beginning_pattern:
-            print("--check expects the competition default without startup pattern",
+        if arguments.beginning_pattern or arguments.cree_test:
+            print("--check expects competition mode without startup or CREE mode",
                   file=sys.stderr)
             return 2
         if (arguments.high_ms, arguments.steady_low_ms,

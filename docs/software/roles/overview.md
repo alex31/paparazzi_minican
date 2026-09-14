@@ -160,6 +160,10 @@ Params:
 - `role.imav.light.i2c_address` (0x44..0x47)
 - `role.imav.light.beginning_pattern` (recognize the startup pattern in
   addition to the steady pattern; default false, reboot after changing it)
+- `role.imav.light.cree_test` (CREE headlamp bench profile, 8 Hz and about
+  50% duty, white or red-filtered; default false). Overrides startup detection
+  and the pulse timings below while enabled; save and reboot after changing
+  it. See [CREE tests](cree_test.md).
 - `role.imav.light.high_ms` (50..200, default 100),
   `role.imav.light.steady_low_ms` (150..400, default 233) and
   `role.imav.light.beginning_low_ms` (250..600, default 400): pulse timings
@@ -175,7 +179,7 @@ Outputs:
 - `det` (audio detection, 0 or 1) is broadcast as
   `uavcan.protocol.debug.KeyValue` at 5 Hz. `snr` is broadcast once at the end
   of each recognized audio burst. `lit`, the score of the finite one-second
-  2/3 Hz light window, is broadcast once per recognized optical flash at its
+  light window, is broadcast once per recognized optical flash at its
   DFT-estimated falling edge; one zero marks loss of lock.
 - When `role.imav.debug.publish.optional` is true, `a0`, `p0`, `sdb`, `aud`,
   `frq` and `cad` provide the accompanying audio tuning measurements at 5 Hz.
@@ -185,7 +189,8 @@ Outputs:
   `lsa`, read-error count
   `ler` and sample-gap count `lgp`, high/low durations inferred from H2/H1
   `lon/lof`, harmonic-shape score `lts` and
-  selected pattern `lpt` (`0` none, `1` startup, `2` steady). Each data-ready optical
+  selected pattern `lpt` (`0` none, `1` startup, `2` steady, `3` CREE test).
+  Each data-ready optical
   sample adds raw `lrd/lgn/lbl/lwh`, overload `lov`, sample counter `lct` and
   modulo-2^24 microsecond timestamp `ltu`.
   Optional ToF also adds `rng` and `rsg`.
@@ -208,15 +213,14 @@ frequency continuity, can detect either prealarm or full alarm. Broadband
 energy rises without prominence over the reference bands are rejected. The
 measured 2/3 Hz burst cadence is diagnostic and does not gate audio validity.
 
-The independent optical detector combines two paths. Three coherent red
-flashes at 2 or 3 Hz feed a fast proximity score, reaching full temporal
-support after about 0.67 seconds at 3 Hz. A streaming DFT on red contrast uses
-a dense 2.2--3.8 Hz bank to estimate local colored noise around the searched
-2.8--3.2 Hz alarm fundamental; its roughly 10-second integration remains
-available for weak outdoor signals. Once the fast score reaches 0.55, it gates
-the slow contribution so a stale DFT cannot hide the decrease after an
-overflight; the output normally falls within about 0.9 seconds of the last
-accepted flash.
+The independent optical detector uses a finite one-second DFT window, with
+five frequencies spaced by 0.1 Hz around each configured fundamental and
+their second harmonics. Competition mode scores red contrast, periodic
+coherence, H2/H1 magnitude and harmonic phase against the MotionSCOUT pulse
+timings. CREE test mode instead scores mean RGB intensity at 7.8--8.2 Hz,
+accepts white or red-filtered light, and checks H2/H1 magnitude without its
+phase (H2 nearly vanishes at 50% duty). Detection enters at a score of 0.55
+and exits at 0.30; saturated samples and long sample gaps reset the window.
 The sensor emits a 1 us interrupt after each complete RGBW group. The optical
 thread waits synchronously on PA8 and reads the group over I2C after the edge;
 a 25 ms timeout prints a warning on the serial shell and performs a fallback

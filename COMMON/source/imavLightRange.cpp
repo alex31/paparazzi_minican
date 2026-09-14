@@ -72,6 +72,12 @@ namespace {
   constexpr uint8_t lightPatternNone = 0U;
   constexpr uint8_t lightPatternBeginning = 1U;
   constexpr uint8_t lightPatternSteady = 2U;
+  constexpr uint8_t lightPatternCree = 3U;
+  // VID_20260911_214652.mp4 (120 fps): 7.99 Hz, near 50% duty.
+  // Whole-ms timings retain the measured 125 ms period. The video does not
+  // resolve the pulse width more accurately than a few milliseconds.
+  constexpr uint16_t lightCreeHighMs = 62U;
+  constexpr uint16_t lightCreeLowMs = 63U;
   constexpr float twoPi = 6.2831853071795864769f;
 
   static_assert(optConfigurationPowerDown == 0x3088U);
@@ -164,15 +170,18 @@ namespace {
 ImavLightRange::ImavLightRange(
   UAVCAN::Node& node_, uint8_t address, uint32_t periodMs,
   bool enableTimeOfFlight, bool enableBeginningPattern,
-  uint16_t highMs, uint16_t steadyLowMs, uint16_t beginningLowMs)
+  uint16_t highMs, uint16_t steadyLowMs, uint16_t beginningLowMs,
+  bool enableCreeTest)
   : node(node_),
     lightAddress(address),
     rangePeriodMs(std::clamp(
       periodMs, uint32_t{100U}, uint32_t{1000U})),
     timeOfFlightEnabled(enableTimeOfFlight),
-    beginningPatternEnabled(enableBeginningPattern),
-    lightHighMs(std::clamp(highMs, uint16_t{50U}, uint16_t{200U})),
-    lightSteadyLowMs(std::clamp(
+    creeTestEnabled(enableCreeTest),
+    beginningPatternEnabled(enableBeginningPattern && not enableCreeTest),
+    lightHighMs(enableCreeTest ? lightCreeHighMs :
+      std::clamp(highMs, uint16_t{50U}, uint16_t{200U})),
+    lightSteadyLowMs(enableCreeTest ? lightCreeLowMs : std::clamp(
       steadyLowMs, uint16_t{150U}, uint16_t{400U})),
     lightBeginningLowMs(std::clamp(
       beginningLowMs, uint16_t{250U}, uint16_t{600U}))
@@ -498,11 +507,19 @@ void ImavLightRange::resetLightFastSpectrum()
   }
 }
 
+float ImavLightRange::lightSpectralSignal(
+  const std::array<float, 3U>& rgb) const
+{
+  // White flashes cancel in red contrast. Only the bench profile uses mean
+  // RGB intensity, which also retains flashes behind a red filter.
+  return creeTestEnabled ? (rgb[0] + rgb[1] + rgb[2]) / 3.0f
+    : rgb[0] - 0.5f * (rgb[1] + rgb[2]);
+}
+
 void ImavLightRange::accumulateLightFastSample(
   const LightFastSample& sample, float direction)
 {
-  const float contrast = sample.rgb[0] -
-    0.5f * (sample.rgb[1] + sample.rgb[2]);
+  const float contrast = lightSpectralSignal(sample.rgb);
   for (size_t channel = 0U; channel < sample.rgb.size(); ++channel) {
     lightFastRgbSum[channel] += direction * sample.rgb[channel];
   }
@@ -621,14 +638,10 @@ void ImavLightRange::scoreLightFastPattern(
          meanRgb[channel] * bin.harmonicOscillatorImag) / count;
     }
 
-    const float fundamentalContrastReal = fundamentalReal[0] -
-      0.5f * (fundamentalReal[1] + fundamentalReal[2]);
-    const float fundamentalContrastImag = fundamentalImag[0] -
-      0.5f * (fundamentalImag[1] + fundamentalImag[2]);
-    const float harmonicContrastReal = harmonicReal[0] -
-      0.5f * (harmonicReal[1] + harmonicReal[2]);
-    const float harmonicContrastImag = harmonicImag[0] -
-      0.5f * (harmonicImag[1] + harmonicImag[2]);
+    const float fundamentalContrastReal = lightSpectralSignal(fundamentalReal);
+    const float fundamentalContrastImag = lightSpectralSignal(fundamentalImag);
+    const float harmonicContrastReal = lightSpectralSignal(harmonicReal);
+    const float harmonicContrastImag = lightSpectralSignal(harmonicImag);
     const float fundamentalPower =
       fundamentalContrastReal * fundamentalContrastReal +
       fundamentalContrastImag * fundamentalContrastImag;
@@ -674,12 +687,23 @@ void ImavLightRange::scoreLightFastPattern(
       (harmonicRatio - expectedHarmonicRatio) / 0.20f;
     const float ratioScore = 1.0f /
       (1.0f + ratioError * ratioError);
-    const float phaseScore = knee(phaseAlignment, 0.40f, 0.85f);
+    // At 50% duty H2 nearly vanishes, so its phase is undefined. Retain the
+    // H2/H1 magnitude check for CREE, but do not gate on that noisy phase.
+    const float phaseScore = creeTestEnabled ? 1.0f
+      : knee(phaseAlignment, 0.40f, 0.85f);
     const float harmonicShape = std::sqrt(ratioScore * phaseScore);
     const float coherenceScore = knee(coherence, 0.35f, 0.65f);
-    const float redScore = knee(redFraction, 0.55f, 0.72f);
+    const float redScore = creeTestEnabled ? 1.0f
+      : knee(redFraction, 0.55f, 0.72f);
+    // With mean RGB, a large constant white background can dominate float32
+    // variance subtraction. Require actual modulation in the bench profile
+    // so numerical residue or tiny sensor noise cannot sustain a lock.
+    const float modulationScore = creeTestEnabled ? knee(
+      2.0f * fundamentalAmplitude /
+        (std::abs(lightSpectralSignal(meanRgb)) + 1024.0f),
+      0.005f, 0.02f) : 1.0f;
     const float score = coherenceScore * (0.5f + 0.5f * redScore) *
-      (0.35f + 0.65f * harmonicShape);
+      (0.35f + 0.65f * harmonicShape) * modulationScore;
 
     if ((score > bestScore) ||
         ((score == bestScore) && (coherence > bestCoherence))) {
@@ -703,7 +727,8 @@ void ImavLightRange::scoreLightFastPattern(
 void ImavLightRange::evaluateLightFastSpectrum()
 {
   scoreLightFastPattern(
-    lightFastSteadySpectrum, lightSteadyLowMs, lightPatternSteady);
+    lightFastSteadySpectrum, lightSteadyLowMs,
+    creeTestEnabled ? lightPatternCree : lightPatternSteady);
   LightFastPatternState *selected = &lightFastSteadySpectrum;
   uint16_t selectedLowMs = lightSteadyLowMs;
   if (beginningPatternEnabled) {
@@ -736,11 +761,12 @@ void ImavLightRange::evaluateLightFastSpectrum()
     ? 1000.0f / selected->frequencyHz : 0.0f;
   lightHighDurationMs = estimatedDutyCycle * estimatedPeriodMs;
   lightLowDurationMs = estimatedPeriodMs - lightHighDurationMs;
-  const float meanRed =
-    lightFastRgbSum[0] / static_cast<float>(lightFastSampleCount);
+  const float meanSignal = (creeTestEnabled
+    ? lightSpectralSignal(lightFastRgbSum) : lightFastRgbSum[0]) /
+    static_cast<float>(lightFastSampleCount);
   const float relativeAmplitude =
     2.0f * selected->fundamentalAmplitude /
-    (std::abs(meanRed) + 1024.0f);
+    (std::abs(meanSignal) + 1024.0f);
   lightRecentPulseStrength = knee(relativeAmplitude, 0.01f, 0.25f);
 
   if ((not lightFastDetected) &&
@@ -945,7 +971,8 @@ void ImavLightRange::processLightMeasurement(
   const float relativeScore = knee(lightRelativeAc, 0.01f, 0.25f);
   const float riseScore = knee(
     lightRelativeAc / (noise + 0.002f), 3.0f, 12.0f);
-  const float redScore = knee(lightRedRatio, 0.42f, 0.68f);
+  const float redScore = creeTestEnabled ? 1.0f
+    : knee(lightRedRatio, 0.42f, 0.68f);
   const float signalScore = std::max(relativeScore, 0.8f * riseScore);
   lightInstantScore = redScore * signalScore *
     (0.4f + 0.6f * absoluteScore);

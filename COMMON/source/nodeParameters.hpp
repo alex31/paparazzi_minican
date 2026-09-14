@@ -118,6 +118,10 @@
       // The competition beacon should already be in its steady pattern. Enable
       // this only for bench tests which must also recognize its startup mode.
       {"role.imav.light.beginning_pattern", {.v = false}},
+      // Bench-only CREE headlamp profile: 8 Hz, approximately 50% duty,
+      // white or red-filtered light. Overrides the MotionSCOUT timings and
+      // startup pattern without changing their stored values. Reboot to apply.
+      {"role.imav.light.cree_test", {.v = false}},
       // Nominal optical pulse timing. Both patterns share the high time but
       // have distinct low times. Read when the role starts; reboot after a
       // change. The detector derives frequency, duty cycle and harmonics.

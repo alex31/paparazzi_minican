@@ -718,7 +718,8 @@ DeviceStatus ImavRole::start(UAVCAN::Node& node)
     static_cast<uint16_t>(param_cget<"role.imav.light.high_ms">()),
     static_cast<uint16_t>(param_cget<"role.imav.light.steady_low_ms">()),
     static_cast<uint16_t>(
-      param_cget<"role.imav.light.beginning_low_ms">()));
+      param_cget<"role.imav.light.beginning_low_ms">()),
+    param_cget<"role.imav.light.cree_test">());
   audio->lightRange->initialize();
   const ImavLightRangeSnapshot initialSensors =
     audio->lightRange->snapshot();

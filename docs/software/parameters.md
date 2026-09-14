@@ -20,6 +20,12 @@ Important parameters:
 - role.imav.light.beginning_pattern (also recognize the roughly 2 Hz startup
   flash pattern; default false so the competition detector only accepts the
   steady pattern; reboot after changing it)
+- role.imav.light.cree_test (bench tests with the CREE headlamp measured at
+  7.99 Hz, approximately 50% duty; default false). When true, selects an 8 Hz
+  profile accepting white or red-filtered flashes and overrides the startup
+  pattern and MotionSCOUT pulse timings without changing their stored values.
+  Save and reboot after changing it; set false and reboot for competition.
+  See [measurement and test procedure](roles/cree_test.md).
 - role.imav.light.high_ms (50..200 ms, default 100),
   role.imav.light.steady_low_ms (150..400 ms, default 233) and
   role.imav.light.beginning_low_ms (250..600 ms, default 400): nominal pulse

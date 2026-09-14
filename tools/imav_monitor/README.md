@@ -153,3 +153,19 @@ Avec la banque de démarrage activée, elle est choisie pour 100 % des fenêtres
 2 Hz annotées et la banque établie pour 100 % des fenêtres 3 Hz. Le calcul a
 ensuite été porté dans le firmware avec des sommes glissantes en `float32` ; il
 reste à vérifier son résultat et sa charge CPU sur la cible.
+
+Pour les essais avec la frontale CREE mesurée le 11 septembre 2026, utiliser
+`--cree-test` : le rejeu applique le même profil 8 Hz, environ 50 % de rapport
+cyclique, que le paramètre UAVCAN `role.imav.light.cree_test`. Ce profil
+remplace les motifs MotionSCOUT, utilise l'intensité RGB moyenne et n'exige
+pas de dominante rouge. Le rapport H2/H1 reste contrôlé ; sa phase n'est pas
+utilisée, car H2 s'annule à 50 %. `--check` reste réservé aux captures de
+référence MotionSCOUT en mode compétition.
+
+Les tests synthétiques CREE (lumière blanche ou rouge, cadences rejetées,
+bruit, extinction et synchronisation des événements) se lancent depuis la
+racine du dépôt :
+
+```sh
+python3 -m unittest discover -s tools/imav_monitor/tests -p 'test_*.py'
+```

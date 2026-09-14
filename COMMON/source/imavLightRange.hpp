@@ -64,7 +64,7 @@ public:
                  uint32_t rangePeriodMs, bool timeOfFlightEnabled,
                  bool beginningPatternEnabled, uint16_t lightHighMs,
                  uint16_t lightSteadyLowMs,
-                 uint16_t lightBeginningLowMs);
+                 uint16_t lightBeginningLowMs, bool creeTestEnabled);
 
   /** @brief Optionally configure ToF, then start light sampling. */
   void initialize();
@@ -97,6 +97,7 @@ private:
   void processLightMeasurement(const std::array<uint32_t, 4U>& adcCodes,
                                bool overloaded, systime_t now);
   void resetLightFastSpectrum();
+  float lightSpectralSignal(const std::array<float, 3U>& rgb) const;
   void accumulateLightFastSample(const LightFastSample& sample,
                                  float direction);
   void scoreLightFastPattern(LightFastPatternState& pattern,
@@ -129,6 +130,7 @@ private:
   uint8_t lightAddress;
   const uint32_t rangePeriodMs;
   const bool timeOfFlightEnabled;
+  const bool creeTestEnabled;
   const bool beginningPatternEnabled;
   const uint16_t lightHighMs;
   const uint16_t lightSteadyLowMs;
