@@ -13,7 +13,6 @@ namespace {
 
 constexpr QColor kAudioColor(74, 222, 128);
 constexpr QColor kLightColor(251, 191, 36);
-constexpr QColor kCombinedColor(96, 165, 250);
 constexpr QColor kGridColor(55, 65, 81);
 constexpr QColor kTextColor(156, 163, 175);
 
@@ -89,9 +88,11 @@ void HistoryWidget::paintEvent(QPaintEvent*) {
     painter.setPen(QColor(229, 231, 235));
     painter.drawText(x + 29, 26, text);
   };
-  drawLegendItem(leftMargin, kAudioColor, "Son");
-  drawLegendItem(leftMargin + 100, kLightColor, "Lumière");
-  drawLegendItem(leftMargin + 225, kCombinedColor, "Combinée");
+  const QString audioLegend = "Présence sonore";
+  drawLegendItem(leftMargin, kAudioColor, audioLegend);
+  drawLegendItem(leftMargin + 29 +
+                   painter.fontMetrics().horizontalAdvance(audioLegend) + 24,
+                 kLightColor, "Score lumineux");
 
   const double windowStart = nowSeconds_ - historySeconds_;
   auto mapPoint = [&](double time, float value) {
@@ -135,9 +136,6 @@ void HistoryWidget::paintEvent(QPaintEvent*) {
   drawCurve(kLightColor,
             [](const DetectionHistoryPoint& p) { return p.lightValid; },
             [](const DetectionHistoryPoint& p) { return p.light; });
-  drawCurve(kCombinedColor,
-            [](const DetectionHistoryPoint& p) { return p.combinedValid; },
-            [](const DetectionHistoryPoint& p) { return p.combined; });
   painter.restore();
 
   painter.setPen(QPen(QColor(75, 85, 99), 1));

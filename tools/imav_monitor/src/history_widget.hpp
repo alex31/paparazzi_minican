@@ -8,10 +8,8 @@ struct DetectionHistoryPoint {
   double timeSeconds = 0.0;
   float audio = 0.0F;
   float light = 0.0F;
-  float combined = 0.0F;
   bool audioValid = false;
   bool lightValid = false;
-  bool combinedValid = false;
 };
 
 class HistoryWidget final : public QWidget {

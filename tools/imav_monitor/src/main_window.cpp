@@ -87,16 +87,12 @@ void MainWindow::buildUi() {
   cards->setSpacing(14);
   auto* audioContainer = new QFrame(central);
   auto* lightContainer = new QFrame(central);
-  auto* combinedContainer = new QFrame(central);
   audioCard_ = createScoreCard("DÉTECTION SONORE", "#4ade80",
                                audioContainer);
   lightCard_ = createScoreCard("DÉTECTION LUMINEUSE", "#fbbf24",
                                lightContainer);
-  combinedCard_ = createScoreCard("DÉTECTION COMBINÉE", "#60a5fa",
-                                  combinedContainer);
   cards->addWidget(audioContainer);
   cards->addWidget(lightContainer);
-  cards->addWidget(combinedContainer);
   root->addLayout(cards);
 
   auto* graphHeader = new QHBoxLayout;
@@ -133,7 +129,6 @@ void MainWindow::buildUi() {
 
   setScoreCard(audioCard_, std::nullopt, "En attente de snr");
   setScoreCard(lightCard_, std::nullopt, "En attente de lit");
-  setScoreCard(combinedCard_, std::nullopt, "Son × lumière");
   updateStatus();
 }
 
@@ -239,10 +234,6 @@ void MainWindow::sampleState() {
     point.light = *snapshot.lightScore;
     point.lightValid = true;
   }
-  if (snapshot.combinedScore.has_value()) {
-    point.combined = *snapshot.combinedScore;
-    point.combinedValid = true;
-  }
   history_->append(point);
   history_->setNow(time);
 
@@ -257,10 +248,6 @@ void MainWindow::sampleState() {
                snapshot.lightScore.has_value()
                  ? "Score du motif lumineux reconnu"
                  : "Donnée périmée");
-  setScoreCard(combinedCard_, snapshot.combinedScore,
-               snapshot.combinedScore.has_value()
-                 ? "Corroboration son × lumière"
-                 : "Une modalité est absente");
 }
 
 void MainWindow::updateStatus() {

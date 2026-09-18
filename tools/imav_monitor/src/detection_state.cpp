@@ -42,9 +42,6 @@ DetectionSnapshot DetectionState::snapshot(TimePoint now) const {
   if (light.has_value()) {
     result.lightScore = clampScore(*light);
   }
-  if (result.audioScore.has_value() && result.lightScore.has_value()) {
-    result.combinedScore = *result.audioScore * *result.lightScore;
-  }
   return result;
 }
 

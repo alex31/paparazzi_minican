@@ -8,15 +8,13 @@ struct DetectionSnapshot {
   // Binary presence from a fresh positive snr; nullopt means no fresh data.
   std::optional<float> audioScore;
   std::optional<float> lightScore;
-  std::optional<float> combinedScore;
   std::optional<float> snrDb;
 };
 
 /**
  * Holds nominal IMAV snr/lit values and applies their freshness policy.
  *
- * The combined score is deliberately conservative: audioScore * lightScore.
- * It therefore represents corroboration by both sensors rather than an OR.
+ * Audio presence and light score remain independent.
  */
 class DetectionState {
 public:

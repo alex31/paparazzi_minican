@@ -8,9 +8,9 @@ L'interface affiche :
 
 - la présence sonore issue de `snr` (100 % si positif, 0 % si nul), avec
   sa valeur relative en dB conservée sans lissage ;
-- le score lumineux `lit` ;
-- la corroboration des deux capteurs, calculée par `(snr > 0) × lit` ;
-- les trois courbes sur une fenêtre glissante de 30 secondes.
+- le score lumineux `lit`, identique dans la carte et la courbe jaune ;
+- deux courbes sur une fenêtre glissante de 30 secondes : « Présence sonore »
+  en vert et « Score lumineux » en jaune, sans détection combinée.
 
 Le pourcentage sonore est un indicateur de présence, pas une normalisation
 du SNR ni une probabilité de détection. Le moniteur ne dépend pas de `det`,

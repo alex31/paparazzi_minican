@@ -58,7 +58,6 @@ private:
   QLabel* statusLabel_ = nullptr;
   ScoreCard audioCard_;
   ScoreCard lightCard_;
-  ScoreCard combinedCard_;
   HistoryWidget* history_ = nullptr;
 
   uint64_t previousAcceptedCount_ = 0;
