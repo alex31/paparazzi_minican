@@ -22,6 +22,11 @@ de 200 ms et la répétition des zéros à 1 Hz avec une marge de réception.
 Les coupures apparaissent alors comme des trous dans le graphe, au lieu d'être
 interprétées comme une absence de balise.
 
+Le profil `role.imav.light.adaptive_pattern` utilise les mêmes `snr`/`lit`.
+Il conserve le détecteur spectral existant et ajoute en parallèle les trois
+flashs + pause et le clignotement lent de la vidéo, sans réglage de leurs durées.
+Voir [activation et diagnostic](../../docs/software/roles/imav_adaptive_light.md).
+
 ## Préparation de CAN
 
 Le firmware et le dongle utilisent du CAN classique à 1 Mbit/s :
@@ -93,7 +98,10 @@ nécessaires aux FFT, filtres adaptés et autres post-traitements.
 Le firmware publie aussi à 5 Hz `lfs` (score de la fenêtre lumineuse de 1 s),
 `lhz` (fréquence du pic), `lcs` (cohérence), `lps` (amplitude périodique),
 `lon/lof` (durées haute/basse), `lts` (accord temporel) et `lpt` (`0` aucun
-motif, `1` démarrage, `2` établi). `lit` reprend directement `lfs`. Ces
+motif, `1` démarrage, `2` établi, `3` CREE, `4` adaptatif). `lit` reprend
+directement `lfs`. Lorsque `lpt=4`, `lhz` décrit le cycle complet, `lpn` son nombre
+de flashs, `lon/lof` les durées observées et `lcs/lts` la cohérence temporelle.
+`lfs/lps` donnent alors le score appris, sans fenêtre spectrale. Ces
 grandeurs permettent de recaler les seuils sur une capture extérieure sans
 modifier la sortie nominale.
 

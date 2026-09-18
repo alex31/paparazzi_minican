@@ -73,6 +73,7 @@ namespace {
   constexpr uint8_t lightPatternBeginning = 1U;
   constexpr uint8_t lightPatternSteady = 2U;
   constexpr uint8_t lightPatternCree = 3U;
+  constexpr uint8_t lightPatternAdaptive = 4U;
   // VID_20260911_214652.mp4 (120 fps): 7.99 Hz, near 50% duty.
   // Whole-ms timings retain the measured 125 ms period. The video does not
   // resolve the pulse width more accurately than a few milliseconds.
@@ -171,13 +172,14 @@ ImavLightRange::ImavLightRange(
   UAVCAN::Node& node_, uint8_t address, uint32_t periodMs,
   bool enableTimeOfFlight, bool enableBeginningPattern,
   uint16_t highMs, uint16_t steadyLowMs, uint16_t beginningLowMs,
-  bool enableCreeTest)
+  bool enableCreeTest, bool enableAdaptivePattern)
   : node(node_),
     lightAddress(address),
     rangePeriodMs(std::clamp(
       periodMs, uint32_t{100U}, uint32_t{1000U})),
     timeOfFlightEnabled(enableTimeOfFlight),
     creeTestEnabled(enableCreeTest),
+    adaptivePatternEnabled(enableAdaptivePattern && not enableCreeTest),
     beginningPatternEnabled(enableBeginningPattern && not enableCreeTest),
     lightHighMs(enableCreeTest ? lightCreeHighMs :
       std::clamp(highMs, uint16_t{50U}, uint16_t{200U})),
@@ -258,6 +260,22 @@ void ImavLightRange::publishLightState()
   published.lightLowDurationMs = lightLowDurationMs;
   published.lightTemporalShapeScore = lightTemporalShapeScore;
   published.lightPattern = lightPattern;
+  published.lightPatternPulses = 0U;
+  if (adaptiveLightPattern.detected()) {
+    const auto& learned = adaptiveLightPattern.state();
+    published.lightRedRatio = adaptiveLightSignalState.redFraction;
+    published.lightRelativeAc = adaptiveLightSignalState.relativeAc;
+    published.lightInstantScore = adaptiveLightSignalState.score;
+    published.lightCadenceHz = learned.cycleHz;
+    published.lightCadenceScore = learned.timingScore;
+    published.lightFastScore = learned.score;
+    published.lightPulseStrength = learned.score;
+    published.lightHighDurationMs = learned.highMs;
+    published.lightLowDurationMs = learned.lowMs;
+    published.lightTemporalShapeScore = learned.timingScore;
+    published.lightPattern = lightPatternAdaptive;
+    published.lightPatternPulses = learned.pulses;
+  }
   published.lightSamples = lightSamples;
   published.lightPulses = lightPulses;
   published.lightSaturations = lightSaturations;
@@ -286,10 +304,22 @@ void ImavLightRange::publishLightScore(float score)
 
 void ImavLightRange::serviceLightScore(systime_t now)
 {
+  if (adaptiveLightPattern.detected() &&
+      (chTimeDiffX(lightLastSample, now) >= TIME_MS2I(lightFastResetGapMs))) {
+    // No new samples must not be mistaken for the learned dark pause.
+    adaptiveLightPattern.reset();
+    adaptiveLightSignal.reset();
+    adaptiveLightSignalState = {};
+    if (not lightFastDetected) {
+      publishLightScore(0.0f);
+    }
+    publishLightState();
+  }
   const uint16_t maximumLowMs = beginningPatternEnabled
     ? std::max(lightSteadyLowMs, lightBeginningLowMs)
     : lightSteadyLowMs;
-  const sysinterval_t timeout = TIME_MS2I(
+  const sysinterval_t timeout = adaptiveLightPattern.detected()
+    ? TIME_MS2I(ImavLightPattern::maximumEventIntervalMs) : TIME_MS2I(
     lightEventTimeoutPeriods *
       (static_cast<uint32_t>(lightHighMs) + maximumLowMs));
   const bool scoreExpired =
@@ -301,6 +331,16 @@ void ImavLightRange::serviceLightScore(systime_t now)
              (chTimeDiffX(lightLastZeroPublishTime, now) >=
               inactiveScorePublishPeriod)) {
     publishLightScore(0.0f);
+  }
+}
+
+void ImavLightRange::publishSpectralLightScore(float score)
+{
+  // Keep the original stream unchanged unless a NEW video motif is locked.
+  // Its observed edges then take precedence over extrapolated 2/3 Hz edges;
+  // a spectral loss must not cancel a valid triplet during its long pause.
+  if (not adaptiveLightPattern.detected()) {
+    publishLightScore(score);
   }
 }
 
@@ -480,10 +520,13 @@ bool ImavLightRange::stopLight()
 
 void ImavLightRange::resetLightFastSpectrum()
 {
-  const bool publishInactive = lightFastDetected;
+  const bool publishInactive = lightFastDetected || adaptiveLightPattern.detected();
   lightFastSamples = {};
   lightFastSteadySpectrum = {};
   lightFastBeginningSpectrum = {};
+  adaptiveLightPattern.reset();
+  adaptiveLightSignal.reset();
+  adaptiveLightSignalState = {};
   lightFastRgbSum = {};
   lightFastContrastSum = 0.0f;
   lightFastContrastSquareSum = 0.0f;
@@ -778,7 +821,7 @@ void ImavLightRange::evaluateLightFastSpectrum()
              (lightFastScore <= lightFastDetectionExitScore)) {
     lightFastDetected = false;
     lightLastSynchronizedEvent = 0U;
-    publishLightScore(0.0f);
+    publishSpectralLightScore(0.0f);
   }
 }
 
@@ -831,7 +874,7 @@ void ImavLightRange::updateSynchronizedLightEvent(systime_t now,
     return;
   }
   lightLastSynchronizedEvent = now;
-  publishLightScore(lightFastScore);
+  publishSpectralLightScore(lightFastScore);
 }
 
 void ImavLightRange::updateLightFastSpectrum(
@@ -842,6 +885,12 @@ void ImavLightRange::updateLightFastSpectrum(
        TIME_MS2I(lightFastResetGapMs))) {
     resetLightFastSpectrum();
   }
+
+  // Both paths see every sample. The original spectral states, parameters,
+  // baseline and event timing are never replaced by the new pattern learner.
+  const bool wasAdaptiveDetected = adaptiveLightPattern.detected();
+  const ImavLightPattern::Event adaptiveEvent = adaptivePatternEnabled
+    ? updateAdaptiveLightPattern(scaled, now) : ImavLightPattern::Event{};
 
   const auto removeFirstSample = [&]() {
     accumulateLightFastSample(
@@ -900,6 +949,31 @@ void ImavLightRange::updateLightFastSpectrum(
     evaluateLightFastSpectrum();
   }
   updateSynchronizedLightEvent(now, scoreIsCurrent);
+
+  if (adaptiveEvent.lost && not lightFastDetected && lightScoreActive) {
+    publishLightScore(0.0f);
+  }
+  if (adaptiveEvent.flash) {
+    // Acquisition can follow a spectral publication for the same falling
+    // edge by one or two samples. Do not publish that flash twice on takeover.
+    if (wasAdaptiveDetected || not lightScoreActive ||
+        chTimeDiffX(lightLastScoreEvent, now) >= TIME_MS2I(30U)) {
+      publishLightScore(adaptiveLightPattern.state().score);
+    }
+  }
+}
+
+ImavLightPattern::Event ImavLightRange::updateAdaptiveLightPattern(
+  const std::array<float, 4U>& scaled, systime_t now)
+{
+  const bool wasDetected = adaptiveLightPattern.detected();
+  adaptiveLightSignalState = adaptiveLightSignal.update(scaled, TIME_I2MS(now));
+  const ImavLightPattern::Event event = adaptiveLightPattern.update(
+    adaptiveLightSignalState.score, TIME_I2MS(now));
+  if (adaptiveLightPattern.detected() && not wasDetected) {
+    ++lightPulses;
+  }
+  return event;
 }
 
 void ImavLightRange::processLightMeasurement(

@@ -78,4 +78,15 @@ if(BUILD_TESTING)
       -Wall -Wextra -Wpedantic)
   endif()
   add_test(NAME detection_state_test COMMAND detection_state_test)
+  add_executable(adaptive_light_detector_test
+    tests/adaptive_light_detector_test.cpp
+  )
+  target_include_directories(adaptive_light_detector_test PRIVATE
+    ../../COMMON/source
+  )
+  if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(adaptive_light_detector_test PRIVATE
+      -Wall -Wextra -Wpedantic -UNDEBUG)
+  endif()
+  add_test(NAME adaptive_light_detector_test COMMAND adaptive_light_detector_test)
 endif()

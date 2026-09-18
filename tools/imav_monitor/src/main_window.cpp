@@ -255,7 +255,7 @@ void MainWindow::sampleState() {
   setScoreCard(audioCard_, snapshot.audioScore, audioDetail);
   setScoreCard(lightCard_, snapshot.lightScore,
                snapshot.lightScore.has_value()
-                 ? "Score des flashs rouges 2 / 3 Hz"
+                 ? "Score du motif lumineux reconnu"
                  : "Donnée périmée");
   setScoreCard(combinedCard_, snapshot.combinedScore,
                snapshot.combinedScore.has_value()

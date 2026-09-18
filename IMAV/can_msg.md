@@ -44,7 +44,7 @@ si une trame isolée est perdue.
 | Clé | Cadence | Unité/domaine | Signification opérationnelle |
 |---|---:|---|---|
 | `snr` | par salve, puis zéro à 1 Hz | dB relatifs ou `0.0` expiré | Pic de la salve sonore qui vient de se terminer, au-dessus du plancher de bruit adaptatif dans la bande 2–3 kHz. Il passe à zéro après 1,5 s sans salve reconnue. |
-| `lit` | par flash, puis zéro à 1 Hz | score continu de `0.0` à `1.0` | Confiance lumineuse calculée sur la dernière seconde de mesures RGB, émise sur le front descendant estimé. Il passe à zéro après deux périodes configurées sans événement. |
+| `lit` | par flash, puis zéro à 1 Hz | score continu de `0.0` à `1.0` | Confiance lumineuse du profil sélectionné : fenêtre spectrale de 1 s ou motif temporel appris. Émise au front descendant estimé (standard/CREE) ou observé (adaptatif). |
 
 ### 2.1 Interprétation de `snr`
 
@@ -68,7 +68,7 @@ réflexions acoustiques modifient la valeur.
 
 `lit` est également un score continu, pas un booléen et pas une mesure de lux.
 Il est exactement le score du détecteur rapide, également exposé sous `lfs`
-quand le débogage est actif. Le détecteur analyse une fenêtre glissante d'une
+quand le débogage est actif. En mode standard, le détecteur analyse une fenêtre glissante d'une
 seconde du contraste rouge avec cinq couples fondamental/H2. Cohérence,
 couleur, rapport H2/H1 et phase relative qualifient ensemble le motif de la
 balise sans seuil de luminosité absolue.
@@ -88,6 +88,19 @@ segments éteints et du motif 2 Hz rejeté. En régime 3 Hz, ils sont espacés d
 0,316 à 0,351 s et 95 % se trouvent à moins de 11,7 ms du front descendant RGB
 mesuré. Ces résultats proviennent d'un rejeu ; cette synchronisation n'est pas
 encore testée sur la cible.
+
+Avec `role.imav.light.adaptive_pattern=true` et `cree_test=false`, le détecteur
+spectral continue de fonctionner avec les mêmes paramètres, scores et
+événements. Une voie parallèle apprend les triplets et le rythme lent de la
+vidéo après trois cycles concordants et qualification rouge/contraste.
+Lorsqu'un nouveau motif est acquis, ses flashs observés deviennent la source
+de `lit`, sans publication extrapolée dans la pause longue. La perte d'une
+voie ne publie pas zéro si l'autre reconnaît toujours un motif. Le délai de
+secours vaut 1,8 s lorsque le nouveau motif est acquis ; il conserve sa valeur
+standard sinon. Un trou de mesures de 100 ms réinitialise l'apprentissage.
+Les réglages standard, y compris `beginning_pattern`, restent effectifs.
+Voir [le profil adaptatif](../docs/software/roles/imav_adaptive_light.md)
+pour l'activation, le délai d'acquisition et les limites.
 
 ### 2.3 Utilisation recommandée par le contrôleur de vol
 
@@ -153,7 +166,7 @@ rester désactivés pendant l'épreuve IMAV 2026.
 
 ## A.3 Diagnostics de la voie optique rapide — 5 Hz
 
-Ces clés décrivent l'unique détecteur spectral lumineux, à mémoire finie. Son
+Ces clés décrivent le détecteur lumineux sélectionné, à mémoire finie. Son
 score `lfs` est la source directe du message nominal `lit`.
 
 | Clé | Cadence | Unité/domaine | Description de mise au point |
@@ -172,7 +185,13 @@ score `lfs` est la source directe du message nominal `lit`.
 | `lon` | 5 Hz | ms | Durée haute estimée dans la fenêtre rapide à partir de H2/H1. |
 | `lof` | 5 Hz | ms | Durée basse estimée dans la fenêtre rapide à partir de H2/H1. |
 | `lts` | 5 Hz | `0..1` | Ressemblance harmonique de la fenêtre rapide au créneau asymétrique attendu. |
-| `lpt` | 5 Hz | entier | Motif ayant fourni le score courant : `0` aucun, `1` démarrage, `2` régime établi. |
+| `lpt` | 5 Hz | entier | Motif ayant fourni le score courant : `0` aucun, `1` démarrage, `2` régime établi, `3` CREE, `4` adaptatif. |
+| `lpn` | 5 Hz | entier | Nombre de flashs par cycle appris en adaptatif : `1` ou `3`, sinon `0`. |
+
+Lorsque `lpt=4`, `lhz` est la fréquence du cycle complet (environ 0,70 Hz pour
+les triplets), `lon/lof` les dernières durées observées, `lcs/lts` la cohérence
+temporelle et `lfs/lps` le score appris. Les descriptions spectrales de ces
+clés dans le tableau s'appliquent aux profils standard/CREE.
 
 Les valeurs nominales sont `high_ms=100`, `steady_low_ms=233` et
 `beginning_low_ms=400`. `role.imav.light.beginning_pattern=false` ne construit

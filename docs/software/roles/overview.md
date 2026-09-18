@@ -160,6 +160,11 @@ Params:
 - `role.imav.light.i2c_address` (0x44..0x47)
 - `role.imav.light.beginning_pattern` (recognize the startup pattern in
   addition to the steady pattern; default false, reboot after changing it)
+- `role.imav.light.adaptive_pattern` (default false): keep the original
+  spectral detector and add the video's triplets/slow flashes in parallel.
+  Regular timings and the startup toggle retain their effect; save and reboot.
+  CREE stays separate and
+  takes precedence. See [adaptive light](imav_adaptive_light.md).
 - `role.imav.light.cree_test` (CREE headlamp bench profile, 8 Hz and about
   50% duty, white or red-filtered; default false). Overrides startup detection
   and the pulse timings below while enabled; save and reboot after changing
@@ -176,11 +181,11 @@ Params:
 
 Outputs:
 
-- `det` (audio detection, 0 or 1) is broadcast as
-  `uavcan.protocol.debug.KeyValue` at 5 Hz. `snr` is broadcast once at the end
-  of each recognized audio burst. `lit`, the score of the finite one-second
-  light window, is broadcast once per recognized optical flash at its
-  DFT-estimated falling edge; one zero marks loss of lock.
+- `snr` and `lit` use `uavcan.protocol.debug.KeyValue`. `snr` is sent at the
+  end of each recognized audio burst. `lit` is sent per optical flash at its
+  DFT-estimated falling edge in spectral modes or its observed falling edge
+  when a new video motif is acquired. A zero marks loss when neither path
+  recognizes a motif, then repeats at 1 Hz.
 - When `role.imav.debug.publish.optional` is true, `a0`, `p0`, `sdb`, `aud`,
   `frq` and `cad` provide the accompanying audio tuning measurements at 5 Hz.
   Light tuning at 5 Hz adds red ratio `lrr`, relative red AC `lac`,
@@ -189,7 +194,11 @@ Outputs:
   `lsa`, read-error count
   `ler` and sample-gap count `lgp`, high/low durations inferred from H2/H1
   `lon/lof`, harmonic-shape score `lts` and
-  selected pattern `lpt` (`0` none, `1` startup, `2` steady, `3` CREE test).
+  selected pattern `lpt` (`0` none, `1` startup, `2` steady, `3` CREE test,
+  `4` adaptive). While `lpt=4`, `lhz` is the whole-cycle frequency,
+  `lon/lof` are observed durations, `lcs/lts` describe timing consistency and
+  `lps` is the learned score. `lpn` gives flashes per learned cycle (1 or 3;
+  zero without an adaptive lock).
   Each data-ready optical
   sample adds raw `lrd/lgn/lbl/lwh`, overload `lov`, sample counter `lct` and
   modulo-2^24 microsecond timestamp `ltu`.

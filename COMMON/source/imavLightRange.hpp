@@ -5,6 +5,7 @@
 #pragma once
 
 #include "imavVl53l4cxPort.h"
+#include "imavLightPattern.hpp"
 #include "UAVCAN/pubSub.hpp"
 
 #include <array>
@@ -35,6 +36,7 @@ struct ImavLightRangeSnapshot {
   float lightLowDurationMs = 0.0f;
   float lightTemporalShapeScore = 0.0f;
   uint8_t lightPattern = 0U;
+  uint8_t lightPatternPulses = 0U;
   uint32_t lightSamples = 0U;
   uint32_t lightPulses = 0U;
   uint32_t lightSaturations = 0U;
@@ -64,7 +66,8 @@ public:
                  uint32_t rangePeriodMs, bool timeOfFlightEnabled,
                  bool beginningPatternEnabled, uint16_t lightHighMs,
                  uint16_t lightSteadyLowMs,
-                 uint16_t lightBeginningLowMs, bool creeTestEnabled);
+                 uint16_t lightBeginningLowMs, bool creeTestEnabled,
+                 bool adaptivePatternEnabled);
 
   /** @brief Optionally configure ToF, then start light sampling. */
   void initialize();
@@ -105,6 +108,8 @@ private:
   void evaluateLightFastSpectrum();
   void updateLightFastSpectrum(const std::array<float, 4U>& scaled,
                                systime_t now);
+  ImavLightPattern::Event updateAdaptiveLightPattern(
+    const std::array<float, 4U>& scaled, systime_t now);
   void updateSynchronizedLightEvent(systime_t now, bool scoreIsCurrent);
   void serviceLightScore(systime_t now);
   bool readLightRegister(uint8_t reg, uint16_t& value);
@@ -119,6 +124,7 @@ private:
                     size_t rxLength);
   void recordI2cFailure(bool rangeSensor, msg_t result);
   void publishLightScore(float score);
+  void publishSpectralLightScore(float score);
   void publishLightState();
   void publishLightDebugSample(bool overloaded);
   void publishAvailability();
@@ -131,6 +137,7 @@ private:
   const uint32_t rangePeriodMs;
   const bool timeOfFlightEnabled;
   const bool creeTestEnabled;
+  const bool adaptivePatternEnabled;
   const bool beginningPatternEnabled;
   const uint16_t lightHighMs;
   const uint16_t lightSteadyLowMs;
@@ -188,6 +195,9 @@ private:
   std::array<LightFastSample, 144U> lightFastSamples = {};
   LightFastPatternState lightFastSteadySpectrum = {};
   LightFastPatternState lightFastBeginningSpectrum = {};
+  ImavLightPattern adaptiveLightPattern;
+  ImavLightPatternSignal adaptiveLightSignal;
+  ImavLightPatternSignal::State adaptiveLightSignalState;
   std::array<float, 3U> lightFastRgbSum = {};
   float lightFastContrastSum = 0.0f;
   float lightFastContrastSquareSum = 0.0f;

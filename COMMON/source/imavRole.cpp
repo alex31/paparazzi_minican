@@ -719,7 +719,8 @@ DeviceStatus ImavRole::start(UAVCAN::Node& node)
     static_cast<uint16_t>(param_cget<"role.imav.light.steady_low_ms">()),
     static_cast<uint16_t>(
       param_cget<"role.imav.light.beginning_low_ms">()),
-    param_cget<"role.imav.light.cree_test">());
+    param_cget<"role.imav.light.cree_test">(),
+    param_cget<"role.imav.light.adaptive_pattern">());
   audio->lightRange->initialize();
   const ImavLightRangeSnapshot initialSensors =
     audio->lightRange->snapshot();
@@ -938,8 +939,9 @@ void ImavRole::publishMeasurements()
   publish("lon", sensors.lightHighDurationMs);
   publish("lof", sensors.lightLowDurationMs);
   publish("lts", sensors.lightTemporalShapeScore);
-  // 0=none, 1=startup pattern, 2=steady pattern.
+  // 0=none, 1=startup, 2=steady, 3=CREE bench, 4=learned repeating pattern.
   publish("lpt", static_cast<float>(sensors.lightPattern));
+  publish("lpn", static_cast<float>(sensors.lightPatternPulses));
   if (audio->timeOfFlightEnabled) {
     const float rangeMetres = sensors.rangeValid
       ? static_cast<float>(sensors.rangeMm) * 0.001f : -1.0f;

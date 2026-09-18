@@ -26,6 +26,11 @@ Important parameters:
   pattern and MotionSCOUT pulse timings without changing their stored values.
   Save and reboot after changing it; set false and reboot for competition.
   See [measurement and test procedure](roles/cree_test.md).
+- role.imav.light.adaptive_pattern (default false): add automatic recognition
+  of the video's triplets/slow flashes alongside the original spectral path.
+  Standard timing parameters and the startup toggle retain their effect.
+  No timing adjustments are needed for the new motifs. Save and reboot; leave
+  cree_test=false. See [adaptive light](roles/imav_adaptive_light.md).
 - role.imav.light.high_ms (50..200 ms, default 100),
   role.imav.light.steady_low_ms (150..400 ms, default 233) and
   role.imav.light.beginning_low_ms (250..600 ms, default 400): nominal pulse
@@ -35,7 +40,7 @@ Important parameters:
 - role.imav.tof.period_ms (100..1000 ms, used only when time-of-flight is
   enabled; default 200 ms before deterministic jitter)
 - role.imav.debug.publish.optional (publish the optional IMAV tuning keys in
-  addition to periodic `det` and event-driven `snr`/`lit`; derived tuning
+  addition to event-driven `snr`/`lit`; derived tuning
   remains at 5 Hz while lossless RGBW samples follow OPT4060 data ready at up
   to about 139 Hz; default false, applied live)
 - ROLE.* toggles for each role
