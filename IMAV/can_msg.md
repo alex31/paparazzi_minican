@@ -23,12 +23,20 @@ priorité CAN basse :
 - réseau CAN classique à 1 Mbit/s, sans CAN FD ;
 - clé ASCII de trois caractères ;
 - valeur `float32` ;
-- `snr` une fois par salve sonore reconnue ; `lit` une fois par flash lumineux
-  reconnu, soit environ 3 Hz en régime établi ;
+- `snr` à la fin de chaque salve sonore reconnue, ou à 5 Hz si le son
+  reconnu persiste ; `lit` une fois par flash lumineux reconnu, soit environ
+  3 Hz en régime établi ;
 - publication broadcast : aucun acquittement ni abonnement préalable ;
 - le Node-ID UAVCAN source identifie la MicroCAN qui porte les capteurs.
 
-`snr` est envoyé lors de la transition qui clôt une salve reconnue. `lit` est
+`snr` est envoyé lors de la transition qui clôt une salve reconnue. Si le son
+reste reconnu pendant 200 ms après son déclenchement, un premier `snr` est
+envoyé sans attendre le silence, puis toutes les 200 ms. Chaque envoi porte
+le pic de la fenêtre écoulée et remet son accumulateur à zéro pour suivre
+aussi les baisses de niveau. La fin du son publie la dernière fenêtre
+partielle ; si elle coïncide avec une échéance périodique, un seul envoi a
+lieu. La cadence est quantifiée par les blocs audio d'environ 21,3 ms.
+`lit` est
 émis directement par le thread optique sur le front descendant estimé du
 flash, après recalcul du score avec le dernier groupe RGBW. Après expiration,
 chaque producteur publie zéro puis le répète à 1 Hz tant que son score reste
@@ -43,7 +51,7 @@ si une trame isolée est perdue.
 
 | Clé | Cadence | Unité/domaine | Signification opérationnelle |
 |---|---:|---|---|
-| `snr` | par salve, puis zéro à 1 Hz | dB relatifs ou `0.0` expiré | Pic de la salve sonore qui vient de se terminer, au-dessus du plancher de bruit adaptatif dans la bande 2–3 kHz. Il passe à zéro après 1,5 s sans salve reconnue. |
+| `snr` | fin de salve ou 5 Hz en continu, puis zéro à 1 Hz | dB relatifs ou `0.0` expiré | Pic de la salve terminée ou de la dernière fenêtre de 200 ms, au-dessus du plancher de bruit adaptatif dans la bande 2–3 kHz. Il passe à zéro après 1,5 s sans nouvelle mesure reconnue. |
 | `lit` | par flash, puis zéro à 1 Hz | score continu de `0.0` à `1.0` | Confiance lumineuse du profil sélectionné : fenêtre spectrale de 1 s ou motif temporel appris. Émise au front descendant estimé (standard/CREE) ou observé (adaptatif). |
 
 ### 2.1 Interprétation de `snr`
@@ -53,11 +61,11 @@ points de la trajectoire et diriger le drone vers la balise. Elle est relative
 au bruit moteur appris localement. Elle convient donc à une cartographie
 spatiale ou à une recherche de gradient avec la même MicroCAN.
 
-Le filtre IIR entre pics successifs est réglé à chaud par
+Le filtre IIR entre pics successifs (salves ou fenêtres continues) est réglé à chaud par
 `role.imav.audio.snr_alpha`, entre 0,5 et 1. La valeur par défaut 1 publie le
 pic brut du nouveau chirp et n'ajoute aucun retard de lissage ; 0,5 reproduit
 l'ancien mélange moitié ancienne mesure, moitié nouveau pic. Après 1,5 s sans
-salve reconnue, l'émetteur remet également cet historique IIR à zéro.
+nouvelle mesure reconnue, l'émetteur remet également cet historique IIR à zéro.
 
 Ce n'est pas une mesure acoustique absolue. Il ne faut pas comparer directement
 deux MicroCAN sans calibration, ni convertir `snr` en distance avec une loi

@@ -182,7 +182,9 @@ Params:
 Outputs:
 
 - `snr` and `lit` use `uavcan.protocol.debug.KeyValue`. `snr` is sent at the
-  end of each recognized audio burst. `lit` is sent per optical flash at its
+  end of each recognized audio burst. When recognized sound persists for
+  200 ms, `snr` is also sent at 5 Hz using each new window's peak; the final
+  partial window is sent when the sound ends. `lit` is sent per optical flash at its
   DFT-estimated falling edge in spectral modes or its observed falling edge
   when a new video motif is acquired. A zero marks loss when neither path
   recognizes a motif, then repeats at 1 Hz.

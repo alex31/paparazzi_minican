@@ -35,6 +35,7 @@ namespace {
   constexpr float audioOnsetMinimumPairScore = 1.20f;
   constexpr float audioOnsetMaximumFrequencyStepHz = 250.0f;
   constexpr sysinterval_t measurementPublishPeriod = TIME_MS2I(200U);
+  constexpr sysinterval_t continuousAudioPublishPeriod = TIME_MS2I(200U);
   constexpr sysinterval_t inactiveScorePublishPeriod = TIME_MS2I(1000U);
 
   // Derive the configurable range from the persistent parameter metadata so
@@ -238,6 +239,7 @@ struct AudioDetector {
   systime_t lastBlockTime = 0U;
   systime_t lastOnsetTime = 0U;
   systime_t lastToneTime = 0U;
+  systime_t snrWindowStartTime = 0U;
   uint8_t onsetCount = 0U;
   uint8_t lowBlocks = 0U;
   AudioBurstState burstState = AudioBurstState::Unarmed;
@@ -428,6 +430,7 @@ namespace {
     detector.onsetCount = 0U;
     detector.lastOnsetTime = 0U;
     detector.lastToneTime = 0U;
+    detector.snrWindowStartTime = 0U;
     detector.cadenceHz = 0.0f;
     detector.cadenceScore = 0.0f;
     detector.audioScore = 0.0f;
@@ -469,11 +472,25 @@ namespace {
     detector.lastOnsetTime = now;
   }
 
-  /** @brief Validate the spectral signature and measure burst cadence. */
+  /** @brief Finalize the SNR peak of a burst or a continuous-sound window. */
+  void finalizeAudioSnr(AudioDetector& detector)
+  {
+    if (detector.recentBurstSnrDb <= 0.0f) {
+      detector.recentBurstSnrDb = detector.burstPeakSnrDb;
+    } else {
+      const float alpha = std::clamp(
+        param_cget<"role.imav.audio.snr_alpha">(), 0.5f, 1.0f);
+      detector.recentBurstSnrDb += alpha *
+        (detector.burstPeakSnrDb - detector.recentBurstSnrDb);
+    }
+    detector.burstPeakSnrDb = 0.0f;
+  }
+
+  /** @brief Measure cadence; return true when a new SNR is ready to publish. */
   bool updateAudioCadence(AudioDetector& detector, bool discontinuity,
                           systime_t now)
   {
-    bool burstCompleted = false;
+    bool snrReady = false;
     if ((detector.lastBlockTime != 0U) &&
 	(chTimeDiffX(detector.lastBlockTime, now) >= TIME_MS2I(200U))) {
       clearAudioCadence(detector);
@@ -486,6 +503,7 @@ namespace {
       detector.burstPeakScore = 0.0f;
       detector.burstPeakSnrDb = 0.0f;
       detector.recentBurstSnrDb = 0.0f;
+      detector.snrWindowStartTime = 0U;
       detector.previousBlockScore = 0.0f;
       detector.previousDominantFrequencyHz = 0.0f;
       detector.previousSignalToNoiseDb = 0.0f;
@@ -525,6 +543,7 @@ namespace {
 	  {0.0f, detector.previousSignalToNoiseDb,
 	   detector.channel.signalToNoiseDb});
 	detector.lastToneTime = now;
+	detector.snrWindowStartTime = now;
 	appendAudioOnset(detector, now);
       }
       break;
@@ -546,17 +565,22 @@ namespace {
         detector.burstState = AudioBurstState::Off;
         detector.lowBlocks = 0U;
         detector.recentBurstStrength = detector.burstPeakScore;
-        if (detector.recentBurstSnrDb <= 0.0f) {
-          detector.recentBurstSnrDb = detector.burstPeakSnrDb;
-        } else {
-          const float alpha = std::clamp(
-            param_cget<"role.imav.audio.snr_alpha">(), 0.5f, 1.0f);
-          detector.recentBurstSnrDb += alpha *
-            (detector.burstPeakSnrDb - detector.recentBurstSnrDb);
-        }
-        burstCompleted = true;
+        finalizeAudioSnr(detector);
+        snrReady = true;
         detector.burstPeakScore = 0.0f;
-        detector.burstPeakSnrDb = 0.0f;
+      } else if (chTimeDiffX(detector.snrWindowStartTime, now) >=
+                 continuousAudioPublishPeriod) {
+        // Short bursts publish only at their end. A sustained sound instead
+        // publishes the peak of each 200 ms window, allowing falling levels
+        // to be observed without waiting for silence. Preserve the detection
+        // state and cadence; only the SNR accumulator starts a new window.
+        finalizeAudioSnr(detector);
+        snrReady = true;
+        detector.snrWindowStartTime += continuousAudioPublishPeriod;
+        if (chTimeDiffX(detector.snrWindowStartTime, now) >=
+            continuousAudioPublishPeriod) {
+          detector.snrWindowStartTime = now;
+        }
       }
       break;
     }
@@ -622,7 +646,7 @@ namespace {
     } else {
       detector.detected = detector.audioScore >= 0.60f;
     }
-    return burstCompleted;
+    return snrReady;
   }
 }
 
@@ -851,15 +875,15 @@ void ImavRole::processAudioHalf(size_t offset, bool discontinuity)
     static_cast<uint16_t>(deviation / audioHalfDepth);
   analyzeAudioBlock(*audio, offset, mean);
   const systime_t now = chVTGetSystemTimeX();
-  const bool burstCompleted =
+  const bool snrReady =
     updateAudioCadence(audio->detector, discontinuity, now);
   ++audio->processedBlocks;
   if (discontinuity) {
     ++audio->discontinuities;
   }
 
-  if (burstCompleted) {
-    publishAudioBurst();
+  if (snrReady) {
+    publishAudioSnr();
   }
 
   if (chTimeDiffX(audio->lastMeasurementPublishTime, now) >=
@@ -877,8 +901,8 @@ void ImavRole::processAudioHalf(size_t offset, bool discontinuity)
   // Keep the serial debug link quiet during normal operation.
 }
 
-/** @brief Publish one finalized SNR measurement for each recognized burst. */
-void ImavRole::publishAudioBurst()
+/** @brief Publish the finalized SNR of a burst or continuous-sound window. */
+void ImavRole::publishAudioSnr()
 {
   audio->lastSnrEventTime = chVTGetSystemTimeX();
   audio->snrActive = true;

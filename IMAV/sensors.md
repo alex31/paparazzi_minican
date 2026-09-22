@@ -888,7 +888,10 @@ Le firmware diffuse ses mesures sous forme de
 `uavcan.protocol.debug.KeyValue`. `det`, booléen audio transporté comme 0,0 ou
 1,0, est envoyé à 5 Hz. `snr`, force d'une salve reconnue en dB au-dessus du
 plancher adaptatif de la bande 2–3 kHz, est envoyé une seule fois à la clôture
-de cette salve. `lit`, score des flashs rouges qualifiés par leur cadence, est
+de cette salve, ou à 5 Hz dès que le son reconnu persiste pendant 200 ms.
+En continu, chaque valeur porte le pic d'une nouvelle fenêtre ; la dernière
+fenêtre partielle est envoyée à l'arrêt du son.
+`lit`, score des flashs rouges qualifiés par leur cadence, est
 envoyé une fois par flash reconnu sur son front descendant estimé, puis une
 fois à zéro lorsque le verrouillage est perdu. Le paramètre booléen
 `role.imav.debug.publish.optional`, faux par défaut et appliqué immédiatement,
@@ -929,7 +932,8 @@ Flags possibles :
 - capteur en erreur.
 
 L'état `det` reste publié à 5 Hz. Chaque salve sonore publie son `snr` lorsque
-son pic devient définitif et chaque flash reconnu publie son `lit` sur son
+son pic devient définitif ; un son continu publie le pic de chaque fenêtre de
+200 ms. Chaque flash reconnu publie son `lit` sur son
 front descendant estimé. Un futur message dédié pourra ajouter un timestamp
 explicite à ces événements.
 
@@ -1308,6 +1312,15 @@ l'alarme. Une tonalité continue fortement concentrée dans la bande peut donc
 être acceptée : c'est un choix délibéré compte tenu du faible risque de leurre
 dans la mission.
 
+La publication `snr` attend la fin des salves courtes. Si le son reste reconnu
+200 ms après le déclenchement, elle passe automatiquement à 5 Hz : chaque
+fenêtre publie son propre pic puis remet l'accumulateur SNR à zéro, sans
+réinitialiser la détection ni la cadence. L'IIR `snr_alpha` s'applique aussi
+à ces fenêtres. La fin du son publie la fenêtre restante, avec un seul envoi
+si elle coïncide avec une échéance périodique. Après 1,5 s sans nouvelle
+mesure, `snr` repasse à zéro. Une discontinuité annule la fenêtre en cours et
+impose le réarmement habituel.
+
 Le banc avec enceinte a validé des chirps 2,1–2,5 kHz de 60 à 120 ms. Avec
 120 ms, la préalarme est mesurée à 1,98–2,04 Hz et l'alarme complète à
 2,96–3,04 Hz. Le bruit blanc continu et des salves de bruit blanc à 3 Hz sont
@@ -1436,7 +1449,8 @@ compilé mais désactivé, il ne reste en RAM que les deux pointeurs de trampoli
 de 4 octets ; tous ses buffers et états sont alloués à son lancement.
 
 La télémétrie fonctionnelle `uavcan.protocol.debug.KeyValue` diffuse `det` à
-5 Hz, `snr` une fois à la fin de chaque salve reconnue et `lit` une fois par
+5 Hz, `snr` à la fin de chaque salve reconnue ou à 5 Hz en son continu,
+et `lit` une fois par
 flash lumineux reconnu.
 
 Le contrat opérationnel et la séparation entre messages de mission et
@@ -1447,7 +1461,7 @@ Les clés publiées sont :
 | Clé | Valeur |
 |---|---|
 | `det` | détection audio avec hystérésis, exactement 0,0 ou 1,0 ; entrée principale de l'autopilote |
-| `snr` | pic de la puissance excédentaire de la salve rapportée en dB au plancher adaptatif dans la bande 2–3 kHz ; publié une fois à la clôture de chaque salve reconnue |
+| `snr` | pic de la puissance excédentaire rapportée en dB au plancher adaptatif dans la bande 2–3 kHz ; publié à la clôture de chaque salve reconnue ou par fenêtre de 200 ms en son continu |
 | `a0` | optionnel : score spectral instantané du microphone |
 | `p0` | optionnel : amplitude RMS estimée de la tonalité dominante, en comptes ADC 13 bits |
 | `sdb` | optionnel : rapport instantané en dB entre l'énergie de la bande balise et l'énergie globale de la fenêtre ; ce n'est pas le SNR moteur |
@@ -1498,7 +1512,8 @@ effectuer son propre filtrage après association de chaque événement à la pos
 La réception SocketCAN avec PyDroneCAN avait confirmé cinq groupes nominaux par
 seconde avant le passage de `snr` et `lit` en événementiel. Avec l'option à
 `false`, seuls `det`, `snr` et `lit` sont observés ; `snr` suit les salves
-sonores reconnues et `lit` les flashs reconnus. Son passage à `true` ajoute
+sonores reconnues ou les fenêtres de 200 ms en continu et `lit` les flashs
+reconnus. Son passage à `true` ajoute
 immédiatement les vingt et une clés dérivées à
 5 Hz, les sept clés optiques lossless au rythme data-ready et, le cas échéant, deux clés
 ToF à 5 Hz, sans

@@ -13,7 +13,8 @@ Important parameters:
 - ROLE.imav.beacon (enable the IMAV sound/light role)
 - role.imav.audio.band_low_hz (2000..2600 Hz, default 2000; applied when the
   IMAV role starts, so reboot after changing it)
-- role.imav.audio.snr_alpha (weight of the newest recognized burst in the SNR
+- role.imav.audio.snr_alpha (weight of the newest recognized burst or continuous
+  200 ms window in the SNR
   first-order IIR, 0.5..1.0, default 1.0; applied live, where 1.0 disables
   smoothing)
 - role.imav.light.i2c_address (0x44..0x47, default 0x44 for OPT4060 ADDR=GND)
@@ -35,7 +36,9 @@ Important parameters:
   role.imav.light.steady_low_ms (150..400 ms, default 233) and
   role.imav.light.beginning_low_ms (250..600 ms, default 400): nominal pulse
   timings used to derive the temporal, fundamental and harmonic filters;
-  reboot after changing them
+  reboot after changing them. For the FireFly II recording/emulator, use
+  high_ms=55 and steady_low_ms=215 with cree_test=false; see
+  [FireFly II test profile](roles/firefly2_test.md).
 - role.imav.time_of_flight (enable the optional VL53L4CX, default false)
 - role.imav.tof.period_ms (100..1000 ms, used only when time-of-flight is
   enabled; default 200 ms before deterministic jitter)
