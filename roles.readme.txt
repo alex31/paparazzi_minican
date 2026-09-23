@@ -93,8 +93,11 @@ Remarque : les rôles sont instanciés au démarrage selon les paramètres persi
 
 - Microphone IM68A130 (`ROLE.adc.microphone.im68a130`)
   - PA4 / ADC2 / TIM6, acquisition à 24 kHz ; pas de dépendance I2C.
-  - Envoie : KeyValue `mic.dc`, `mic.rms`, `mic.pp`, `mic.clip`, `mic.ok`, `mic.drop`, `mic.rst`.
-  - Mesures électriques en points ADC, pas de détection de balise ni de dB SPL calibrés.
+  - FFT 512 points avec fenêtre de Hann : pas de 46,87 Hz, bande 100 Hz–3 kHz.
+  - Envoie : `microcan.audio.Spectrum` (ID 20900), jusqu’à 10 bins (uint16 Hz + uint16 niveau logarithmique), validité, écrêtage et indicateur de perte/reprise.
+  - Format générique jusqu’à 255 bins sur 1023 octets ; 42/43 octets pour les 10 bins du microphone, fragmentation par libcanard.
+  - Allocation dynamique du travail FFT à l’activation ; niveau 0–65535 couvrant −72,25 à 0 dBFS pour la sortie ADC 13 bits, sans calibration dB SPL.
+  - Les définitions DSDL du message dédié sont dans DSDL/microcan ; détails et chargement côté réception dans DSDL/README.md.
 
 - Capteur RGBW OPT4060 (`ROLE.i2c.light.opt4060`)
   - I2C1 partagé, INT sur PA8 optionnelle ; contrôle CRC et fraîcheur des quatre canaux.

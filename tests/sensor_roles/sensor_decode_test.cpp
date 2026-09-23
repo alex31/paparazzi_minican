@@ -1,32 +1,10 @@
-#include "microphoneStatistics.hpp"
 #include "opt4060Sample.hpp"
 #include <array>
 #include <cassert>
-#include <cmath>
 #include <cstdio>
 
 int main()
 {
-  std::array<uint16_t, 512> audio;
-  audio.fill(4096U);
-  auto metrics = microphoneStatistics(audio.data(), audio.size());
-  assert(metrics.mean == 4096.0f && metrics.rms == 0.0f);
-  assert(metrics.peakToPeak == 0.0f && metrics.clippedFraction == 0.0f);
-  for (size_t i = 0; i < audio.size(); ++i) {
-    audio[i] = (i % 2U) == 0U ? 3096U : 5096U;
-  }
-  metrics = microphoneStatistics(audio.data(), audio.size());
-  assert(metrics.mean == 4096.0f && metrics.rms == 1000.0f);
-  assert(metrics.peakToPeak == 2000.0f && metrics.clippedFraction == 0.0f);
-  const uint16_t fractional[] = {100U, 101U};
-  metrics = microphoneStatistics(fractional, 2U);
-  assert(metrics.mean == 100.5f && metrics.rms == 0.5f);
-  const uint16_t rails[] = {0U, 82U, 83U, 8107U, 8108U, 8191U};
-  metrics = microphoneStatistics(rails, 6U);
-  assert(std::abs(metrics.clippedFraction - 4.0f / 6.0f) < 1e-6f);
-  assert(metrics.peakToPeak == 8191.0f);
-  assert(microphoneStatistics(nullptr, 0U).rms == 0.0f);
-
   using namespace Opt4060Sample;
   // Fixed register values used in the original driver's CRC regression check.
   std::array<uint8_t, 16> bytes = {
@@ -72,5 +50,5 @@ int main()
   bytes[0] = 0x60; bytes[1] = 0; bytes[2] = 0; bytes[3] = 2;
   assert(decodeFrame(bytes.data(), frame) == Result::Valid);
   assert(frame.checkOverload);
-  std::puts("Sensor decoding: audio amplitude/clipping, RGBW CRC/freshness/wrap OK");
+  std::puts("Sensor decoding: RGBW CRC/freshness/wrap OK");
 }

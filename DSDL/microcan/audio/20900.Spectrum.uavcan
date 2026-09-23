@@ -1,0 +1,28 @@
+# Generic compact spectrum; vendor-specific message ID 20900.
+# Consumers must load the microcan namespace from this repository.
+uint8 STATUS_VALID = 1
+uint8 STATUS_CLIPPED = 2
+uint8 STATUS_DISCONTINUITY = 4
+
+# Nominal ADC output word width, 2..32, including the DC midpoint/sign bit.
+# Full-scale peak amplitude = 2^(adc_bits - 1) ADC counts.
+# This describes the encoding range, NOT measured ENOB or signal/noise ratio.
+# range_db = 20*log10(2^(adc_bits-1)) = 6.020599913*(adc_bits-1)
+# level = round(65535 * clamp(1 + amplitude_dbfs/range_db, 0, 1))
+# amplitude_dbfs = range_db * (level/65535 - 1)
+# Endpoints are saturated: level=0 includes silence/sub-count amplitudes;
+# level=65535 includes amplitudes exceeding full scale. Not calibrated dB SPL.
+uint8 adc_bits
+
+# VALID: current measurement usable. CLIPPED: near-rail input samples.
+# DISCONTINUITY: acquisition loss/restart since the previous publication attempt.
+# An invalid acquisition has an empty array. Empty + VALID means no component
+# above the producer's detection/encoding floor.
+uint8 status
+
+# At most (1023 - 2-byte header - 1-byte array length) / 4 = 255 bins.
+# 1023 bytes is the transfer payload limit in this project's libcanard.
+# Each bin is two uint16 fields. With TAO the length byte is omitted (1022 B).
+# CAN/CAN FD fragmentation is handled by libcanard, not by this format.
+# Descending amplitude order; no prescribed FFT length, band or component count.
+Bin[<=255] bins

@@ -1,0 +1,6 @@
+# One spectral component. No restriction to a particular FFT or sensor.
+# Frequency rounded to the nearest hertz, range 0..65535 Hz.
+uint16 frequency_hz
+# Normalized logarithmic amplitude; see Spectrum.adc_bits for the reference.
+# 0 = at/below one ADC count peak; 65535 = at/above full-scale peak.
+uint16 level

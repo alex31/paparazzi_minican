@@ -169,7 +169,9 @@ See [docs/software/adding_roles.md](../adding_roles.md) for the full new role ch
 ## Independent microphone, RGBW and distance sensors
 
 - `MicrophoneRole`: `ROLE.adc.microphone.im68a130`, PA4/ADC2/TIM6; electrical
-  amplitude statistics over `uavcan.protocol.debug.KeyValue`.
+  512-point Hann FFT and top-ten 100 Hz–3 kHz bins over
+  `microcan.audio.Spectrum` (ID 20900): uint16 Hz and logarithmic uint16 level;
+  the generic wire format supports up to 255 bins.
 - `Opt4060Role`: `ROLE.i2c.light.opt4060`, shared I2C1 and optional PA8 INT;
   CRC-checked RGBW readings over `uavcan.protocol.debug.KeyValue`.
 - `Vl53l4cxRole`: `ROLE.i2c.range.vl53l4cx`, shared I2C1;

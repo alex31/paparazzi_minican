@@ -1,15 +1,14 @@
-/** @file Microphone acquisition extracted from imav2026, without beacon DSP. */
+/** @file Analog microphone acquisition and generic audio spectrum. */
 #include "roleConf.h"
 #if USE_MICROPHONE_ROLE
 
 #include "microphoneRole.hpp"
 #include "hardwareConf.hpp"
 #include "resourceManager.hpp"
-#include "sensorTelemetry.hpp"
-#include <limits>
+#include "spectrumMessage.hpp"
 
 namespace {
-  constexpr size_t bufferDepth = 1024U;
+  constexpr size_t bufferDepth = 2U * MicrophoneSpectrum::sampleCount;
   constexpr size_t halfDepth = bufferDepth / 2U;
   constexpr eventmask_t readyEvent = EVENT_MASK(0);
   constexpr eventmask_t errorEvent = EVENT_MASK(1);
@@ -50,6 +49,11 @@ DeviceStatus MicrophoneRole::start(UAVCAN::Node& node)
   const auto fail = [this](DeviceStatus status) {
     free_dma(audio);
     audio = nullptr;
+    if (spectrum != nullptr) {
+      spectrum->~MicrophoneSpectrum();
+      free_m(spectrum);
+      spectrum = nullptr;
+    }
     boardResource.release(HR::PA04, HR::ADC_2, HR::TIM_6);
     return status;
   };
@@ -58,6 +62,11 @@ DeviceStatus MicrophoneRole::start(UAVCAN::Node& node)
   if (not status) {
     return fail(status);
   }
+  void *memory = malloc_m(sizeof(MicrophoneSpectrum));
+  if (memory == nullptr) {
+    return fail(DeviceStatus(DeviceStatus::MICROPHONE, DeviceStatus::HEAP_FULL));
+  }
+  spectrum = new (memory) MicrophoneSpectrum;
 
   static const ADCConversionGroup group = {
     .circular = true,
@@ -142,16 +151,28 @@ void MicrophoneRole::errorCallback(ADCDriver *, adcerror_t error)
   chSysUnlockFromISR();
 }
 
-void MicrophoneRole::publish(const MicrophoneStatistics& statistics, bool valid)
+void MicrophoneRole::publish(const MicrophoneSpectrum::Result& result, bool valid)
 {
-  const float invalid = std::numeric_limits<float>::quiet_NaN();
-  publishSensorValue(*m_node, "mic.ok", valid ? 1.0f : 0.0f);
-  publishSensorValue(*m_node, "mic.dc", valid ? statistics.mean : invalid);
-  publishSensorValue(*m_node, "mic.rms", valid ? statistics.rms : invalid);
-  publishSensorValue(*m_node, "mic.pp", valid ? statistics.peakToPeak : invalid);
-  publishSensorValue(*m_node, "mic.clip", valid ? statistics.clippedFraction : invalid);
-  publishSensorValue(*m_node, "mic.drop", static_cast<float>(droppedBlocks));
-  publishSensorValue(*m_node, "mic.rst", static_cast<float>(restarts));
+  SpectrumMessage<MicrophoneSpectrum::maxBins> message;
+  message.adc_bits = MicrophoneSpectrum::adcBits;
+  if (droppedBlocks != reportedDroppedBlocks || restarts != reportedRestarts) {
+    message.status |= MICROCAN_AUDIO_SPECTRUM_STATUS_DISCONTINUITY;
+  }
+  reportedDroppedBlocks = droppedBlocks;
+  reportedRestarts = restarts;
+  if (valid) {
+    message.status |= MICROCAN_AUDIO_SPECTRUM_STATUS_VALID;
+    if (result.clippedFraction > 0.0f) {
+      message.status |= MICROCAN_AUDIO_SPECTRUM_STATUS_CLIPPED;
+    }
+    message.count = static_cast<uint8_t>(result.count);
+    for (size_t i = 0U; i < result.count; ++i) {
+      message.bins[i].frequency_hz = SpectrumEncoding::encodeFrequency(result.bins[i].frequencyHz);
+      message.bins[i].level = SpectrumEncoding::encodeLevel(result.bins[i].levelDbfs,
+                                                          message.adc_bits);
+    }
+  }
+  m_node->sendBroadcast(message, CANARD_TRANSFER_PRIORITY_LOW);
 }
 
 void MicrophoneRole::run(void *)
@@ -194,24 +215,25 @@ void MicrophoneRole::run(void *)
       discardFirst = false;
       continue;
     }
+    // Analyse only the latest complete block when a publication is due.
+    // Skipped blocks are intentional and do not count as dropped acquisition.
+    if (chTimeDiffX(lastPublish, now) < publishPeriod) {
+      continue;
+    }
     const size_t offset = ((sequence - 1U) & 1U) * halfDepth;
-    const auto statistics = microphoneStatistics(audio->samples + offset, halfDepth);
+    spectrum->capture(audio->samples + offset);
     chSysLock();
     const bool coherent = (audio->sequence == sequence) && (audio->errors == 0U);
     chSysUnlock();
     if (not coherent) {
       // DMA may have reused this half while the worker was preempted.
       ++droppedBlocks;
-      if (chTimeDiffX(lastPublish, now) >= publishPeriod) {
-        lastPublish = now;
-        publish({}, false);
-      }
+      lastPublish = now;
+      publish({}, false);
       continue;
     }
-    if (chTimeDiffX(lastPublish, now) >= publishPeriod) {
-      lastPublish = now;
-      publish(statistics, true);
-    }
+    lastPublish = now;
+    publish(spectrum->analyze(), true);
   }
 }
 #endif
