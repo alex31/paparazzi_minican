@@ -15,3 +15,15 @@
 #define USE_LED2812_ROLE         true
 #define USE_VOLTMETER_ROLE       true
 #define USE_TEMPLATE_ROLE        false
+
+// Sensor roles extracted from imav2026; runtime activation defaults to false.
+// Numeric values also allow mcuconf.h and the C vendor driver to use them.
+#ifndef USE_MICROPHONE_ROLE
+#define USE_MICROPHONE_ROLE       1
+#endif
+#ifndef USE_OPT4060_ROLE
+#define USE_OPT4060_ROLE          1
+#endif
+#ifndef USE_VL53L4CX_ROLE
+#define USE_VL53L4CX_ROLE         1
+#endif

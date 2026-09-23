@@ -36,6 +36,15 @@
 #if USE_QMC5883_ROLE
 #include "qmc5883Role.hpp"
 #endif
+#if USE_MICROPHONE_ROLE
+#include "microphoneRole.hpp"
+#endif
+#if USE_OPT4060_ROLE
+#include "opt4060Role.hpp"
+#endif
+#if USE_VL53L4CX_ROLE
+#include "vl53l4cxRole.hpp"
+#endif
 #include "firmwareUpdate.hpp"
 #include "hardwareConf.hpp"
 #include "UAVCanHelper.hpp"
@@ -375,6 +384,11 @@ namespace CANSlave {
 				  processFirmwareUpdateRequest>();
 
     bool rolesOk = true;
+#if USE_MICROPHONE_ROLE
+    // ADCv3 allocates its DMA stream dynamically. Reserve it before optional
+    // roles that can consume the remaining streams.
+    rolesOk = rolesOk && addRole<MicrophoneRole, FixedString("ROLE.adc.microphone.im68a130")>();
+#endif
 #if USE_SERVO_ROLE
     rolesOk = rolesOk && addRole<ServoRole, FixedString("ROLE.servo.pwm"),  FixedString("ROLE.servo.smart")>();
 #endif
@@ -383,6 +397,12 @@ namespace CANSlave {
 #endif
 #if USE_QMC5883_ROLE
     rolesOk = rolesOk && addRole<Qmc5883Role, FixedString("ROLE.i2c.magnetometer.q5883")>();
+#endif
+#if USE_OPT4060_ROLE
+    rolesOk = rolesOk && addRole<Opt4060Role, FixedString("ROLE.i2c.light.opt4060")>();
+#endif
+#if USE_VL53L4CX_ROLE
+    rolesOk = rolesOk && addRole<Vl53l4cxRole, FixedString("ROLE.i2c.range.vl53l4cx")>();
 #endif
 #if USE_ESC_DSHOT_ROLE
     rolesOk = rolesOk && addRole<EscDshot, FixedString("ROLE.esc.dshot")>();

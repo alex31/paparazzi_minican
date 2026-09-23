@@ -11,6 +11,8 @@ MicroCAN is a flexible UAVCAN interface card based on an STM32G491 microcontroll
 - **SBUS tunnel** to forward RC frames over UAVCAN
 - **Telemetry tunnel** for Paparazzi messages or raw serial data
 - **I2C sensor support** (e.g. MPL3115A2 barometer)
+- **Independent sensors**: IM68A130 microphone, OPT4060 RGBW and VL53L4CX range
+  ([configuration](docs/software/roles/independent_sensors.md))
 - **Health survey** publishing battery and core temperature measurements
 - Configurable roles and parameters stored in persistent memory
 
@@ -46,5 +48,8 @@ For the very first flash over the STM32 ROM UART bootloader with a 3.3 V USB to
 serial adapter, see [docs/software/build_flash.md](docs/software/build_flash.md).
 
 ## License
+
+The vendored VL53L4CX component retains its [ST license](third_party/vl53l4cx/LICENSE.md)
+and [source provenance](third_party/vl53l4cx/README.microcan.md).
 
 This project includes ChibiOS components released under the Apache License 2.0. The rest of the code is provided without any specific license.

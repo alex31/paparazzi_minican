@@ -27,7 +27,12 @@ resources, and parameters for your new role.
 - Add addRole<MyRole, FixedString("ROLE.my_role")>(); in CANSlave::start()
 
 5) Allocate resources
-- In start(), use boardResource.tryAcquire(...) for pins and peripherals
+- In start(), use boardResource.tryAcquire(...) for exclusive pins and peripherals.
+- For shared I2C1, call I2CPeriph::start() and propagate its DeviceStatus.
+  Do not reserve I2C1/PA15/PB07 a second time in the role: the helper owns them.
+  Serialize transfers with i2cAcquireBus/i2cReleaseBus. For recovery while
+  retaining that mutex use resetLocked(); otherwise use reset().
+  Initialization is explicit and idempotent, not inferred from role metadata.
 
 6) Subscribe and publish
 - Implement subscribe() for UAVCAN message subscriptions
@@ -65,6 +70,6 @@ Example prompt:
 Create a new role named FooRole for MicroCAN.
 It should read a sensor over I2C1 at 50 Hz and publish uavcan.equipment.foo.Bar.
 Use parameter ROLE.foo to enable it and role.foo.sensor_id to set sensor ID.
-Add resource allocation for I2C1 and PB07/PA15 pins.
+Call I2CPeriph::start() for the shared I2C1/PB07/PA15 dependency.
 Register it in UAVCanSlave and document it in [roles.readme.txt](../../roles.readme.txt).
 ```

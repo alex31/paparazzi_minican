@@ -36,26 +36,68 @@ namespace {
   /// Track whether the I2C peripheral has already been started.
   bool started = false;
 
-  /// RAII helper to save/restore GPIO configuration during bus recovery.
-  class gpio_config_t {
-    using gpio_t = GPIO_TypeDef *;
-    const gpio_t gpio_port_a = reinterpret_cast<GPIO_TypeDef *>(GPIOA_BASE);
-    const gpio_t gpio_port_b = reinterpret_cast<GPIO_TypeDef *>(GPIOB_BASE);
-    GPIO_TypeDef a, b;
-
+  /** @brief Snapshot only one GPIO pad, never a complete shared GPIO port. */
+  class gpio_pad_config_t {
   public:
-    gpio_config_t() { save(); }
+    gpio_pad_config_t(GPIO_TypeDef *gpio, uint32_t index)
+      : port(gpio), pad(index), oneBit(1U << index),
+	twoBits(3U << (2U * index)), fourBits(15U << (4U * (index & 7U))),
+	moder(gpio->MODER & twoBits), otyper(gpio->OTYPER & oneBit),
+	ospeedr(gpio->OSPEEDR & twoBits), pupdr(gpio->PUPDR & twoBits),
+	alternate(gpio->AFR[index / 8U] & fourBits),
+	output(gpio->ODR & oneBit)
+    {
+    }
 
-    void restore() {
-      *gpio_port_a = a;
-      *gpio_port_b = b;
+    void restore() const
+    {
+      // Restore the output latch and alternate function before the mode to
+      // avoid a glitch. Masked RMW preserves every unrelated GPIO pad.
+      port->BSRR = output != 0U ? oneBit : oneBit << 16U;
+      port->OTYPER = (port->OTYPER & ~oneBit) | otyper;
+      port->OSPEEDR = (port->OSPEEDR & ~twoBits) | ospeedr;
+      port->PUPDR = (port->PUPDR & ~twoBits) | pupdr;
+      port->AFR[pad / 8U] =
+	(port->AFR[pad / 8U] & ~fourBits) | alternate;
+      port->MODER = (port->MODER & ~twoBits) | moder;
     }
 
   private:
-    void save() {
-      a = *gpio_port_a;
-      b = *gpio_port_b;
+    GPIO_TypeDef * const port;
+    const uint32_t pad;
+    const uint32_t oneBit;
+    const uint32_t twoBits;
+    const uint32_t fourBits;
+    const uint32_t moder;
+    const uint32_t otyper;
+    const uint32_t ospeedr;
+    const uint32_t pupdr;
+    const uint32_t alternate;
+    const uint32_t output;
+  };
+
+  /// Save/restore only the two pads temporarily changed during recovery.
+  class gpio_config_t {
+  public:
+    gpio_config_t()
+      : sda(reinterpret_cast<GPIO_TypeDef *>(PAL_PORT(LINE_I2C_SDA)),
+	    PAL_PAD(LINE_I2C_SDA)),
+	scl(reinterpret_cast<GPIO_TypeDef *>(PAL_PORT(LINE_I2C_SCL)),
+	    PAL_PAD(LINE_I2C_SCL))
+    {
     }
+
+    void restore() const
+    {
+      chSysLock();
+      sda.restore();
+      scl.restore();
+      chSysUnlock();
+    }
+
+  private:
+    const gpio_pad_config_t sda;
+    const gpio_pad_config_t scl;
   };
 
   /// Attempt to unhang a stuck I2C bus by toggling SCL.
@@ -78,7 +120,9 @@ namespace {
     palSetLineMode(sclLine, PAL_MODE_INPUT);
     chThdSleepMicroseconds(100);
     currentInput = palReadLine(sclLine) == PAL_HIGH;
-    palSetLineMode(sclLine, PAL_MODE_OUTPUT_PUSHPULL);
+    // I2C lines must never be driven high: open-drain avoids contention if a
+    // slave is clock-stretching or still holding the failed bus low.
+    palSetLineMode(sclLine, PAL_MODE_OUTPUT_OPENDRAIN);
     palWriteLine(sclLine, currentInput);
     chThdSleepMicroseconds(100);
 
@@ -92,6 +136,17 @@ namespace {
       if (sdaReleased) {
         break;
       }
+    }
+
+    if (sdaReleased) {
+      // Generate a STOP (SDA low -> high while SCL is released high) before
+      // restoring the alternate-function configuration.
+      palSetLineMode(sdaLine, PAL_MODE_OUTPUT_OPENDRAIN);
+      palClearLine(sdaLine);
+      palSetLine(sclLine);
+      chSysPolledDelayX(US2RTC(STM32_SYSCLK, 10));
+      palSetLine(sdaLine);
+      chSysPolledDelayX(US2RTC(STM32_SYSCLK, 10));
     }
 
     context.restore();
@@ -110,6 +165,18 @@ namespace {
       palSetLineMode(LINE_PULLUP_SCL, PAL_MODE_INPUT);
       palSetLineMode(LINE_PULLUP_SDA, PAL_MODE_INPUT);
     }
+  }
+
+  /** @brief Perform recovery; caller must prevent concurrent I2C transfers. */
+  void resetPeripheral()
+  {
+    const auto config = ExternalI2CD.config;
+    i2cStop(&ExternalI2CD);
+    if (i2cUnhangBus() == false) {
+      DebugTrace("unhang bus I2C1 failed");
+    }
+
+    i2cStart(&ExternalI2CD, config);
   }
 }
 
@@ -149,15 +216,14 @@ namespace I2CPeriph
   /** @brief Stop and reinitialize the I2C peripheral to recover from errors. */
   void reset()
   {
-    const auto config = ExternalI2CD.config;
-    i2cStop(&ExternalI2CD);
-    if (i2cUnhangBus() == false) {
-      DebugTrace("unhang bus I2C1 failed");
-    }
-    
-    i2cStart(&ExternalI2CD, config);
+    i2cAcquireBus(&ExternalI2CD);
+    resetPeripheral();
+    i2cReleaseBus(&ExternalI2CD);
+  }
+
+  /** @brief Recover while the caller retains the shared-bus mutex. */
+  void resetLocked()
+  {
+    resetPeripheral();
   }
 };
-
-
-

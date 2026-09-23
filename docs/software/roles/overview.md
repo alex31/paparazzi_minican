@@ -165,3 +165,16 @@ Params:
 - role.template.log_every (0 disables logging)
 
 See [docs/software/adding_roles.md](../adding_roles.md) for the full new role checklist.
+
+## Independent microphone, RGBW and distance sensors
+
+- `MicrophoneRole`: `ROLE.adc.microphone.im68a130`, PA4/ADC2/TIM6; electrical
+  amplitude statistics over `uavcan.protocol.debug.KeyValue`.
+- `Opt4060Role`: `ROLE.i2c.light.opt4060`, shared I2C1 and optional PA8 INT;
+  CRC-checked RGBW readings over `uavcan.protocol.debug.KeyValue`.
+- `Vl53l4cxRole`: `ROLE.i2c.range.vl53l4cx`, shared I2C1;
+  `uavcan.equipment.range_sensor.Measurement` in metres.
+
+All are disabled by default and independent of IMAV. See
+[independent sensors](independent_sensors.md) for parameters, telemetry units,
+error handling and pin conflicts.

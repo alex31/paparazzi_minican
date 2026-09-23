@@ -1,3 +1,5 @@
+#include "roleConf.h"
+
 /*
     ChibiOS - Copyright (C) 2006-2026 Giovanni Di Sirio.
 
@@ -147,7 +149,7 @@
 #define STM32_ADC_DUAL_MODE                 FALSE
 #define STM32_ADC_COMPACT_SAMPLES           FALSE
 #define STM32_ADC_USE_ADC1                  TRUE
-#define STM32_ADC_USE_ADC2                  FALSE
+#define STM32_ADC_USE_ADC2                  USE_MICROPHONE_ROLE
 #define STM32_ADC_ADC1_DMA_STREAM           STM32_DMA_STREAM_ID_ANY
 #define STM32_ADC_ADC2_DMA_STREAM           STM32_DMA_STREAM_ID_ANY
 #define STM32_ADC_ADC1_DMA_PRIORITY         2
@@ -191,7 +193,7 @@
 #define STM32_GPT_USE_TIM2                  FALSE
 #define STM32_GPT_USE_TIM3                  FALSE
 #define STM32_GPT_USE_TIM4                  FALSE
-#define STM32_GPT_USE_TIM6                  FALSE
+#define STM32_GPT_USE_TIM6                  USE_MICROPHONE_ROLE
 #define STM32_GPT_USE_TIM7                  TRUE
 #define STM32_GPT_USE_TIM8                  FALSE
 #define STM32_GPT_USE_TIM15                 FALSE

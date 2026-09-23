@@ -9,6 +9,7 @@ enum class HWResource : uint8_t {
   PA02, PA03, PA04, PA05, PA06, PA07, PA08, PA09, PA10, PA11, PA12, PA15,
   PB03, PB04, PB07,
   SPI_1, TIM_1, TIM_3, TIM_7, I2C_1, USART_2, LPUART_1,
+  ADC_2, TIM_6,
   END
 };
 

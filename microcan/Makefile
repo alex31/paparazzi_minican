@@ -210,6 +210,28 @@ COMMON := ../COMMON/source
 COMMON_CFG := $(COMMON)/../cfg
 SRCDIR = ./source
 
+# Optional overrides for build checks; roleConf.h remains the default source.
+SENSOR_ROLE_SWITCHES := USE_MICROPHONE_ROLE USE_OPT4060_ROLE USE_VL53L4CX_ROLE
+SENSOR_ROLE_DEFS := $(foreach role,$(SENSOR_ROLE_SWITCHES),$(if $(filter undefined,$(origin $(role))),,-D$(role)=$($(role))))
+VL53L4CX_ENABLED := $(shell printf '\043include "$(COMMON)/roleConf.h"\n\043if USE_VL53L4CX_ROLE\nenabled\n\043endif\n' | arm-none-eabi-gcc $(SENSOR_ROLE_DEFS) -E -P -x c -)
+VL53L4CX_CSRC :=
+VL53L4CX_INC :=
+ifeq ($(strip $(VL53L4CX_ENABLED)),enabled)
+VL53L4CX := ../third_party/vl53l4cx
+ifeq ($(wildcard $(VL53L4CX)/vl53l4cx.h),)
+$(error VL53L4CX driver missing: restore third_party/vl53l4cx, or build with USE_VL53L4CX_ROLE=0)
+endif
+VL53L4CX_VENDOR_CSRC := $(wildcard $(VL53L4CX)/modules/*.c) \
+                        $(wildcard $(VL53L4CX)/porting/*.c) \
+                        $(VL53L4CX)/vl53l4cx.c
+VL53L4CX_CSRC := $(filter-out $(VL53L4CX)/porting/vl53lx_platform.c,$(VL53L4CX_VENDOR_CSRC)) \
+                $(COMMON)/vl53lxPlatform.c
+VL53L4CX_INC := $(VL53L4CX) $(VL53L4CX)/modules $(VL53L4CX)/porting
+# Scope ST warning exceptions to vendor files.
+VL53L4CX_VENDOR_OBJS := $(addprefix $(BUILDDIR)/obj/,$(notdir $(VL53L4CX_VENDOR_CSRC:.c=.o)))
+$(VL53L4CX_VENDOR_OBJS): CFLAGS += -Wno-error
+endif
+
 # Licensing files.
 include $(CHIBIOS)/os/license/license.mk
 # Startup files.
@@ -260,7 +282,8 @@ CSRC = $(ALLCSRC) \
        $(VARIOUS)/timerDmaCache.c \
        $(VARIOUS)/dshot_erps.c \
        $(VARIOUS)/dshot_rpmCapture.c \
-       $(VARIOUS)/hal_stm32_crc_v1.c
+       $(VARIOUS)/hal_stm32_crc_v1.c \
+       $(VL53L4CX_CSRC)
 
 
 
@@ -293,6 +316,9 @@ CPPSRC = $(ALLCPPSRC) \
 	$(COMMON)/rgbLedRole.cpp \
 	$(COMMON)/voltmeterRole.cpp \
 	$(COMMON)/templateRole.cpp \
+	$(COMMON)/microphoneRole.cpp \
+	$(COMMON)/opt4060Role.cpp \
+	$(COMMON)/vl53l4cxRole.cpp \
 	$(COMMON)/deviceResource.cpp \
 	$(COMMON)/MFS.cpp \
 	$(COMMON)/firmwareUpdate.cpp \
@@ -310,7 +336,7 @@ ASMXSRC = $(ALLXASMSRC)
 INCDIR = $(CONFDIR) $(ALLINC) $(CHIBIOS)/os/various $(VARIOUS) \
 	 $(VARIOUS)/M95P $(EXTLIB) $(ETL_LIB) $(FROZEN_LIB) $(COMMON) \
          $(RELATIVE)/../UAVCAN/libcanard $(DSDLC)/include ../canard_chutils \
-	 $(TESTINC) $(COMMON_CFG)
+	 $(TESTINC) $(COMMON_CFG) $(VL53L4CX_INC)
  
 
 # Define C warning options here.
@@ -328,7 +354,7 @@ CPPWARN = -Wall -Wextra -Wundef
 #
 
 # List all user C define here, like -D_DEBUG=1
-UDEFS = -DCANARD_ENABLE_CANFD=$(CANARD_ENABLE_CANFD) \
+UDEFS = $(SENSOR_ROLE_DEFS) -DCANARD_ENABLE_CANFD=$(CANARD_ENABLE_CANFD) \
         -DCANARD_ENABLE_TAO_OPTION=true -DCANARD_ALLOCATE_SEM=true \
         -DDRONECAN_CXX_WRAPPERS=true \
         -DFROZEN_NO_EXCEPTIONS=1 -DPRECISE_FDCAN_TIMINGS=$(PRECISE_FDCAN_TIMINGS) \
@@ -385,6 +411,10 @@ CHECK_ELF_OVERLAP ?= yes
 .PHONY: test_ubx_config_lifetime
 test_ubx_config_lifetime:
 	$(PY) ../tests/ubx_config_lifetime/run.py $(ETL_LIB) --cxx "$(CPPC)"
+
+.PHONY: test_sensor_roles
+test_sensor_roles:
+	$(PY) ../tests/sensor_roles/run.py
 
 .PHONY: build_dsdlc
 

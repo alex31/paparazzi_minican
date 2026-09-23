@@ -90,3 +90,17 @@ Services/protocoles gérés par le nœud (pubSub/UAVCanSlave)
 - Réception passive : souscription aux `uavcan.protocol.NodeStatus` reçus (monitoring).
 
 Remarque : les rôles sont instanciés au démarrage selon les paramètres persistants et utilisent `sendBroadcast` du nœud UAVCAN. Les services ci-dessus sont fournis par la couche pubSub/UAVCanSlave indépendamment des rôles applicatifs. Si `ROLE.identification` est vrai, la carte passe en mode identification (LED interne) et le nœud UAVCAN n’est pas démarré.
+
+- Microphone IM68A130 (`ROLE.adc.microphone.im68a130`)
+  - PA4 / ADC2 / TIM6, acquisition à 24 kHz ; pas de dépendance I2C.
+  - Envoie : KeyValue `mic.dc`, `mic.rms`, `mic.pp`, `mic.clip`, `mic.ok`, `mic.drop`, `mic.rst`.
+  - Mesures électriques en points ADC, pas de détection de balise ni de dB SPL calibrés.
+
+- Capteur RGBW OPT4060 (`ROLE.i2c.light.opt4060`)
+  - I2C1 partagé, INT sur PA8 optionnelle ; contrôle CRC et fraîcheur des quatre canaux.
+  - Envoie : KeyValue `opt.red`, `opt.green`, `opt.blue`, `opt.clear`, `opt.ok`, `opt.ovf`.
+
+- Télémètre VL53L4CX (`ROLE.i2c.range.vl53l4cx`)
+  - I2C1 partagé, pilote ST ; aucune dépendance aux rôles microphone/RGBW.
+  - Envoie : `uavcan.equipment.range_sensor.Measurement`, distance valide la plus proche en mètres.
+  - Détails des trois rôles : docs/software/roles/independent_sensors.md.

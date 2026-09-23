@@ -98,6 +98,26 @@
       {"role.led2812.led_number", {.min = 1, .max = 8, .v = 8}},	
 #endif
 
+#if USE_MICROPHONE_ROLE
+      {"ROLE.adc.microphone.im68a130", {.v = false}},
+      {"role.adc.microphone.period_ms", {.min = 50, .max = 1000, .v = 200}},
+#endif
+
+#if USE_OPT4060_ROLE
+      {"ROLE.i2c.light.opt4060", {.v = false}},
+      // Preferred address; startup also probes the other three strap values.
+      {"role.i2c.light.opt4060.address", {.min = 0x44, .max = 0x47, .v = 0x44}},
+      {"role.i2c.light.opt4060.period_ms", {.min = 10, .max = 1000, .v = 100}},
+      // INT on PA8; false uses polling without reserving PA8.
+      {"role.i2c.light.opt4060.use_interrupt", {.v = true}},
+#endif
+
+#if USE_VL53L4CX_ROLE
+      {"ROLE.i2c.range.vl53l4cx", {.v = false}},
+      {"role.i2c.range.vl53l4cx.period_ms", {.min = 100, .max = 1000, .v = 200}},
+      {"role.i2c.range.vl53l4cx.sensor_id", {.min = 0, .max = 255, .v = 0}},
+#endif
+
 #if USE_TEMPLATE_ROLE
       {"ROLE.template", {.v = false}},
       {"role.template.log_every", {.min = 0, .max = 1000, .v = 0}},

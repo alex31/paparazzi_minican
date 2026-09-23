@@ -12,6 +12,14 @@ Compile-time role toggles are defined in
 - USE_LED2812_ROLE
 - USE_VOLTMETER_ROLE
 - USE_TEMPLATE_ROLE
+- USE_MICROPHONE_ROLE
+- USE_OPT4060_ROLE
+- USE_VL53L4CX_ROLE
 
 These must be enabled for roles to be compiled in. Runtime enable is separate
 and controlled by ROLE.* parameters.
+
+The three new sensor switches accept make overrides (`USE_OPT4060_ROLE=0`,
+for example). Use `make -C microcan clean` before changing make overrides.
+They default to compiled-in, but their `ROLE.*` parameters
+are false by default. See [independent sensors](roles/independent_sensors.md).

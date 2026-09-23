@@ -10,6 +10,8 @@ namespace I2CPeriph
 {
   /** @brief Initialize the shared I2C peripheral. */
   DeviceStatus start();
-  /** @brief Reset the I2C peripheral to recover from a bus error. */
+  /** @brief Recover the I2C peripheral while serializing all bus users. */
   void reset();
+  /** @brief Recover I2C when the caller already owns ExternalI2CD's mutex. */
+  void resetLocked();
 };
