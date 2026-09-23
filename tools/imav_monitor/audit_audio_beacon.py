@@ -51,29 +51,9 @@ def build(directory, source):
     helper = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(helper)
     helper.ROOT = snapshot
-    binary = helper.build_replay(directory)
-    cpp = directory / 'audio_replay.cpp'
-    generated = cpp.read_text()
-    # Two extra arguments select a persisted-band scenario and one lost-block
-    # marker. Everything else, including ADC scaling, is the existing adapter.
-    anchor = '  ImavRole role{&audio, &node};'
-    assert generated.count(anchor) == 1
-    generated = generated.replace(anchor, anchor + '''
-  if (argc > 3) audio.detector.band = makeAudioBandConfiguration(std::atoi(argv[3]));
-  const double gapTime = argc > 4 ? std::atof(argv[4]) : -1.0;
-  bool gapInjected = false;
-''')
-    anchor = '      role.processAudioHalf(0, total == 1024);'
-    assert generated.count(anchor) == 1
-    generated = generated.replace(anchor, '''
-      const bool gap = !gapInjected && gapTime >= 0 && hostTime / 20000.0 >= gapTime;
-      gapInjected = gapInjected || gap;
-      role.processAudioHalf(0, total == 1024 || gap);
-''')
-    cpp.write_text(generated)
-    subprocess.run(['g++', '-std=c++20', '-O2', '-Wall', '-Wextra',
-                    str(cpp), '-o', str(binary)], check=True)
-    return binary
+    # The shared adapter accepts band_low_hz and a lost-block time. Keep the
+    # same acquisition conversion and fault injection for both revisions.
+    return helper.build_replay(directory)
 
 
 def replay(binary, data, output, name, band=2000, gap=-1):
@@ -174,33 +154,33 @@ def main():
     if not args.preview.exists():
         report['measurements']['simulator'] = {
             'skipped': f'Preview not found: {args.preview}; simulator was not replayed.'}
+    noise = random.Random(101)
+    changing_noise = float_bytes(
+        noise.gauss(0, .005 if i < 3 * RATE else .12) +
+        (.2 * math.sin(2 * math.pi * 2250 * i / RATE) if i >= RATE else 0)
+        for i in range(5 * RATE))
+    cases = [
+        ('video', data, {}),
+        ('video_then_silence', data + silence * 3, {}),
+        ('video_start_at_7s', data[7 * RATE * 4:], {}),
+        ('video_discontinuity_at_9s', data, {'gap': 9}),
+        ('video_band_2600', data, {'band': 2600}),
+        ('increasing_noise', changing_noise, {}),
+        ('plain_2250hz_tone', silence + float_bytes(
+            0.2 * math.sin(2 * math.pi * 2250 * i / RATE)
+            for i in range(3 * RATE)) + silence * 2, {}),
+    ]
+    if args.preview.exists():
+        preview = decode(args.preview)
+        cases += [('simulator_already_on', preview, {}),
+                  ('simulator_after_silence', silence + preview, {})]
+        report['measurements']['simulator'] = frequency_summary(
+            args.preview, .1, args.output, 'simulator')
     with tempfile.TemporaryDirectory(prefix='imav-audio-audit-') as temporary:
         for label, source in [('current', current), ('reference', reference)]:
             directory = Path(temporary) / label
             directory.mkdir()
             binary = build(directory, source)
-            cases = [('video', data, {}), ('video_then_silence', data + silence * 3, {})]
-            if label == 'current':
-                noise = random.Random(101)
-                changing_noise = float_bytes(
-                    noise.gauss(0, .005 if i < 3 * RATE else .12) +
-                    (.2 * math.sin(2 * math.pi * 2250 * i / RATE) if i >= RATE else 0)
-                    for i in range(5 * RATE))
-                cases += [
-                    ('video_start_at_7s', data[7 * RATE * 4:], {}),
-                    ('video_discontinuity_at_9s', data, {'gap': 9}),
-                    ('video_band_2600', data, {'band': 2600}),
-                    ('increasing_noise', changing_noise, {}),
-                    ('plain_2250hz_tone', silence + float_bytes(
-                        0.2 * math.sin(2 * math.pi * 2250 * i / RATE)
-                        for i in range(3 * RATE)) + silence * 2, {}),
-                ]
-                if args.preview.exists():
-                    preview = decode(args.preview)
-                    cases += [('simulator_already_on', preview, {}),
-                              ('simulator_after_silence', silence + preview, {})]
-                    report['measurements']['simulator'] = frequency_summary(
-                        args.preview, .1, args.output, 'simulator')
             for name, samples, options in cases:
                 key = label + '_' + name
                 report['replays'][key] = replay(binary, samples, args.output, key, **options)

@@ -61,6 +61,12 @@ points de la trajectoire et diriger le drone vers la balise. Elle est relative
 au bruit moteur appris localement. Elle convient donc à une cartographie
 spatiale ou à une recherche de gradient avec la même MicroCAN.
 
+Si la sirène est déjà présente au démarrage, le plancher initial est estimé
+à partir des bandes de référence latérales. Un plancher déjà appris est
+conservé après une interruption d'acquisition. Le détecteur peut démarrer ou
+reprendre sur deux blocs spectraux cohérents sans attendre un silence ; la
+publication continue commence ensuite après sa fenêtre de 200 ms.
+
 Le filtre IIR entre pics successifs (salves ou fenêtres continues) est réglé à chaud par
 `role.imav.audio.snr_alpha`, entre 0,5 et 1. La valeur par défaut 1 publie le
 pic brut du nouveau chirp et n'ajoute aucun retard de lissage ; 0,5 reproduit

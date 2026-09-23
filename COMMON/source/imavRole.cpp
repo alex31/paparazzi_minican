@@ -379,9 +379,11 @@ namespace {
 
     // Learn only blocks that do not already resemble the beacon. This robust
     // floor follows continuous broadband motor noise but cannot slowly absorb
-    // a persistent 2/3 Hz alarm into its own reference level.
+    // a persistent alarm into its own reference level. If acquisition starts
+    // inside the alarm, seed it from the side bands instead of treating the
+    // already-present signal as background. Both powers are averages per bin.
     if (not score.floorValid) {
-      score.noiseFloor = bandPower;
+      score.noiseFloor = score.blockScore > 0.30f ? referencePower : bandPower;
       score.floorValid = true;
     } else if ((detector.burstState != AudioBurstState::On) &&
 	       (score.blockScore <= 0.30f)) {
@@ -424,7 +426,7 @@ namespace {
     detector.blockScore = score.blockScore;
   }
 
-  /** @brief Drop cadence evidence after a long gap without inventing an edge. */
+  /** @brief Drop interrupted evidence while retaining the learned noise floor. */
   void clearAudioCadence(AudioDetector& detector)
   {
     detector.onsetCount = 0U;
@@ -491,37 +493,26 @@ namespace {
                           systime_t now)
   {
     bool snrReady = false;
-    if ((detector.lastBlockTime != 0U) &&
-	(chTimeDiffX(detector.lastBlockTime, now) >= TIME_MS2I(200U))) {
+    if (discontinuity || ((detector.lastBlockTime != 0U) &&
+	(chTimeDiffX(detector.lastBlockTime, now) >= TIME_MS2I(200U)))) {
       clearAudioCadence(detector);
     }
     detector.lastBlockTime = now;
 
-    if (discontinuity) {
-      detector.burstState = AudioBurstState::Unarmed;
-      detector.lowBlocks = 0U;
-      detector.burstPeakScore = 0.0f;
-      detector.burstPeakSnrDb = 0.0f;
-      detector.recentBurstSnrDb = 0.0f;
-      detector.snrWindowStartTime = 0U;
-      detector.previousBlockScore = 0.0f;
-      detector.previousDominantFrequencyHz = 0.0f;
-      detector.previousSignalToNoiseDb = 0.0f;
-    }
-
     const bool low = detector.blockScore <= 0.30f;
     switch (detector.burstState) {
     case AudioBurstState::Unarmed:
-      detector.lowBlocks = low ? static_cast<uint8_t>(detector.lowBlocks + 1U)
-			       : 0U;
-      if (detector.lowBlocks >= 2U) {
-	detector.burstState = AudioBurstState::Off;
-	detector.lowBlocks = 0U;
-      }
-      break;
-
     case AudioBurstState::Off: {
-      detector.lowBlocks = 0U;
+      if (detector.burstState == AudioBurstState::Unarmed) {
+        detector.lowBlocks = low
+          ? static_cast<uint8_t>(detector.lowBlocks + 1U) : 0U;
+        if (detector.lowBlocks >= 2U) {
+          detector.burstState = AudioBurstState::Off;
+          detector.lowBlocks = 0U;
+        }
+      } else {
+        detector.lowBlocks = 0U;
+      }
 
       // A weak chirp over broadband noise can put one of two adjacent blocks
       // just below the strong threshold. Accept the pair only when its total
@@ -536,6 +527,11 @@ namespace {
 		  detector.previousDominantFrequencyHz) <=
 	  audioOnsetMaximumFrequencyStepHz;
       if (coherentPair) {
+        // A continuous alarm can already be present at startup or after a
+        // lost block. Qualify it with two fresh blocks, without requiring a
+        // silence first. Only an observed Off -> On transition is a cadence
+        // onset; reacquisition must not invent a new beep.
+        const bool observedOnset = detector.burstState == AudioBurstState::Off;
 	detector.burstState = AudioBurstState::On;
 	detector.burstPeakScore = std::max(
 	  detector.previousBlockScore, detector.blockScore);
@@ -544,7 +540,9 @@ namespace {
 	   detector.channel.signalToNoiseDb});
 	detector.lastToneTime = now;
 	detector.snrWindowStartTime = now;
-	appendAudioOnset(detector, now);
+        if (observedOnset) {
+          appendAudioOnset(detector, now);
+        }
       }
       break;
     }

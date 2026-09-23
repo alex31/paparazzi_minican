@@ -1,5 +1,9 @@
 # Audit sonore FireFly II — 22 septembre 2026
 
+Les constats ci-dessous portent sur la **version de vol conservée dans le
+commit `04e5c65`**, avant correction. La section « Correction après le vol »
+décrit les changements effectués ensuite.
+
 Le simulateur reproduit correctement le motif sonore enregistré. Le traitement
 MINICAN présente cependant des défauts reproductibles avec ce son continu.
 Ces résultats ne permettent pas d'attribuer le mauvais largage à la MINICAN :
@@ -16,10 +20,10 @@ actuels de ce répertoire, construite avec `make`. Le signal lumineux n'a pas
   l'audit, profil `firefly2`.
 - Référence historique MINICAN, distincte de la version flashée : commit
   `0b7d23c7b73c9216e59bd602fd6b54164596d4c9`.
-- Version « actuelle » ci-dessous, confirmée comme version flashée : arbre de
-  travail trouvé à l'ouverture de l'audit, contenant déjà le correctif non
-  commité de publication continue à
-  200 ms. SHA-256 de `COMMON/source/imavRole.cpp` :
+- Version appelée « actuelle » dans les tableaux de l'audit : version flashée,
+  sauvegardée dans `04e5c65` (« IMAV Strasbourg : code ayant volé le
+  22 septembre 2026 »), contenant déjà la publication continue à 200 ms.
+  SHA-256 de `COMMON/source/imavRole.cpp` avant correction :
   `f010f2a71634ec47b0eecf04f7ec836136e3c596ba560d9fa4cecb4444d60fb9`.
 
 Le `Makefile` racine lance `make -C microcan PLATFORM=MICROCAN ... firmware`.
@@ -27,8 +31,8 @@ Le `Makefile` racine lance `make -C microcan PLATFORM=MICROCAN ... firmware`.
 `COMMON/source/roleConf.h` active `USE_IMAV_ROLE`. La compilation utilise bien
 les fichiers locaux, y compris le correctif non commité de publication à
 200 ms ; le commit Git seul ne décrit donc pas cette version embarquée.
-L'ELF existant `microcan/build_MICROCAN/MICROCAN.elf`, daté du 21 septembre
-2026 à 10:11:18 (heure locale), contient aussi `publishAudioSnr()`,
+L'ELF présent lors de l'audit initial, `microcan/build_MICROCAN/MICROCAN.elf`,
+daté du 21 septembre 2026 à 10:11:18 (heure locale), contenait `publishAudioSnr()`,
 `finalizeAudioSnr()` et la branche de publication continue à 4 000 ticks,
 soit 200 ms. Le correctif est donc présent dans le binaire local examiné.
 
@@ -99,11 +103,11 @@ injecte ce marqueur : il démontre sa conséquence logique, sans prouver qu'une
 perte de bloc s'est produite en vol. L'absence d'armement au démarrage est
 également reproduite en commençant la vidéo à 6,5, 8, 10, 12 ou 14 s.
 
-**Correction à prévoir :** permettre l'acquisition et la réacquisition d'un
-son continu sans exiger un silence préalable, avec une politique explicite
-d'initialisation du plancher de bruit. Ajouter ces cas aux régressions avant
-validation sur carte ; les tests existants vérifient actuellement qu'une
-discontinuité exige un réarmement, ce qui entérine le comportement inadapté.
+La correction effectuée après le commit de vol permet l'acquisition et la
+réacquisition sans silence préalable, avec une initialisation explicite du
+plancher de bruit ; voir « Correction après le vol ». Les tests initiaux
+entérinaient l'attente d'un silence après discontinuité et ont été remplacés
+par des tests de reprise automatique.
 
 ## 2. Comparaison historique : publication après extinction, déjà corrigée
 
@@ -175,22 +179,64 @@ la rend indisponible après 2 s. Le message ne contient pas de timestamp audio
 MCU : l'interface date sa réception sur le PC. Aucun défaut de décodage CAN
 n'a été identifié ; le test C++ `detection_state_test` passe.
 
-## Reproduire l'audit
+## Correction après le vol
 
-Depuis la racine MINICAN, avec Python, g++ et ffmpeg :
+Le commit `04e5c65` conserve le code de vol avant modification. La correction
+suivante est limitée à l'audio :
+
+- `Unarmed` accepte la même paire spectrale cohérente que `Off`, sans changer
+  les seuils. Deux blocs acquis après l'interruption sont nécessaires : une
+  paire ne peut pas être construite à cheval sur le trou d'acquisition.
+- Une discontinuité ou une pause de traitement d'au moins 200 ms efface la
+  cadence et les pics interrompus, mais préserve le plancher déjà appris.
+- Une acquisition directement dans le son ne crée aucun faux front pour la
+  cadence. Seul un passage observé `Off` vers `On` compte comme début de bip.
+- Si le premier bloc ressemble à une alarme, le plancher est initialisé avec
+  les références latérales, au lieu d'absorber le signal dans le bruit de fond.
+  L'apprentissage ultérieur et les publications par fenêtres de 200 ms sont
+  conservés.
+
+Résultats du rejeu du C++ corrigé :
+
+| Scénario | Version de vol `04e5c65` | Correction |
+| --- | --- | --- |
+| Vidéo entière | 50 positifs | 50 positifs, mêmes temps de publication |
+| Écoute commencée à 7 s dans la vidéo | Aucun positif | 45 positifs, premier après 277 ms |
+| Discontinuité à 9 s dans la vidéo | Aucune reprise | Premier nouveau positif à 9,2381 s, puis poursuite jusqu'à la fin |
+| Simulateur déjà actif au démarrage | Aucun positif | 26 positifs, premier après 277 ms |
+| Simulateur précédé de silence | 26 positifs | 26 positifs, mêmes temps de publication |
+
+Les **14 tests audio passent**, y compris les cinq phases de démarrage dans
+la vidéo, les pertes de bloc et pauses, les cas PCM négatifs, l'expiration
+et le rebouclage de l'horloge. Exécutés sur la version de vol, les nouveaux
+tests produisent 11 échecs attendus en comptant les sous-tests : ils détectent
+donc bien les défauts corrigés. La compilation complète `make -j4` réussit,
+avec vérification des sections ELF et génération du firmware UAVCAN. Ces
+résultats restent des validations sur PC et de compilation ; l'essai sur
+carte est à effectuer avant utilisation en vol.
+
+Cette correction ne rend pas la détection spécifique au motif FireFly II et
+ne transforme pas le SNR relatif en mesure du bruit instantané. Les limites
+de sélectivité et d'interprétation du SNR documentées plus haut restent
+applicables.
+
+## Reproduire les vérifications
+
+Depuis la racine MINICAN, avec Python, g++ et ffmpeg, pour comparer les sources
+corrigées à la version de vol :
 
 ```sh
 python3 tools/imav_monitor/audit_audio_beacon.py \
-  --compare-ref 0b7d23c \
+  --compare-ref 04e5c65 \
   --output /tmp/imav-audio-audit
 python3 -m unittest discover -s tools/imav_monitor/tests -p test_audio_publication.py
 ```
 
 Le premier outil écrit `summary.json` et les mesures CSV ; il conserve les
-empreintes des entrées et sources. Le second exécute les sept tests
-préexistants, tous réussis lors de cet audit. Leurs scénarios favorables ne
-couvrent pas les échecs documentés ci-dessus. Aucun firmware n'a été modifié
-ou flashé pendant l'audit.
+empreintes des entrées et sources. Le second exécute les régressions audio,
+dont le démarrage en plein son et la reprise après discontinuité. Les sept
+tests de la version de vol passaient déjà avant correction malgré les défauts
+documentés. Aucun firmware n'a été flashé pendant ces vérifications.
 
 Pour poursuivre le diagnostic du largage, les éléments les plus utiles sont
 la valeur effective de `band_low_hz`, puis une capture CAN avec `snr`, `a0`,

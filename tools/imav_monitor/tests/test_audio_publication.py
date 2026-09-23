@@ -6,13 +6,25 @@ No Python DSP dependencies. Hardware/RTOS/CAN are stubbed; optional telemetry is
 omitted from the host build, while the operational SNR expiry code is retained.
 """
 from array import array
+import math
 from pathlib import Path
+import random
 import shutil
 import subprocess
 import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[3]
+SAMPLE_RATE = 23998
+
+
+def pcm(duration, frequency=None, amplitude=0.2, noise=0.02, seed=20260922):
+    """Deterministic ADC input with broadband noise, without a quiet preamble."""
+    generator = random.Random(seed)
+    return array('f', (
+        (amplitude * math.sin(2 * math.pi * frequency * i / SAMPLE_RATE)
+         if frequency else 0) + generator.uniform(-noise, noise)
+        for i in range(round(duration * SAMPLE_RATE)))).tobytes()
 
 
 def method(source, name):
@@ -27,6 +39,8 @@ def method(source, name):
 
 def build_replay(directory):
     source = (ROOT / 'COMMON/source/imavRole.cpp').read_text()
+    # The historical burst-only version uses this older method name.
+    source = source.replace('publishAudioBurst', 'publishAudioSnr')
     constants = source[source.index('  constexpr size_t audioBufferDepth'):
                        source.index('  constexpr eventmask_t audioReadyEvent')]
     # Firmware metadata lives in the embedded parameter framework. Use its
@@ -102,7 +116,21 @@ int main(int argc, char** argv) {
   ImavAudioState audio;
   UAVCAN::Node node;
   ImavRole role{&audio, &node};
-  if (std::string(argv[1]) == "scores") {
+  if (argc > 3) {
+    audio.detector.band = makeAudioBandConfiguration(std::atoi(argv[3]));
+  }
+  const double gapTime = argc > 4 ? std::atof(argv[4]) : -1.0;
+  bool gapInjected = false;
+  const std::string mode(argv[1]);
+  const bool diagnostics = mode.find("_diagnostics") != std::string::npos;
+  const auto diagnosticSnapshot = [&audio, diagnostics]() {
+    if (diagnostics) {
+      printf("%u cad %.6f\n", hostTime, audio.detector.cadenceHz);
+      printf("%u onsets %u\n", hostTime, unsigned(audio.detector.onsetCount));
+      printf("%u floor %.6f\n", hostTime, audio.detector.channel.noiseFloor);
+    }
+  };
+  if (mode == "scores" || mode == "scores_diagnostics") {
     float score, frequency, snr;
     unsigned discontinuity;
     while (std::scanf("%u %f %f %f %u", &hostTime, &score,
@@ -115,6 +143,7 @@ int main(int argc, char** argv) {
         role.publishAudioSnr();
       }
       role.publishMeasurements();
+      diagnosticSnapshot();
     }
   } else {
     float samples[512];
@@ -128,7 +157,10 @@ int main(int argc, char** argv) {
           int(std::round(4096 + samples[i] * 3000)), 0, 8191);
       }
       hostTime = uint32_t(std::llround(total * 20000.0 / 23998));
-      role.processAudioHalf(0, total == 1024);
+      const bool gap = !gapInjected && gapTime >= 0 && hostTime / 20000.0 >= gapTime;
+      gapInjected = gapInjected || gap;
+      role.processAudioHalf(0, total == 1024 || gap);
+      diagnosticSnapshot();
     }
   }
 }
@@ -150,17 +182,29 @@ class AudioPublicationTest(unittest.TestCase):
         cls.addClassCleanup(cls.directory.cleanup)
         cls.binary = build_replay(Path(cls.directory.name))
 
-    def run_replay(self, rows, alpha=1):
+    def run_replay(self, rows, alpha=1, *, key='snr'):
         data = ''.join(f'{tick} {score} 2250 {snr} {gap}\n'
                        for tick, score, snr, gap in rows).encode()
-        return self.run_input('scores', data, alpha)
+        mode = 'scores' if key == 'snr' else 'scores_diagnostics'
+        return self.run_input(mode, data, alpha, key=key)
 
-    def run_input(self, mode, data, alpha=1):
-        result = subprocess.run([str(self.binary), mode, str(alpha)],
+    def run_input(self, mode, data, alpha=1, *, band_low=2000,
+                  gap_seconds=-1, key='snr'):
+        result = subprocess.run([str(self.binary), mode, str(alpha),
+                                 str(band_low), str(gap_seconds)],
                                 input=data, capture_output=True, check=True)
-        return [(int(tick), float(value)) for tick, key, value in
+        return [(int(tick), float(value)) for tick, received_key, value in
                 (line.split() for line in result.stdout.decode().splitlines())
-                if key == 'snr']
+                if received_key == key]
+
+    def recording(self):
+        clip = ROOT / 'docs/VID_20260921_093815.mp4'
+        if not clip.exists() or not shutil.which('ffmpeg'):
+            self.skipTest('Local Fyrefly2 recording and ffmpeg required')
+        return subprocess.run(['ffmpeg', '-v', 'error', '-i', str(clip),
+                               '-vn', '-ar', str(SAMPLE_RATE), '-ac', '1',
+                               '-f', 'f32le', '-'],
+                              capture_output=True, check=True).stdout
 
     def test_short_bursts_publish_only_at_their_end(self):
         for period in (333, 500):
@@ -203,17 +247,86 @@ class AudioPublicationTest(unittest.TestCase):
         zeros = [t // 20 for t, v in messages if v == 0]
         self.assertEqual(zeros, [2500, 3500])
 
-    def test_discontinuity_or_stall_requires_rearming(self):
+    def test_discontinuity_or_stall_recovers_without_old_peak(self):
         for stall in (False, True):
-            rows = []
-            for ms in range(20, 1800, 20):
-                if stall and 600 <= ms < 900:
-                    continue
-                score = float(100 <= ms < 1200 or ms >= 1300)
-                rows.append((ms * 20, score, 18, int(not stall and ms == 600)))
-            messages = self.run_replay(rows)
-            self.assertEqual([t // 20 for t, v in messages if v > 0],
-                             [320, 520, 1520, 1720])
+            with self.subTest(stall=stall):
+                rows = []
+                for ms in range(20, 1800, 20):
+                    if stall and 600 <= ms < 900:
+                        continue
+                    rows.append((ms * 20, float(ms >= 100),
+                                 36 if ms < 600 else 12,
+                                 int(not stall and ms == 600)))
+                recovered_at = 1120 if stall else 820
+                messages = [(t // 20, v) for t, v in self.run_replay(rows)
+                            if v > 0]
+                self.assertEqual(messages[:2], [(320, 36), (520, 36)])
+                self.assertEqual(messages[2:],
+                                 [(ms, 12) for ms in range(recovered_at, 1800, 200)])
+                # Resuming a signal across missing data is not a second
+                # observed rising edge and must not manufacture a cadence.
+                self.assertTrue(all(v == 0 for t, v in
+                                    self.run_replay(rows, key='cad')))
+
+    def test_gap_requires_two_fresh_blocks(self):
+        # Neither the old strong block nor its large SNR may validate a single
+        # new strong block on the other side of a lost-block marker.
+        rows = [(20 * 20, 1, 36, 0), (40 * 20, 1, 12, 1)]
+        rows += [(ms * 20, 0, -60, 0) for ms in range(60, 2000, 20)]
+        self.assertFalse(any(v > 0 for t, v in self.run_replay(rows)))
+
+    def test_cold_start_does_not_invent_cadence(self):
+        rows = [(ms * 20, 1, 18, 0) for ms in range(20, 800, 20)]
+        self.assertEqual([t // 20 for t, v in self.run_replay(rows) if v > 0],
+                         [240, 440, 640])
+        for key in ('onsets', 'cad'):
+            self.assertTrue(all(v == 0 for t, v in self.run_replay(rows, key=key)))
+
+    def test_noisy_continuous_pcm_at_cold_start(self):
+        messages = self.run_input('audio', pcm(2, 2250))
+        active = [(t / 20000, v) for t, v in messages if v > 0]
+        self.assertGreaterEqual(len(active), 8)
+        self.assertLess(active[0][0], 0.30)
+        self.assertGreater(active[-1][0], 1.8)
+        self.assertTrue(all(5 < v < 60 for t, v in active))
+        for (before, _), (after, _) in zip(active, active[1:]):
+            self.assertAlmostEqual(after - before, 0.2, delta=0.022)
+
+    def test_raw_pcm_rejects_silence_noise_out_of_band_and_one_block(self):
+        one_block = array('f', [0.0] * (SAMPLE_RATE * 2))
+        for i in range(512, 1024):
+            one_block[i] = 0.2 * math.sin(2 * math.pi * 2250 * i / SAMPLE_RATE)
+        cases = {
+            'silence': pcm(2, noise=0),
+            'white_noise': pcm(2, noise=0.2),
+            'tone_1000': pcm(2, 1000),
+            'tone_4000': pcm(2, 4000),
+            'one_block': one_block.tobytes(),
+        }
+        for name, samples in cases.items():
+            with self.subTest(signal=name):
+                messages = self.run_input('audio', samples)
+                self.assertTrue(messages)
+                self.assertTrue(all(v == 0 for t, v in messages))
+
+    def test_pcm_gap_recovers_and_retains_learned_noise_floor(self):
+        # Learn motor-like broadband noise before the tone, then mark one
+        # discontinuity during a sustained signal. No new quiet phase follows.
+        samples = pcm(1, noise=0.03) + pcm(3, 2250, noise=0.03)
+        options = {'gap_seconds': 2}
+        active = [(t / 20000, v) for t, v in
+                  self.run_input('audio', samples, **options) if v > 0]
+        before = [(t, v) for t, v in active if t < 2]
+        after = [(t, v) for t, v in active if t >= 2]
+        self.assertTrue(before)
+        self.assertTrue(after)
+        self.assertLess(after[0][0], 2.30)
+        self.assertGreater(after[-1][0], 3.8)
+        floor = [(t / 20000, v) for t, v in
+                 self.run_input('audio_diagnostics', samples, key='floor', **options)]
+        established = [v for t, v in floor if 1.5 <= t <= 3.5]
+        self.assertGreater(min(established), 0)
+        self.assertEqual(min(established), max(established))
 
     def test_tick_wrap_preserves_publication_period(self):
         base = (1 << 32) - 7000
@@ -224,13 +337,7 @@ class AudioPublicationTest(unittest.TestCase):
         self.assertEqual(positive, [320, 520, 720, 920, 1120])
 
     def test_fyrefly2_recording(self):
-        clip = ROOT / 'docs/VID_20260921_093815.mp4'
-        if not clip.exists() or not shutil.which('ffmpeg'):
-            self.skipTest('Local Fyrefly2 recording and ffmpeg required')
-        audio = subprocess.run(['ffmpeg', '-v', 'error', '-i', str(clip),
-                                '-vn', '-ar', '23998', '-ac', '1',
-                                '-f', 'f32le', '-'],
-                               capture_output=True, check=True).stdout
+        audio = self.recording()
         messages = self.run_input('audio', audio)
         active = [(t / 20000, v) for t, v in messages if v > 0]
         self.assertEqual(len(active), 50)
@@ -245,6 +352,27 @@ class AudioPublicationTest(unittest.TestCase):
         final_active = [t / 20000 for t, v in with_silence if v > 0][-1]
         self.assertLess(final_active, 16.2)
         self.assertEqual(with_silence[-1][1], 0)
+
+    def test_active_recording_cold_start_at_multiple_chirp_phases(self):
+        recording = self.recording()
+        for start in (7.00, 7.09, 7.18, 9.00, 12.00):
+            with self.subTest(start_seconds=start):
+                offset = round(start * SAMPLE_RATE) * 4
+                samples = recording[offset:offset + 3 * SAMPLE_RATE * 4]
+                active = [(t / 20000, v) for t, v in
+                          self.run_input('audio', samples) if v > 0]
+                self.assertGreaterEqual(len(active), 13)
+                self.assertLess(active[0][0], 0.30)
+                self.assertGreater(active[-1][0], 2.8)
+
+    def test_active_recording_recovers_after_pcm_discontinuity(self):
+        active = [(t / 20000, v) for t, v in self.run_input(
+            'audio', self.recording(), gap_seconds=9) if v > 0]
+        self.assertTrue(any(t < 9 for t, v in active))
+        recovered = [(t, v) for t, v in active if t >= 9]
+        self.assertTrue(recovered)
+        self.assertLess(recovered[0][0], 9.3)
+        self.assertGreater(recovered[-1][0], 15.8)
 
 
 if __name__ == '__main__':

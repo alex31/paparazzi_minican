@@ -1299,10 +1299,16 @@ Chaque bloc mono de 512 échantillons est consommé immédiatement, sans histori
 7. six horodatages de fronts au maximum et mesure des cadences proches de 2 et
    3 Hz, sans utiliser cette cadence comme condition de validité.
 
-L'état `Unarmed` est réimposé après une discontinuité. Il faut ensuite observer
-deux blocs bas. Un front demande deux blocs adjacents valant chacun au moins
-0,45, dont la somme atteint 1,20, et dont les fréquences dominantes diffèrent
-de moins de 250 Hz. Un bloc inférieur ou égal à 0,30 termine la salve. Deux
+L'état `Unarmed` est réimposé après une discontinuité ou un trou de traitement
+d'au moins 200 ms. Deux blocs bas permettent de passer à `Off`, mais un son
+déjà présent peut aussi être acquis directement : deux nouveaux blocs
+adjacents doivent valoir chacun au moins 0,45, avec une somme d'au moins
+1,20 et des fréquences dominantes distantes d'au plus 250 Hz. Ces mêmes
+critères s'appliquent au passage `Off` vers `On`. Seul ce dernier compte
+comme front pour la cadence ; le démarrage ou la reprise dans un son continu
+n'invente pas de bip. Une discontinuité efface la cadence et les pics
+interrompus, en conservant le plancher de bruit déjà appris.
+Un bloc inférieur ou égal à 0,30 termine la salve. Deux
 fronts acceptés sont séparés d'au moins 250 ms ; un intervalle supérieur à
 750 ms réinitialise l'historique au lieu de polluer la cadence suivante. Ces
 bornes couvrent les périodes de 333 ms et 500 ms tout en rejetant la
@@ -1312,6 +1318,13 @@ l'alarme. Une tonalité continue fortement concentrée dans la bande peut donc
 être acceptée : c'est un choix délibéré compte tenu du faible risque de leurre
 dans la mission.
 
+Si le premier bloc ressemble déjà à une alarme (score supérieur à 0,30), le
+plancher de bruit est initialisé avec la puissance moyenne des références
+latérales, plutôt qu'avec celle de la bande contenant le signal. C'est une
+estimation initiale en l'absence de fond mesuré avant le son. Sinon, il est
+initialisé avec la puissance de bande. L'apprentissage ultérieur reste limité
+aux blocs faibles hors de l'état `On`.
+
 La publication `snr` attend la fin des salves courtes. Si le son reste reconnu
 200 ms après le déclenchement, elle passe automatiquement à 5 Hz : chaque
 fenêtre publie son propre pic puis remet l'accumulateur SNR à zéro, sans
@@ -1319,7 +1332,7 @@ réinitialiser la détection ni la cadence. L'IIR `snr_alpha` s'applique aussi
 à ces fenêtres. La fin du son publie la fenêtre restante, avec un seul envoi
 si elle coïncide avec une échéance périodique. Après 1,5 s sans nouvelle
 mesure, `snr` repasse à zéro. Une discontinuité annule la fenêtre en cours et
-impose le réarmement habituel.
+impose deux nouveaux blocs cohérents pour reprendre, sans silence préalable.
 
 Le banc avec enceinte a validé des chirps 2,1–2,5 kHz de 60 à 120 ms. Avec
 120 ms, la préalarme est mesurée à 1,98–2,04 Hz et l'alarme complète à
