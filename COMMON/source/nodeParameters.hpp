@@ -107,7 +107,13 @@
       {"ROLE.i2c.light.opt4060", {.v = false}},
       // Preferred address; startup also probes the other three strap values.
       {"role.i2c.light.opt4060.address", {.min = 0x44, .max = 0x47, .v = 0x44}},
-      {"role.i2c.light.opt4060.period_ms", {.min = 10, .max = 1000, .v = 100}},
+      {"role.i2c.light.opt4060.publish_hz", {.min = 1, .max = 200, .v = 10}},
+      // 0 or publish_hz: synchronous. Above publish_hz: on change. Below: error.
+      {"role.i2c.light.opt4060.scan_hz", {.min = 0, .max = 200, .v = 0}},
+      {"role.i2c.light.opt4060.delta_rel_pct", {.min = 0.0f, .max = 100.0f, .v = 5.0f}},
+      {"role.i2c.light.opt4060.delta_abs", {.min = 0, .max = 0x3FFFFFF, .v = 1024}},
+      {"role.i2c.light.opt4060.heartbeat_ms", {.min = 0, .max = 60'000, .v = 1000}},
+      {"role.i2c.light.opt4060.sensor_id", {.min = 0, .max = 255, .v = 0}},
       // INT on PA8; false uses polling without reserving PA8.
       {"role.i2c.light.opt4060.use_interrupt", {.v = true}},
 #endif

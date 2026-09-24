@@ -12,7 +12,7 @@ All three roles are compiled by default and **disabled at runtime**. Set
 | Sensor | Activation parameter | Hardware | Default publication |
 | --- | --- | --- | --- |
 | IM68A130A analog microphone | `ROLE.adc.microphone.im68a130` | PA4, ADC2, TIM6, DMA | 200 ms |
-| OPT4060 RGBW | `ROLE.i2c.light.opt4060` | Shared I2C1, optional INT on PA8 | 100 ms |
+| OPT4060 RGBW | `ROLE.i2c.light.opt4060` | Shared I2C1, optional INT on PA8 | 10 Hz, synchronous |
 | VL53L4CX range sensor | `ROLE.i2c.range.vl53l4cx` | Shared I2C1, address 0x29 | 200 ms |
 
 Each enabled I2C sensor must answer its identity probe at startup. The analog
@@ -35,7 +35,7 @@ and a circular 1024-sample DMA buffer. It does not require I2C or PA8. ADC1
 continues to monitor board voltage and temperature.
 
 `role.adc.microphone.period_ms`: 50–1000 ms, default 200. The role publishes
-[`microcan.audio.Spectrum`](../../../DSDL/microcan/audio/20900.Spectrum.uavcan)
+[`microcan.audio.Spectrum`](../../../../../../../UAVCAN/DSDL/microcan/audio/20900.Spectrum.uavcan)
 (message ID **20900**), replacing the earlier `mic.*` KeyValue messages.
 The activation parameter keeps its existing name for compatibility; the
 spectrum format does not depend on the microphone model or an IMAV mission.
@@ -102,34 +102,97 @@ DMA exhaustion is reported as `DMA_UNAVAILABLE`.
 
 ## OPT4060
 
-The driver retains auto-range, 1.8 ms conversion per channel, RGBW burst reads,
-CRC validation and per-channel rolling counters from IMAV. Corrupt frames and
-frames with a channel that has not advanced are rejected.
+**Hardware status: the new one-shot scheduling and event publication require
+board validation.** Host tests cover the timing selection, event policy and
+actual CAN/CAN FD serialization/reassembly.
+
+The driver uses scheduled one-shot acquisitions with automatic range selection,
+RGBW burst reads, CRC validation and per-channel rolling counters. Corrupt
+frames and frames with a channel that has not advanced are rejected. There is
+no mission-specific processing or conversion to display RGB/HSV.
 
 | Parameter | Range/default |
 | --- | --- |
 | `role.i2c.light.opt4060.address` | 0x44–0x47, default 0x44; preferred address, then probe the others |
-| `role.i2c.light.opt4060.period_ms` | 10–1000 ms, default 100; publication period |
-| `role.i2c.light.opt4060.use_interrupt` | Default true: INT on PA8; false: poll every 10 ms without reserving PA8 |
+| `role.i2c.light.opt4060.publish_hz` | Integer 1–200 Hz, default 10; maximum publication frequency |
+| `role.i2c.light.opt4060.scan_hz` | Integer 0–200 Hz, default 0; 0 follows `publish_hz` |
+| `role.i2c.light.opt4060.delta_rel_pct` | 0–100%, default 5; relative change threshold |
+| `role.i2c.light.opt4060.delta_abs` | 0–67108863 linear ADC counts, default 1024; absolute noise floor |
+| `role.i2c.light.opt4060.heartbeat_ms` | 0–60000 ms, default 1000; event-mode refresh, 0 disables |
+| `role.i2c.light.opt4060.sensor_id` | 0–255, default 0; identity within the publishing node |
+| `role.i2c.light.opt4060.use_interrupt` | Default true: INT on PA8; false: timed completion polling without reserving PA8 |
 
-With interrupts enabled, the worker waits for the end of all four channel
-conversions; a 25 ms timeout permits a fallback read. Publication is throttled
-independently of acquisition. Three consecutive read errors or 100 ms without
-a fresh frame invalidate the measurements; initialization is retried every
-five seconds while invalid telemetry continues.
+All these settings are read at startup. Save and reboot after changes.
+`period_ms` and the `opt.*` KeyValue publications have been removed: receivers
+must load the custom DSDL below. The previous period is not automatically
+migrated; configure `publish_hz` explicitly when upgrading (default 10 Hz).
 
-`uavcan.protocol.debug.KeyValue` publications:
+The mode is inferred from the frequencies; there is no `publish_mode` parameter:
 
-| Key | Meaning |
+| Condition | Mode |
 | --- | --- |
-| `opt.ok` | 1 for fresh, non-overloaded RGBW data; otherwise 0 |
-| `opt.red`, `opt.green`, `opt.blue`, `opt.clear` | Linear ADC codes (`mantissa << exponent`), transmitted as float32; NaN when invalid |
-| `opt.ovf` | Overload flag from the most recently decoded frame |
+| `scan_hz == 0` or `scan_hz == publish_hz` | Synchronous: one acquisition per publication interval |
+| `scan_hz > publish_hz` | On change: independent scans, rate-limited event publication |
+| `0 < scan_hz < publish_hz` | Startup error `INVALID_PARAM`, specific code 2 |
 
-The codes are uncalibrated sensor readings, not lux. Float32 transmission may
-round the least significant bits of large expanded ADC codes. Data-ready on
-PA8 conflicts with servo PWM CH1 or a DShot configuration reserving PA8;
-polling mode leaves PA8 available. No board-level pin mapping is changed.
+The effective scan rate is `scan_hz`, or `publish_hz` when zero. The longest
+supported conversion time satisfying `4 * conversion_us + margin_us <=
+1e6 / scan_hz` is selected automatically. The reserved margin is 2000 us at
+400 kHz I2C, or 4000 us at 100 kHz, covering I2C transfers, auto-range startup
+and scheduling. With 400 kHz I2C, 10 Hz selects 12.7 ms/channel, 100 Hz selects
+1.8 ms/channel, and 200 Hz selects 600 us/channel. At 100 kHz, 100 Hz selects
+1 ms/channel and rates above 156 Hz are rejected (`INVALID_PARAM`, specific
+code 3). Invalid frequencies use specific code 1; an invalid relative threshold
+uses code 4. These are conservative timing budgets, not a bus-latency guarantee.
+
+The conversion sequence uses forced auto-range and quick wake-up. A completed
+one-shot is verified by reading the self-clearing operating-mode bits before
+reading the four channels. PA8 can wake the worker on completion; without PA8
+the worker waits for the calculated cycle duration and polls completion as
+needed, rather than imposing a fixed 10 ms polling period. A bounded extra
+2 ms after the nominal cycle permits late completion; a stuck acquisition is
+stopped and reported invalid. Three consecutive failures trigger reinitialization
+attempts every five seconds. Synchronous invalid telemetry continues at the
+publication cadence; event mode reports state transitions and enabled heartbeats.
+There is no fixed 100 ms freshness timeout that would reject long exposures.
+
+Shared-bus delays can reduce the actual scan/publication rates. Missed scan
+deadlines are skipped; no catch-up burst is generated. Synchronous mode publishes
+each completed acquisition when the CAN queue accepts it; under backpressure the
+newest measurement replaces an older unsent periodic one. It never retransmits a
+successful periodic sample merely to fill a publication slot. Synchronization is
+local to this role, not to the network clock.
+
+In event mode a channel triggers when
+`abs(current - reference) > max(delta_abs, reference * delta_rel_pct / 100)`.
+The reference is the last message accepted into the CAN transmit queue, not the
+previous scan. Slow drift therefore accumulates. A change on any of R/G/B/W
+is sufficient. The initial sample and changes between valid, saturated and error
+states also trigger. Invalid/saturated values do not participate in delta tests.
+Thresholds and heartbeat are ignored in synchronous mode. The default absolute
+floor is a starting point, not a calibrated noise specification; tune it for
+the lighting, range and acquisition rate.
+
+A pending event retains its first triggering sample and original timestamp,
+even if the light returns before transmission. After it is queued, the latest
+scan is compared with that transmitted sample, so a significant return can be
+queued next. Intermediate changes while an event is pending are coalesced: this
+bounded policy is not a lossless history of all transitions. Relative thresholds
+are measured against the reference, so a small rise and its return need not both
+exceed the threshold. A CAN queue failure preserves the event/reference; attempts
+are also limited to `publish_hz`. Heartbeats share that limit, refresh the reference
+and restart their timer after a successful enqueue. Enqueue success is not proof
+of delivery to a receiver.
+
+Output is [`microcan.light.Measurement`](../../../../../../../UAVCAN/DSDL/microcan/light/20901.Measurement.uavcan),
+message ID **20901**: four exact `uint32` linear codes, per-channel conversion
+time, sensor ID, status, publication reason, and a local 64-bit timestamp in
+microseconds since boot. The timestamp dates the completed read or error report;
+it is not synchronized network time. These are sensor codes, not calibrated lux.
+See [wire format and receiver example](../../../DSDL/README.md#light-measurements).
+
+Data-ready on PA8 conflicts with servo PWM CH1 or a DShot configuration reserving
+PA8; polling mode leaves PA8 available. No board-level pin mapping is changed.
 
 ## VL53L4CX
 

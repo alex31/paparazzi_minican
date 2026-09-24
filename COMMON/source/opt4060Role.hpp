@@ -3,6 +3,8 @@
 #include "UAVCAN/pubSub.hpp"
 #include "roleBase.hpp"
 #include "opt4060Sample.hpp"
+#include "opt4060Timing.hpp"
+#include "lightPublication.hpp"
 
 /** @brief Independent RGBW acquisition, with CRC and optional PA8 data-ready. */
 class Opt4060Role final : public RoleBase, public RoleCrtp<Opt4060Role> {
@@ -21,12 +23,14 @@ private:
   bool initialize();
   Opt4060Sample::Result readSample();
   void run(void *);
-  void publish(bool valid);
+  void observe(bool decoded, uint64_t timestampUs);
 
   DmaBuffers *dma = nullptr;
   Opt4060Sample::Frame frame;
+  Opt4060Timing::Settings timing = {};
+  LightPublication publication;
   uint8_t address = 0x44U;
-  sysinterval_t publishPeriod = 0U;
+  uint8_t sensorId = 0U;
   bool useInterrupt = true;
   bool haveFrame = false;
   bool overloaded = false;

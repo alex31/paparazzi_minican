@@ -97,11 +97,13 @@ Remarque : les rôles sont instanciés au démarrage selon les paramètres persi
   - Envoie : `microcan.audio.Spectrum` (ID 20900), jusqu’à 10 bins (uint16 Hz + uint16 niveau logarithmique), validité, écrêtage et indicateur de perte/reprise.
   - Format générique jusqu’à 255 bins sur 1023 octets ; 42/43 octets pour les 10 bins du microphone, fragmentation par libcanard.
   - Allocation dynamique du travail FFT à l’activation ; niveau 0–65535 couvrant −72,25 à 0 dBFS pour la sortie ADC 13 bits, sans calibration dB SPL.
-  - Les définitions DSDL du message dédié sont dans DSDL/microcan ; détails et chargement côté réception dans DSDL/README.md.
+  - Les définitions DSDL custom sont centralisées dans ~/DEV/STM32/UAVCAN/DSDL/microcan, branche minican ; détails et chargement côté réception dans DSDL/README.md.
 
 - Capteur RGBW OPT4060 (`ROLE.i2c.light.opt4060`)
   - I2C1 partagé, INT sur PA8 optionnelle ; contrôle CRC et fraîcheur des quatre canaux.
-  - Envoie : KeyValue `opt.red`, `opt.green`, `opt.blue`, `opt.clear`, `opt.ok`, `opt.ovf`.
+  - Envoie : `microcan.light.Measurement` (20901), RGBW brut, état, motif et horodatage local.
+  - `publish_hz` plafonne les envois ; `scan_hz=0` ou égal : synchrone ; supérieur : événementiel ; inférieur : erreur.
+  - Temps de conversion automatique selon la cadence de scan et le budget I2C ; seuils `delta_abs`/`delta_rel_pct` et `heartbeat_ms` en événementiel.
 
 - Télémètre VL53L4CX (`ROLE.i2c.range.vl53l4cx`)
   - I2C1 partagé, pilote ST ; aucune dépendance aux rôles microphone/RGBW.

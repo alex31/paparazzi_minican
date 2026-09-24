@@ -1,4 +1,4 @@
-/** @file OPT4060 acquisition extracted from imav2026, without flash detection. */
+/** @file Scheduled RGBW acquisition with periodic or on-change publication. */
 #include "roleConf.h"
 #if USE_OPT4060_ROLE
 
@@ -6,8 +6,8 @@
 #include "hardwareConf.hpp"
 #include "resourceManager.hpp"
 #include "I2C_periph.hpp"
-#include "sensorTelemetry.hpp"
-#include <limits>
+#include <cmath>
+#include <utility>
 
 namespace {
   const ioline_t interruptLine = PAL_LINE(GPIOA, 8U);
@@ -16,10 +16,14 @@ namespace {
   constexpr uint8_t configuration2Register = 0x0BU;
   constexpr uint8_t statusRegister = 0x0CU;
   constexpr uint8_t idRegister = 0x11U;
-  // Auto-range, 1.8 ms/channel. INT pulses after all four channels complete.
-  constexpr uint16_t powerDown = 0x3088U;
-  constexpr uint16_t continuous = 0x30B8U;
+  constexpr uint16_t powerDown = 0x3008U;
+  constexpr uint16_t modeMask = 0x0030U;
+  // INT pulses after all four channels complete; burst reads enabled.
   constexpr uint16_t configuration2 = 0x801DU;
+
+  uint64_t nowUs() {
+    return chVTGetTimeStamp() * 1'000'000ULL / CH_CFG_ST_FREQUENCY;
+  }
 }
 
 DeviceStatus Opt4060Role::subscribe(UAVCAN::Node& node)
@@ -32,10 +36,30 @@ DeviceStatus Opt4060Role::start(UAVCAN::Node& node)
 {
   m_node = &node;
   const uint32_t frequency = param_cget<"bus.i2c.frequency_khz">();
-  if ((frequency < 100U) || (frequency > 400U)) {
+  if (frequency != 100U && frequency != 400U) {
     return DeviceStatus(DeviceStatus::OPT4060, DeviceStatus::I2C_FREQ_INVALID,
                         static_cast<uint16_t>(frequency));
   }
+  const auto settings = Opt4060Timing::configure(
+    param_cget<"role.i2c.light.opt4060.publish_hz">(),
+    param_cget<"role.i2c.light.opt4060.scan_hz">(), frequency);
+  if (not settings) {
+    return DeviceStatus(DeviceStatus::OPT4060, DeviceStatus::INVALID_PARAM,
+                        std::to_underlying(settings.error()));
+  }
+  const float deltaRelPct = param_cget<"role.i2c.light.opt4060.delta_rel_pct">();
+  if (not std::isfinite(deltaRelPct) || deltaRelPct < 0.0f || deltaRelPct > 100.0f) {
+    return DeviceStatus(DeviceStatus::OPT4060, DeviceStatus::INVALID_PARAM, 4U);
+  }
+  timing = *settings;
+  publication.configure({
+    .intervalUs = timing.publishIntervalUs,
+    .heartbeatUs = 1000U * static_cast<uint32_t>(
+      param_cget<"role.i2c.light.opt4060.heartbeat_ms">()),
+    .deltaAbs = static_cast<uint32_t>(param_cget<"role.i2c.light.opt4060.delta_abs">()),
+    .deltaRelPct = deltaRelPct,
+    .onChange = timing.onChange,
+  });
   if (const auto status = I2CPeriph::start(); not status) {
     return status;
   }
@@ -58,8 +82,7 @@ DeviceStatus Opt4060Role::start(UAVCAN::Node& node)
     return fail(status);
   }
   address = static_cast<uint8_t>(param_cget<"role.i2c.light.opt4060.address">());
-  publishPeriod = TIME_MS2I(static_cast<uint32_t>(
-    param_cget<"role.i2c.light.opt4060.period_ms">()));
+  sensorId = static_cast<uint8_t>(param_cget<"role.i2c.light.opt4060.sensor_id">());
   if (not initialize()) {
     return fail(DeviceStatus(DeviceStatus::OPT4060, DeviceStatus::NOT_FOUND));
   }
@@ -68,7 +91,10 @@ DeviceStatus Opt4060Role::start(UAVCAN::Node& node)
     (void) writeRegister(configurationRegister, powerDown);
     return fail(DeviceStatus(DeviceStatus::OPT4060, DeviceStatus::HEAP_FULL));
   }
-  node.infoCb("OPT4060 started: addr=0x%02x, PA8 interrupt=%u", address, useInterrupt);
+  node.infoCb("OPT4060: addr=0x%02x, %s, scan=%lu us, conversion=%lu us/channel",
+              address, timing.onChange ? "on-change" : "periodic",
+              static_cast<unsigned long>(timing.scanIntervalUs),
+              static_cast<unsigned long>(timing.conversionUs));
   return DeviceStatus(DeviceStatus::OPT4060);
 }
 
@@ -118,10 +144,10 @@ bool Opt4060Role::initialize()
     if (readRegister(idRegister, id) && ((id & 0x3FFFU) == 0x0821U)) {
       if (not writeRegister(configurationRegister, powerDown) ||
           not writeRegister(configuration2Register, configuration2) ||
-          not writeRegister(configurationRegister, continuous)) {
+          not writeRegister(configurationRegister, timing.triggerConfig() & ~modeMask)) {
         return false;
       }
-      chThdSleepMilliseconds(8U);
+      chThdSleepMilliseconds(2U);
       return true;
     }
   }
@@ -142,7 +168,7 @@ Opt4060Sample::Result Opt4060Role::readSample()
     return result;
   }
   uint16_t status = 0U;
-  if (next.checkOverload && not readRegister(statusRegister, status)) {
+  if (not readRegister(statusRegister, status)) {
     return Result::Corrupt;
   }
   overloaded = (status & (1U << 3U)) != 0U;
@@ -151,16 +177,19 @@ Opt4060Sample::Result Opt4060Role::readSample()
   return Result::Valid;
 }
 
-void Opt4060Role::publish(bool valid)
+void Opt4060Role::observe(bool decoded, uint64_t timestampUs)
 {
-  const float invalid = std::numeric_limits<float>::quiet_NaN();
-  publishSensorValue(*m_node, "opt.ok", valid ? 1.0f : 0.0f);
-  constexpr const char *keys[] = {"opt.red", "opt.green", "opt.blue", "opt.clear"};
-  for (size_t channel = 0U; channel < frame.counts.size(); ++channel) {
-    publishSensorValue(*m_node, keys[channel],
-      valid ? static_cast<float>(frame.counts[channel]) : invalid);
+  microcan_light_Measurement message = {};
+  message.timestamp_us = timestampUs;
+  message.conversion_time_us = timing.conversionUs;
+  message.sensor_id = sensorId;
+  message.status = MICROCAN_LIGHT_MEASUREMENT_STATUS_ERROR;
+  if (decoded) {
+    std::ranges::copy(frame.counts, message.rgbw);
+    message.status = overloaded ? MICROCAN_LIGHT_MEASUREMENT_STATUS_SATURATED
+                                : MICROCAN_LIGHT_MEASUREMENT_STATUS_VALID;
   }
-  publishSensorValue(*m_node, "opt.ovf", overloaded ? 1.0f : 0.0f);
+  publication.observe(message);
 }
 
 void Opt4060Role::run(void *)
@@ -171,45 +200,97 @@ void Opt4060Role::run(void *)
     palEnableLineEvent(interruptLine, PAL_EVENT_MODE_FALLING_EDGE);
   }
   bool available = true;
-  bool valid = false;
+  bool acquiring = false;
+  bool readySignal = false;
   unsigned failures = 0U;
-  systime_t lastPublish = chVTGetSystemTimeX();
-  systime_t lastSample = lastPublish;
-  systime_t lastRetry = lastPublish;
-  while (true) {
-    if (available) {
-      if (useInterrupt) {
-        (void) palWaitLineTimeout(interruptLine, TIME_MS2I(25U));
-      } else {
-        chThdSleepMilliseconds(10U);
-      }
-      const auto result = readSample();
-      if (result == Opt4060Sample::Result::Valid) {
-        valid = not overloaded;
-        failures = 0U;
-        lastSample = chVTGetSystemTimeX();
-      } else if (result == Opt4060Sample::Result::Corrupt) {
-        valid = false;
-        ++failures;
-      }
+  uint64_t nextScan = nowUs();
+  uint64_t nextRead = 0U;
+  uint64_t conversionDeadline = 0U;
+  uint64_t nextRetry = 0U;
+  const auto finish = [&](bool decoded) {
+    acquiring = false;
+    if (decoded) {
+      failures = 0U;
     } else {
-      chThdSleepMilliseconds(10U);
+      // Stop a timed-out conversion before starting another one.
+      (void) writeRegister(configurationRegister, powerDown);
+      if (++failures >= 3U) {
+        available = false;
+        nextRetry = nowUs() + 5'000'000U;
+      }
     }
-    const systime_t now = chVTGetSystemTimeX();
-    if (available && (failures >= 3U || chTimeDiffX(lastSample, now) >= TIME_MS2I(100U))) {
-      available = false;
-      valid = false;
-      lastRetry = now;
+    observe(decoded, nowUs());
+  };
+
+  while (true) {
+    uint64_t now = nowUs();
+    if (acquiring && (readySignal || now >= nextRead)) {
+      uint16_t configuration = 0U;
+      if (not readRegister(configurationRegister, configuration)) {
+        finish(false);
+      } else if ((configuration & ~modeMask) != (timing.triggerConfig() & ~modeMask)) {
+        // A sensor reset must not turn reset-valued result registers into a
+        // valid dark reading, or label a different exposure with our settings.
+        finish(false);
+      } else if ((configuration & modeMask) == 0U) {
+        // One-shot M bits reset only after the full cycle. Never decode an
+        // old/partly updated frame merely because a wait timed out.
+        finish(readSample() == Opt4060Sample::Result::Valid);
+      } else if (nowUs() >= conversionDeadline) {
+        finish(false);
+      } else {
+        nextRead = std::min(conversionDeadline, nowUs() + 500U);
+      }
     }
-    if (not available && chTimeDiffX(lastRetry, now) >= TIME_MS2I(5000U)) {
-      lastRetry = now;
+    readySignal = false;
+    now = nowUs();
+    if (not available && now >= nextRetry) {
       available = initialize();
       failures = 0U;
-      lastSample = chVTGetSystemTimeX();
+      nextRetry = nowUs() + 5'000'000U;
+      nextScan = nowUs();
     }
-    if (chTimeDiffX(lastPublish, now) >= publishPeriod) {
-      lastPublish = now;
-      publish(valid && chTimeDiffX(lastSample, now) < TIME_MS2I(100U));
+    if (const auto *pending = publication.due(nowUs())) {
+      auto message = *pending;
+      const bool queued = m_node->sendBroadcast(message, CANARD_TRANSFER_PRIORITY_LOW)
+                          == UAVCAN::Node::CAN_OK;
+      publication.complete(nowUs(), queued);
+    }
+    now = nowUs();
+    if (not acquiring && now >= nextScan) {
+      nextScan = now + timing.scanIntervalUs;
+      if (not available) {
+        observe(false, now);
+      } else if (writeRegister(configurationRegister, timing.triggerConfig())) {
+        acquiring = true;
+        // Anchor after the trigger transaction, which may have waited for the
+        // shared bus. Never catch up by starting two shots too close together.
+        const uint64_t triggered = nowUs();
+        nextScan = triggered + timing.scanIntervalUs;
+        const uint64_t nominalEnd = triggered + 4U * timing.conversionUs;
+        nextRead = nominalEnd + 500U;
+        conversionDeadline = nominalEnd + 2000U;
+      } else {
+        finish(false);
+        nextScan = nowUs() + timing.scanIntervalUs;
+      }
+    }
+
+    uint64_t wake = acquiring ? nextRead : nextScan;
+    if (not available) {
+      wake = std::min(wake, nextRetry);
+    }
+    if (const auto deadline = publication.deadline()) {
+      wake = std::min(wake, *deadline);
+    }
+    now = nowUs();
+    if (wake > now) {
+      const auto delay = TIME_US2I(static_cast<uint32_t>(wake - now));
+      if (useInterrupt && acquiring) {
+        readySignal = palWaitLineTimeout(interruptLine, delay) == MSG_OK;
+      } else {
+        chThdSleep(delay);
+      }
     }
   }
 }

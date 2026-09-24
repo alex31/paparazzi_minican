@@ -16,6 +16,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--libcanard", type=Path,
                         default=root.parents[3] / "UAVCAN/libcanard")
+    parser.add_argument("--dsdlc", type=Path,
+                        default=root.parents[3] / "UAVCAN/DSDLC")
     args = parser.parse_args()
     cc = shlex.split(os.environ.get("HOST_CC", "cc"))
     cxx = shlex.split(os.environ.get("HOST_CXX", "c++"))
@@ -31,12 +33,14 @@ def main():
                        str(tests / "microphone_spectrum_test.cpp"),
                        "-o", str(spectrum)], check=True)
         subprocess.run([str(spectrum)], check=True)
-        generated = root / "DSDL/generated"
+        generated = args.dsdlc
         wire_flags = ["-DCANARD_ENABLE_TAO_OPTION=1", "-DCANARD_ENABLE_CANFD=1",
                       "-I" + str(common), "-I" + str(args.libcanard),
                       "-I" + str(generated / "include")]
         wire_objects = []
-        for source in [args.libcanard / "canard.c", *sorted((generated / "src").glob("*.c"))]:
+        codecs = [generated / "src" / f"{name}.c" for name in
+                  ("microcan.audio.Bin", "microcan.audio.Spectrum", "microcan.light.Measurement")]
+        for source in [args.libcanard / "canard.c", *codecs]:
             obj = temp / (source.stem + ".o")
             subprocess.run(cc + flags + ["-std=c11"] + wire_flags +
                            ["-c", str(source), "-o", str(obj)], check=True)
@@ -46,6 +50,11 @@ def main():
                        [str(tests / "audio_message_test.cpp")] + wire_objects +
                        ["-o", str(wire)], check=True)
         subprocess.run([str(wire)], check=True)
+        light = temp / "light"
+        subprocess.run(cxx + flags + ["-std=c++23"] + wire_flags +
+                       [str(tests / "light_test.cpp")] + wire_objects +
+                       ["-o", str(light)], check=True)
+        subprocess.run([str(light)], check=True)
         includes = ["-I" + str(path) for path in
                     (common, vendor, vendor / "modules", vendor / "porting")]
         port = temp / "port.o"

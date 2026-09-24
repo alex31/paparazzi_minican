@@ -1,12 +1,21 @@
 # MicroCAN message definitions
 
+The canonical definitions live in `~/DEV/STM32/UAVCAN/DSDL/microcan`,
+on branch **`minican`** of the shared DSDL repository. Generated C/C++ codecs
+live in `~/DEV/STM32/UAVCAN/DSDLC`. This project keeps usage documentation
+here, with no independent schema or codec copies. See [AGENTS.md](../AGENTS.md).
+
 `microcan.audio.Spectrum` (vendor-specific message ID **20900**) carries a
 variable vector of frequency/amplitude pairs. Its format does not prescribe
 a microphone model, FFT length, sampling rate, frequency band or bin count.
-The [schema](microcan/audio/20900.Spectrum.uavcan) and
-[bin type](microcan/audio/Bin.uavcan) define the wire representation.
+The [schema](../../../../../UAVCAN/DSDL/microcan/audio/20900.Spectrum.uavcan) and
+[bin type](../../../../../UAVCAN/DSDL/microcan/audio/Bin.uavcan) define the wire representation.
 This ID is unused by the shared DSDL tree at integration time; deployments
 with additional vendor messages must keep their ID assignments consistent.
+
+`microcan.light.Measurement` (**20901**) carries a complete raw RGBW sample,
+its acquisition metadata and the reason for publication. This ID is also unused
+by the shared DSDL tree at integration time; see [light measurements](#light-measurements).
 
 ## Payload and capacity
 
@@ -80,13 +89,13 @@ the transport already provides node identity and a transfer ID.
 
 ## Receivers
 
-Load `DSDL/microcan` alongside the standard DroneCAN definitions. From the
-repository root, for example:
+Load the shared `microcan` namespace alongside the standard DroneCAN definitions:
 
 ```python
+from pathlib import Path
 import dronecan
 
-dronecan.load_dsdl("DSDL/microcan")
+dronecan.load_dsdl(str(Path.home() / "DEV/STM32/UAVCAN/DSDL/microcan"))
 Spectrum = dronecan.thirdparty.microcan.audio.Spectrum
 
 def on_spectrum(event):
@@ -107,20 +116,26 @@ has changed from the initial floating-point draft.
 
 ## Bindings and memory
 
-`generated/include` and `generated/src` are supplied with the schema, so normal
-firmware builds do not need a Python code generator. Regenerate them with the
-shared `UAVCAN/dronecan_dsdlc` compiler after any schema change:
+Firmware and host tests use the shared `UAVCAN/DSDLC/include` and
+`UAVCAN/DSDLC/src` directly. Normal firmware builds do not run a generator.
+After editing a custom schema in the shared DSDL repository on branch `minican`,
+regenerate the codecs from the MicroCAN project root:
 
 ```sh
-python3 tools/generate_audio_dsdl.py
-python3 tools/generate_audio_dsdl.py --check
+python3 tools/generate_dsdl.py
+python3 tools/generate_dsdl.py --check
 ```
 
 That compiler needs its Python dependencies, including Empy 3.x.
 `--compiler /path/to/dronecan_dsdlc.py` overrides the shared checkout path.
-`make -C microcan build_audio_dsdl` is an equivalent generation target.
-Only the two audio bindings are copied; the shared `dronecan_msgs.h` remains
-the aggregate header for standard messages.
+`make -C microcan build_dsdl` is an equivalent generation target. The old
+`generate_audio_dsdl.py` and `build_audio_dsdl` entry points remain aliases.
+The helper checks branch `minican`, parses all shared namespaces to detect ID
+conflicts, updates only the MicroCAN codecs in the shared `DSDLC`, and refreshes
+their entries in the common `dronecan_msgs.h`. Other codecs are preserved.
+`--dsdl-root` and `--output` override the shared paths; host tests accept
+`--dsdlc` for the codec directory. The existing `build_dsdlc` target still
+regenerates all standard and custom types together.
 
 The canonical generated C structure/codec supports all 255 bins. The firmware
 uses [`SpectrumMessage<10>`](../COMMON/source/spectrumMessage.hpp), a bounded
@@ -135,3 +150,49 @@ publish template keeps a separate transfer-ID counter for each C++ type.
 against the canonical one, logarithmic scale endpoints and quantization,
 all lengths through 255, and actual libcanard fragmentation/reassembly in
 CAN and CAN FD (including maximum payload and FD padding).
+
+## Light measurements
+
+[`microcan.light.Measurement`](../../../../../UAVCAN/DSDL/microcan/light/20901.Measurement.uavcan) has a
+fixed **31-byte** payload. Including DroneCAN transport overhead, it uses five
+classic CAN frames or one CAN FD frame. The generated codec supports both.
+
+| Field | Meaning |
+| --- | --- |
+| `timestamp_us` | `uint64`, local microseconds since node boot at completion of the read/error report; not network-synchronized |
+| `conversion_time_us` | `uint32`, configured conversion time per channel (integration plus ADC conversion) |
+| `sensor_id` | `uint8`, identifies a sensor within the source node |
+| `status` | VALID=1, SATURATED=2, ERROR=4; this producer uses exactly one of these states |
+| `reason` | PERIODIC=0, CHANGE=1, HEARTBEAT=2, STATE=3 |
+| `rgbw` | Four `uint32` linear codes in R/G/B/clear order |
+
+OPT4060 codes are `mantissa << exponent`; the channel responses are sensor-specific,
+not calibrated display RGB or lux. Saturated frames retain codes with VALID clear.
+Error frames have zero codes and ERROR set, so zero must not be interpreted as
+darkness without checking status. Events can be transmitted after acquisition;
+their original timestamp is preserved. Heartbeats carry the latest acquisition
+timestamp. Each field's meaning is independent of an IMAV mission.
+
+```python
+from pathlib import Path
+import dronecan
+
+dronecan.load_dsdl(str(Path.home() / "DEV/STM32/UAVCAN/DSDL/microcan"))
+Measurement = dronecan.thirdparty.microcan.light.Measurement
+
+def on_light(event):
+    msg = event.message
+    if not (msg.status & msg.STATUS_VALID):
+        print("Light unavailable/saturated:", msg.sensor_id, msg.status)
+        return
+    red, green, blue, clear = msg.rgbw
+    print(msg.timestamp_us, msg.sensor_id, msg.reason, red, green, blue, clear)
+
+# node.add_handler(Measurement, on_light)
+```
+
+The role's [configuration and event semantics](../docs/software/roles/independent_sensors.md#opt4060)
+describe frequency constraints, automatic conversion timing and bounded event
+retention. Host checks in `tests/sensor_roles/run.py` exercise those policies,
+queue failures, flash/return retention, long uptime, and real libcanard
+CAN/CAN FD reassembly. C++ policy checks require a C++23 host compiler.

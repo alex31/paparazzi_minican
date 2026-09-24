@@ -264,8 +264,6 @@ DSDLC := $(RELATIVE)/../UAVCAN/DSDLC
 DSDL_ROOTS_PART := $(sort $(dir $(wildcard $(DSDL)/*/)))
 DSDL_ROOTS := $(filter-out $(DSDL)/tests/,$(DSDL_ROOTS_PART))
 DSDLC_CSRC := $(wildcard $(DSDLC)/src/*.c)
-MICROCAN_DSDLC := ../DSDL/generated
-DSDLC_CSRC += $(wildcard $(MICROCAN_DSDLC)/src/*.c)
 
 # C sources that can be compiled in ARM or THUMB mode depending on the global
 # setting.
@@ -338,7 +336,7 @@ ASMXSRC = $(ALLXASMSRC)
 INCDIR = $(CONFDIR) $(ALLINC) $(CHIBIOS)/os/various $(VARIOUS) \
 	 $(VARIOUS)/M95P $(EXTLIB) $(ETL_LIB) $(FROZEN_LIB) $(COMMON) \
          $(RELATIVE)/../UAVCAN/libcanard $(DSDLC)/include ../canard_chutils \
-	 $(TESTINC) $(COMMON_CFG) $(VL53L4CX_INC) $(MICROCAN_DSDLC)/include
+	 $(TESTINC) $(COMMON_CFG) $(VL53L4CX_INC)
  
 
 # Define C warning options here.
@@ -420,9 +418,10 @@ test_sensor_roles:
 
 .PHONY: build_dsdlc
 
-.PHONY: build_audio_dsdl
-build_audio_dsdl:
-	$(PY) ../tools/generate_audio_dsdl.py --compiler $(RELATIVE)/../UAVCAN/dronecan_dsdlc/dronecan_dsdlc.py
+.PHONY: build_dsdl build_audio_dsdl
+build_audio_dsdl: build_dsdl
+build_dsdl:
+	$(PY) ../tools/generate_dsdl.py --compiler $(RELATIVE)/../UAVCAN/dronecan_dsdlc/dronecan_dsdlc.py --dsdl-root $(DSDL) --output $(DSDLC)
 
 build_dsdlc:
 	@echo Generating dsdl code from $(DSDL_ROOTS) to $(DSDLC)
