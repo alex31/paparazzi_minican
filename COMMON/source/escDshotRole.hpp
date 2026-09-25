@@ -7,6 +7,9 @@
 #include "UAVCAN/pubSub.hpp"
 #include "roleBase.hpp"
 #include "esc_dshot.h"
+#if DSHOT_BIDIR && DSHOT_BIDIR_EXTENTED_TELEMETRY
+#include <dronecan.protocol.FlexDebug.h>
+#endif
 
 /**
  * @brief Translate a 4-bit channel mask into a packed index list.
@@ -69,5 +72,8 @@ private:
   DshotDmaBuffer dshotdDmaBuffer;
 #if DSHOT_BIDIR
   DshotRpmCaptureDmaBuffer dshotdCaptureDmaBuffer;
+#if DSHOT_BIDIR_EXTENTED_TELEMETRY
+  dronecan_protocol_FlexDebug msgEscDebug{};
+#endif
 #endif
 };

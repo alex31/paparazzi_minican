@@ -66,8 +66,12 @@ Telemetry:
   including when CAN publication is disabled. The divider only limits CAN output.
 - At each publication interval, channels with a valid eRPM received during that
   interval publish their latest mechanical RPM (`eRPM / (motor_poles / 2)`, rounded
-  down) and stored EDT data. Temperature is converted from Celsius to kelvin;
-  voltage and current are published in volts and amperes.
+  down) and fresh EDT data. Temperature is converted from Celsius to kelvin;
+  voltage and current are published in volts and amperes. Missing measurements
+  or measurements at least 3 seconds old are published as NaN, independently.
+- With EDT enabled, stress maxima and status events are also published through
+  dronecan.protocol.FlexDebug, at most 10 Hz per ESC. See the
+  [freshness rules and MicroCAN payload format](dshot_telemetry.md).
 
 Wiring:
 - TIM1 CH1..CH4 on PA08..PA11 (MicroCAN)
