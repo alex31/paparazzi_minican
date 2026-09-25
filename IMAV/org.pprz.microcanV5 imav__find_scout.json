@@ -1,0 +1,228 @@
+{
+  "format": "dronecan-gui-parameter-snapshot",
+  "version": 1,
+  "saved_at": "2026-09-16T14:26:54.523168+00:00",
+  "node_id": 10,
+  "parameters": [
+    {
+      "name": "ROLE.gnss.ubx",
+      "type": "boolean_value",
+      "value": false
+    },
+    {
+      "name": "ROLE.health.survey",
+      "type": "boolean_value",
+      "value": true
+    },
+    {
+      "name": "ROLE.i2c.barometer.mpl3115a2",
+      "type": "boolean_value",
+      "value": false
+    },
+    {
+      "name": "ROLE.i2c.magnetometer.q5883",
+      "type": "boolean_value",
+      "value": false
+    },
+    {
+      "name": "ROLE.identification",
+      "type": "boolean_value",
+      "value": false
+    },
+    {
+      "name": "ROLE.imav.beacon",
+      "type": "boolean_value",
+      "value": true
+    },
+    {
+      "name": "ROLE.led2812",
+      "type": "boolean_value",
+      "value": false
+    },
+    {
+      "name": "ROLE.sbus",
+      "type": "boolean_value",
+      "value": false
+    },
+    {
+      "name": "ROLE.tunnel.serial",
+      "type": "boolean_value",
+      "value": false
+    },
+    {
+      "name": "ROLE.voltmeter",
+      "type": "boolean_value",
+      "value": false
+    },
+    {
+      "name": "adc.psbat.bias",
+      "type": "real_value",
+      "value": 0.0
+    },
+    {
+      "name": "adc.psbat.scale",
+      "type": "real_value",
+      "value": 1.0
+    },
+    {
+      "name": "bus.i2c.frequency_khz",
+      "type": "integer_value",
+      "value": 400
+    },
+    {
+      "name": "bus.i2c.pullup_resistor",
+      "type": "boolean_value",
+      "value": true
+    },
+    {
+      "name": "bus.serial.baudrate",
+      "type": "integer_value",
+      "value": 115200
+    },
+    {
+      "name": "can.terminal_resistor",
+      "type": "boolean_value",
+      "value": true
+    },
+    {
+      "name": "const.parameters.crc32",
+      "type": "integer_value",
+      "value": 2017439988
+    },
+    {
+      "name": "hardware.nickname",
+      "type": "string_value",
+      "value": "imav::find_scout"
+    },
+    {
+      "name": "role.i2c.magnetometer.q5883.range",
+      "type": "integer_value",
+      "value": 2
+    },
+    {
+      "name": "role.i2c.magnetometer.q5883.rot_deg",
+      "type": "integer_value",
+      "value": 0
+    },
+    {
+      "name": "role.i2c.magnetometer.q5883.sensor_id",
+      "type": "integer_value",
+      "value": 0
+    },
+    {
+      "name": "role.imav.audio.band_low_hz",
+      "type": "integer_value",
+      "value": 2000
+    },
+    {
+      "name": "role.imav.audio.snr_alpha",
+      "type": "real_value",
+      "value": 1.0
+    },
+    {
+      "name": "role.imav.debug.publish.optional",
+      "type": "boolean_value",
+      "value": false
+    },
+    {
+      "name": "role.imav.light.beginning_low_ms",
+      "type": "integer_value",
+      "value": 400
+    },
+    {
+      "name": "role.imav.light.beginning_pattern",
+      "type": "boolean_value",
+      "value": false
+    },
+    {
+      "name": "role.imav.light.cree_test",
+      "type": "boolean_value",
+      "value": false
+    },
+    {
+      "name": "role.imav.light.high_ms",
+      "type": "integer_value",
+      "value": 100
+    },
+    {
+      "name": "role.imav.light.i2c_address",
+      "type": "integer_value",
+      "value": 68
+    },
+    {
+      "name": "role.imav.light.steady_low_ms",
+      "type": "integer_value",
+      "value": 233
+    },
+    {
+      "name": "role.imav.time_of_flight",
+      "type": "boolean_value",
+      "value": false
+    },
+    {
+      "name": "role.imav.tof.period_ms",
+      "type": "integer_value",
+      "value": 200
+    },
+    {
+      "name": "role.led2812.led_number",
+      "type": "integer_value",
+      "value": 8
+    },
+    {
+      "name": "role.sbus.channel_mask",
+      "type": "integer_value",
+      "value": 255
+    },
+    {
+      "name": "role.sbus.debug_uart_ttl",
+      "type": "boolean_value",
+      "value": false
+    },
+    {
+      "name": "role.sbus.id",
+      "type": "integer_value",
+      "value": 1
+    },
+    {
+      "name": "role.tunnel.serial.channel_id",
+      "type": "integer_value",
+      "value": 0
+    },
+    {
+      "name": "role.tunnel.serial.protocol",
+      "type": "integer_value",
+      "value": 0
+    },
+    {
+      "name": "role.voltmeter.brightness",
+      "type": "real_value",
+      "value": 0.20000000298023224
+    },
+    {
+      "name": "role.voltmeter.cells",
+      "type": "integer_value",
+      "value": 3
+    },
+    {
+      "name": "role.voltmeter.gps_speed_off_mps",
+      "type": "real_value",
+      "value": 3.0
+    },
+    {
+      "name": "uavcan.dynid.fd",
+      "type": "boolean_value",
+      "value": false
+    },
+    {
+      "name": "uavcan.node_id",
+      "type": "integer_value",
+      "value": 10
+    },
+    {
+      "name": "uavcan.param_set_behavior",
+      "type": "integer_value",
+      "value": 0
+    }
+  ]
+}
