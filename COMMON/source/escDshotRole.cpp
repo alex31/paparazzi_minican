@@ -109,6 +109,8 @@ void  EscDshot::periodic(void *)
 #if  DSHOT_BIDIR
   uint32_t count = 0;
   uavcan_equipment_esc_Status msgEscStatus = {};
+  std::array<uint32_t, DSHOT_CHANNELS> pendingErpm;
+  pendingErpm.fill(DSHOT_BIDIR_ERR_CRC);
 #endif
     
   const auto start = chVTGetSystemTimeX();
@@ -136,13 +138,18 @@ void  EscDshot::periodic(void *)
     }
     dshotSendFrame(&dshotd);
 #if DSHOT_BIDIR
-    if ((rpmFrqDiv != 0) && ((++count % rpmFrqDiv) == 0)) {
-      for (size_t slot = 0; slot <  numChannels; ++slot) {
-        const uint8_t channel = channelMap[slot];
-	if  (const uint32_t readErpm = dshotGetRpm(&dshotd, channel);
-	     (readErpm != DSHOT_BIDIR_ERR_CRC) && (readErpm != DSHOT_BIDIR_TLM_EDT)) {
+
+    const bool publishTelemetry = (rpmFrqDiv != 0) && ((++count % rpmFrqDiv) == 0);
+    for (size_t slot = 0; slot < numChannels; ++slot) {
+      const uint8_t channel = channelMap[slot];
+      // Every response must be processed: dshotGetRpm also updates EDT data.
+      const uint32_t readErpm = dshotGetRpm(&dshotd, channel);
+      if ((readErpm != DSHOT_BIDIR_ERR_CRC) && (readErpm != DSHOT_BIDIR_TLM_EDT)) {
+        pendingErpm[channel] = readErpm;
+      }
+      if (publishTelemetry && (pendingErpm[channel] != DSHOT_BIDIR_ERR_CRC)) {
 	  msgEscStatus.esc_index = slot + mapIndex1;
-	  msgEscStatus.rpm = readErpm;
+	  msgEscStatus.rpm = pendingErpm[channel];
 #if	DSHOT_BIDIR_EXTENTED_TELEMETRY
 	  const DshotTelemetry tlm = dshotGetTelemetry(&dshotd, channel);
 	  msgEscStatus.voltage =  tlm.frame.voltage / 100.0f;
@@ -150,8 +157,11 @@ void  EscDshot::periodic(void *)
 	  msgEscStatus.temperature = tlm.frame.temp;
 #endif  // TELEMETRY
 	  m_node->sendBroadcast(msgEscStatus, CANARD_TRANSFER_PRIORITY_LOW);
-	}
       }
+    }
+    // Do not republish an old RPM if no valid RPM arrives in the next interval.
+    if (publishTelemetry) {
+      pendingErpm.fill(DSHOT_BIDIR_ERR_CRC);
     }
 #endif // BIDIR
     chThdSleepUntilWindowed(ts, ts + loopPeriod);

@@ -54,10 +54,14 @@ Params:
 - role.esc.dshot.map_index1
 - role.esc.dshot.channel_mask
 - role.esc.dshot.cmd_rate (ChibiOS ticks)
-- role.esc.dshot.rpm_freq_div (0 disables telemetry)
+- role.esc.dshot.rpm_freq_div (CAN publication divider; 0 disables publication)
 
 Telemetry:
 - uavcan.equipment.esc.Status if bidirectional DShot is enabled.
+- Every active channel's eRPM/EDT response is processed on each DShot cycle,
+  including when CAN publication is disabled. The divider only limits CAN output.
+- At each publication interval, channels with a valid eRPM received during that
+  interval publish their latest eRPM and stored EDT data.
 
 Wiring:
 - TIM1 CH1..CH4 on PA08..PA11 (MicroCAN)

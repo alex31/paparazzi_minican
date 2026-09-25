@@ -55,7 +55,7 @@
       // Mask is: msb CH4 CH3 CH2 CH1 lsb.
       {"role.esc.dshot.channel_mask", {.min=0b0001, .max=0b1111, .v = 0b0001}},
       {"role.esc.dshot.cmd_rate",  {.min=100, .max=1000, .v = 100}},
-      {"role.esc.dshot.rpm_freq_div",  {.min=0, .max=1000, .v = 0}}, // 0 disable bidir telemetry
+      {"role.esc.dshot.rpm_freq_div",  {.min=0, .max=1000, .v = 0}}, // CAN publication divider; 0 disables publication
 #endif
 
 #if USE_GPS_UBX_ROLE
