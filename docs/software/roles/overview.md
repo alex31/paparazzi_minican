@@ -3,8 +3,14 @@
 Role system overview:
 - Roles are modular features enabled by parameters.
 - Roles are compiled in if USE_*_ROLE in
-  [COMMON/source/roleConf.h](../../../COMMON/source/roleConf.h) is true.
+  [COMMON/source/roleConf.h](../../../COMMON/source/roleConf.h) is true. The diagnostic shell uses `TRACE` (omitted with `NOSHELL=1`).
 - Roles are instantiated at startup if their ROLE.* parameter is enabled.
+- When ROLE.identification is true, application roles remain stopped and UAVCAN
+  runs in MAINTENANCE mode. Configuration, restart, dynamic ID allocation and
+  firmware updates remain available; the onboard LED shows the purple motif.
+  The shell remains available if `ROLE.shell=true`.
+  Role parameters remain visible and retain their values. Disable identification,
+  save and restart to resume the configured roles without reconfiguring them.
 - Each role inherits RoleBase and implements subscribe() and start().
 - Hardware resources are acquired via boardResource.tryAcquire(...).
 
@@ -12,6 +18,13 @@ Source reference: [roles.readme.txt](../../../roles.readme.txt) and
 [COMMON/source/](../../../COMMON/source/) (files named *Role*).
 
 ## Roles (summary)
+
+### ShellRole (ROLE.shell)
+Enables the diagnostic console on J3 / LPUART1 at 115200 bit/s, 8N1.
+Defaults to false; save and reboot. Its command buffers, history, statistics and
+two thread stacks are allocated on activation. It also starts in identification mode when enabled.
+See [shell.md](shell.md) for memory details and the test procedure.
+
 
 ### ServoRole (ROLE.servo.pwm, ROLE.servo.smart)
 Receives uavcan.equipment.actuator.ArrayCommand and routes to PWM or smart servo

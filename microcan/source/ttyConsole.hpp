@@ -1,24 +1,12 @@
-/**
- * @file ttyConsole.hpp
- * @brief TTY console initialization helpers.
- */
+/** @brief Optional diagnostic shell role on J3 / LPUART1. */
 #pragma once
+#include "UAVCanSlave.hpp"
+#include "roleBase.hpp"
 
-
-
-// fonctions exportees par le module
-
-#ifdef CONSOLE_DEV_SD
-/** @brief Initialize the console subsystem. */
-void consoleInit (void);
-/** @brief Launch the console thread. */
-void consoleLaunch (void);
-
-#if defined TRACE 
-#define CDCTrace(fmt, ...) {if (isUsbConnected()) chprintf (chp, fmt "\r\n", ## __VA_ARGS__ );}
-#else
-#define CDCTrace(...) 
-#endif // TRACE
-
-
+#ifdef TRACE
+class ShellRole final : public RoleBase {
+public:
+  DeviceStatus subscribe(UAVCAN::Node& node) override;
+  DeviceStatus start(UAVCAN::Node& node) override;
+};
 #endif

@@ -5,6 +5,12 @@
 
 #include "ttyConsole.hpp"
 #include "microrl/microrlShell.h"
+extern "C" {
+#include "microrl/microrl.h"
+}
+#include "consolePrintf.hpp"
+#include "hardwareConf.hpp"
+#include "resourceManager.hpp"
 #include "UAVCanSlave.hpp"
 #include "deviceResource.hpp"
 #include "adcSurvey.hpp"
@@ -37,10 +43,6 @@ using Value = std::variant<struct uavcan_protocol_param_Empty, int64_t, float, b
 
  */
 #ifdef TRACE
-
-#if CONSOLE_DEV_USB
-#endif
-
 #ifdef CONSOLE_DEV_SD
 
 /*===========================================================================*/
@@ -51,7 +53,7 @@ using Value = std::variant<struct uavcan_protocol_param_Empty, int64_t, float, b
 // ces declarations sont necessaires pour remplir le tableau commands[] ci-dessous
 using cmd_func_t =  void  (BaseSequentialStream *lchp, int argc,const char * const argv[]);
 static cmd_func_t cmd_mem, cmd_uid, cmd_restart, cmd_param, cmd_uavparam, cmd_storage, cmd_can;
-static cmd_func_t cmd_adc, cmd_panic;
+static cmd_func_t cmd_adc, cmd_panic, cmd_info;
 #if CH_DBG_STATISTICS
 static cmd_func_t cmd_threads;
 #endif
@@ -94,6 +96,7 @@ namespace {
 
 
 static const ShellCommand commands[] = {
+  {"info", cmd_info},
   {"mem", cmd_mem},		// affiche la mémoire libre/occupée
 #if  CH_DBG_STATISTICS
   {"threads", cmd_threads},	// affiche pour chaque thread le taux d'utilisation de la pile et du CPU
@@ -111,6 +114,48 @@ static const ShellCommand commands[] = {
   {"panic", cmd_panic},		// panic to force watchdog reset
  {NULL, NULL}			// marqueur de fin de tableau
 };
+
+namespace {
+  struct AdcCalPoint { float voltage; float raw; };
+  #define MAX_CPU_INFO_ENTRIES 20
+  typedef struct _ThreadCpuInfo {
+    float    ticks[MAX_CPU_INFO_ENTRIES];
+    float    cpu[MAX_CPU_INFO_ENTRIES];
+    float    totalTicks;
+    float    totalISRTicks;
+    _ThreadCpuInfo () {
+      for (auto i=0; i< MAX_CPU_INFO_ENTRIES; i++) {
+        ticks[i] = 0.0f;
+        cpu[i] = -1.0f;
+      }
+      totalTicks = 0.0f;
+      totalISRTicks = 0.0f;
+    }
+  } ThreadCpuInfo ;
+
+  struct tty_console_cpu_window {
+    rttime_t thread_time[MAX_CPU_INFO_ENTRIES];
+    thread_t *thread_ref[MAX_CPU_INFO_ENTRIES];
+    rttime_t prev_thread_time[MAX_CPU_INFO_ENTRIES];
+    thread_t *prev_thread_ref[MAX_CPU_INFO_ENTRIES];
+    uint32_t prev_thread_count;
+    rttime_t prev_isr_time;
+    uint8_t prev_stats_valid;
+  };
+
+  // Only a pointer is reserved here while the role is disabled. Buffers,
+  // history and diagnostic samples are allocated together when it starts.
+  struct ShellContext {
+    microrl_t lineEditor{};
+    const char *completions[std::size(commands)]{};
+    std::optional<AdcCalPoint> adcCalFirstPoint;
+#if CH_DBG_STATISTICS
+    tty_console_cpu_window cpu_window{};
+    ThreadCpuInfo threadCpuInfo;
+#endif
+  };
+  ShellContext *shellContext = nullptr;
+}
 
 /*
   definition de la fonction cmd_param asociée à la commande param (cf. commands[])
@@ -141,14 +186,6 @@ static void cmd_param(BaseSequentialStream *lchp, int argc,const char* const arg
 }
 
 
-namespace {
-  struct AdcCalPoint {
-    float voltage;
-    float raw;
-  };
-  std::optional<AdcCalPoint> adcCalFirstPoint;
-}
-
 /** @brief Console command: read/calibrate ADC battery voltage. */
 static void cmd_adc(BaseSequentialStream *lchp, int argc, const char * const argv[])
 {
@@ -172,8 +209,8 @@ static void cmd_adc(BaseSequentialStream *lchp, int argc, const char * const arg
 
   const float raw = Adc::getPsBatRaw();
 
-  if (!adcCalFirstPoint.has_value()) {
-    adcCalFirstPoint = AdcCalPoint{voltage, raw};
+  if (!shellContext->adcCalFirstPoint.has_value()) {
+    shellContext->adcCalFirstPoint = AdcCalPoint{voltage, raw};
     const float corrected = Adc::getPsBat();
     chprintf(lchp,
 	     "adc: captured point V=%.3f raw=%.4f V (corrected=%.4f V). Now set a second known voltage and run 'adc <V>'.\r\n",
@@ -181,8 +218,8 @@ static void cmd_adc(BaseSequentialStream *lchp, int argc, const char * const arg
     return;
   }
 
-  const float v1 = adcCalFirstPoint->voltage;
-  const float m1 = adcCalFirstPoint->raw;
+  const float v1 = shellContext->adcCalFirstPoint->voltage;
+  const float m1 = shellContext->adcCalFirstPoint->raw;
   const float v2 = voltage;
   const float m2 = raw;
 
@@ -211,7 +248,7 @@ static void cmd_adc(BaseSequentialStream *lchp, int argc, const char * const arg
   chprintf(lchp,
 	   "adc: V1=%.3f raw1=%.4f, V2=%.3f raw2=%.4f -> scale=%.6f bias=%.6f; now corrected=%.4f V\r\n",
 	   v1, m1, v2, m2, scale, bias, corrected);
-  adcCalFirstPoint.reset();
+  shellContext->adcCalFirstPoint.reset();
 }
 
 #ifndef CAN_BITRATE
@@ -386,33 +423,7 @@ static const SerialConfig ftdiConfig =  {
 #endif
 
 
-#define MAX_CPU_INFO_ENTRIES 20
-typedef struct _ThreadCpuInfo {
-  float    ticks[MAX_CPU_INFO_ENTRIES];
-  float    cpu[MAX_CPU_INFO_ENTRIES];
-  float    totalTicks;
-  float    totalISRTicks;
-  _ThreadCpuInfo () {
-    for (auto i=0; i< MAX_CPU_INFO_ENTRIES; i++) {
-      ticks[i] = 0.0f;
-      cpu[i] = -1.0f;
-    }
-    totalTicks = 0.0f;
-    totalISRTicks = 0.0f;
-  }
-} ThreadCpuInfo ;
 
-struct tty_console_cpu_window {
-  rttime_t thread_time[MAX_CPU_INFO_ENTRIES];
-  thread_t *thread_ref[MAX_CPU_INFO_ENTRIES];
-  rttime_t prev_thread_time[MAX_CPU_INFO_ENTRIES];
-  thread_t *prev_thread_ref[MAX_CPU_INFO_ENTRIES];
-  uint32_t prev_thread_count;
-  rttime_t prev_isr_time;
-  uint8_t prev_stats_valid;
-};
-
-static struct tty_console_cpu_window cpu_window;
   
 #if CH_DBG_STATISTICS
 /** @brief Gather per-thread CPU usage data. */
@@ -444,21 +455,13 @@ static void cmd_mem(BaseSequentialStream *lchp, int argc,const char* const argv[
   }
 
   chprintf(lchp, "core free memory : %u bytes\r\n", chCoreGetStatusX());
+  size_t threadHeapFree, largestThreadBlock;
+  chHeapStatus(nullptr, &threadHeapFree, &largestThreadBlock);
+  chprintf(lchp, "thread heap free : %u bytes (largest block %u)\r\n",
+           threadHeapFree, largestThreadBlock);
 
 #if CH_HEAP_SIZE != 0
-  chprintf(lchp, "heap free memory : %u bytes\r\n", getHeapFree());
-  
-  void * ptr1 = malloc_m (100);
-  void * ptr2 = malloc_m (100);
-  
-  chprintf(lchp, "(2x) malloc_m(1000) = %p ;; %p\r\n", ptr1, ptr2);
-  chprintf(lchp, "heap free memory : %d bytes\r\n", getHeapFree());
-  
-  free_m (ptr1);
-  free_m (ptr2);
-
- 
-  
+  chprintf(lchp, "application heap free : %u bytes\r\n", getHeapFree());
 #endif
   
 }
@@ -475,7 +478,7 @@ static void cmd_threads(BaseSequentialStream *lchp, int argc,const char * const 
   float totalTicks=0;
   float idleTicks=0;
 
-  static ThreadCpuInfo threadCpuInfo;
+  auto& threadCpuInfo = shellContext->threadCpuInfo;
   
   stampThreadCpuInfo (&threadCpuInfo);
   
@@ -502,7 +505,7 @@ static void cmd_threads(BaseSequentialStream *lchp, int argc,const char * const 
 
 #endif
     totalTicks = threadCpuInfo.totalTicks;
-    if (strcmp(chRegGetThreadNameX(tp), "idle") == 0)
+    if (idx < MAX_CPU_INFO_ENTRIES && strcmp(chRegGetThreadNameX(tp), "idle") == 0)
     idleTicks = threadCpuInfo.ticks[idx];
     tp = chRegNextThread((thread_t *)tp);
     idx++;
@@ -517,75 +520,104 @@ static void cmd_threads(BaseSequentialStream *lchp, int argc,const char * const 
 }
 #endif
 
-static const ShellConfig shell_cfg1 = {
-#if CONSOLE_DEV_USB == 0
-  (BaseSequentialStream *) &CONSOLE_DEV_SD,
-#else
-  (BaseSequentialStream *) &SDU1,
-#endif
-  commands
-};
-
-
-
-/** @brief Initialize the console subsystem and shell. */
-void consoleInit (void)
-{
-  /*
-   * Activates the USB driver and then the USB bus pull-up on D+.
-   * USBD1 : FS, USBD2 : HS
-   */
-
-#if CONSOLE_DEV_USB != 0
-  usbSerialInit(&SDU1, &USBD1); 
-  chp = (BaseSequentialStream *) &SDU1;
-#else
-  sdStart(&CONSOLE_DEV_SD, &ftdiConfig);
-  chp = (BaseSequentialStream *) &CONSOLE_DEV_SD;
-#endif
-  /*
-   * Shell manager initialization.
-   */
-  shellInit();
-}
-
-
-/** @brief Launch the console worker thread. */
-void consoleLaunch (void)
-{
-  thread_t *shelltp = NULL;
-
- 
-#if CONSOLE_DEV_USB != 0
-  if (!shelltp) {
-    while (usbGetDriver()->state != USB_ACTIVE) {
-      chThdSleepMilliseconds(10);
-    }
-    
-    // activate driver, giovani workaround
-    chnGetTimeout(&SDU1, TIME_IMMEDIATE);
-    while (!isUsbConnected()) {
-      chThdSleepMilliseconds(10);
-    }
-    shelltp = shellCreate(&shell_cfg1, SHELL_WA_SIZE, NORMALPRIO - 1);
-    //    palSetLine(LINE_USB_LED);
-  } else if (shelltp && (chThdTerminatedX(shelltp))) {
-    chThdRelease(shelltp);    /* Recovers memory of the previous shell.   */
-    shelltp = NULL;           /* Triggers spawning of a new shell.        */
+namespace {
+  void shellPrint(const char *text) {
+    streamWrite(chp, reinterpret_cast<const uint8_t *>(text), strlen(text));
   }
 
-#else // CONSOLE_DEV_USB == 0
+  void shellExecute(int argc, const char *const *argv) {
+    if (argc == 0) return;
+    for (auto command = commands; command->sc_name; ++command) {
+      if (strcasecmp(command->sc_name, argv[0]) == 0) {
+        command->sc_function(chp, argc - 1, argv + 1);
+        return;
+      }
+    }
+    chprintf(chp, "Commande inconnue : %s\r\n", argv[0]);
+  }
 
-   if (!shelltp) {
-     shelltp = shellCreate(&shell_cfg1, SHELL_WA_SIZE, NORMALPRIO - 1);
-   } else if (chThdTerminatedX(shelltp)) {
-     chThdRelease(shelltp);    /* Recovers memory of the previous shell.   */
-     shelltp = NULL;           /* Triggers spawning of a new shell.        */
-   }
-   chThdSleepMilliseconds(100);
-   
-#endif //CONSOLE_DEV_USB
+  const char **shellComplete(int argc, const char *const *argv) {
+    auto **matches = shellContext->completions;
+    size_t count = 0;
+    for (auto command = commands; command->sc_name; ++command) {
+      if (argc == 0 || (argc == 1 &&
+          strncmp(command->sc_name, argv[0], strlen(argv[0])) == 0)) {
+        matches[count++] = command->sc_name;
+      }
+    }
+    matches[count] = nullptr;
+    return matches;
+  }
 
+  void shellInterrupt() { shellPrint("^C\r\n"); }
+
+  THD_FUNCTION(shellWorker, arg) {
+    auto& context = *static_cast<ShellContext *>(arg);
+    // chp is made visible by start() before the worker can run.
+    chprintf(chp, "ChibiOS/RT Enhanced Shell\r\n");
+    microrl_init(&context.lineEditor, shellPrint);
+    microrl_set_execute_callback(&context.lineEditor, shellExecute);
+    microrl_set_complete_callback(&context.lineEditor, shellComplete);
+    microrl_set_sigint_callback(&context.lineEditor, shellInterrupt);
+    while (true) {
+      uint8_t c;
+      if (streamRead(chp, &c, 1) == 1) microrl_insert_char(&context.lineEditor, c);
+    }
+  }
+}
+
+static void cmd_info(BaseSequentialStream *stream, int, const char *const []) {
+  chprintf(stream, "Kernel: %s\r\nBoard: %s\r\n", CH_KERNEL_VERSION, BOARD_NAME);
+  chprintf(stream, "MCU ID: 0x%08lx\r\nBuild: %s %s\r\n",
+           static_cast<unsigned long>(DBGMCU->IDCODE), __DATE__, __TIME__);
+  cmd_can(stream, 0, nullptr);
+}
+
+DeviceStatus ShellRole::subscribe(UAVCAN::Node& node) {
+  m_node = &node;
+  return {DeviceStatus::SHELL_ROLE};
+}
+
+DeviceStatus ShellRole::start(UAVCAN::Node&) {
+  if (!boardResource.tryAcquire(HWResource::LPUART_1, HWResource::PA02, HWResource::PA03)) {
+    return {DeviceStatus::SHELL_ROLE, DeviceStatus::CONFLICT};
+  }
+  auto releaseResources = [] {
+    boardResource.release(HWResource::LPUART_1, HWResource::PA02, HWResource::PA03);
+  };
+  void *memory = malloc_m(sizeof(ShellContext));
+  if (!memory) {
+    releaseResources();
+    return {DeviceStatus::SHELL_ROLE, DeviceStatus::HEAP_FULL};
+  }
+  shellContext = new (memory) ShellContext{};
+  auto releaseContext = [&] {
+    shellContext->~ShellContext();
+    free_m(shellContext);
+    shellContext = nullptr;
+    releaseResources();
+  };
+  if (!consolePrintfStart()) {
+    releaseContext();
+    return {DeviceStatus::SHELL_ROLE, DeviceStatus::HEAP_FULL};
+  }
+  if (sdStart(&CONSOLE_DEV_SD, &ftdiConfig) != MSG_OK) {
+    consolePrintfStop();
+    releaseContext();
+    return {DeviceStatus::SHELL_ROLE, DeviceStatus::NOT_RESPONDING};
+  }
+  // The creator runs at NORMALPRIO; the worker has lower priority and cannot
+  // run until after the following assignment (no blocking operation in between).
+  thread_t *worker = chThdCreateFromHeap(nullptr, SHELL_WA_SIZE, "Enhanced_shell",
+                                        NORMALPRIO - 1, shellWorker, shellContext);
+  if (!worker) {
+    sdStop(&CONSOLE_DEV_SD);
+    consolePrintfStop();
+    releaseContext();
+    return {DeviceStatus::SHELL_ROLE, DeviceStatus::HEAP_FULL};
+  }
+  chp = reinterpret_cast<BaseSequentialStream *>(&CONSOLE_DEV_SD);
+  return {DeviceStatus::SHELL_ROLE};
 }
 
 namespace {
@@ -991,17 +1023,17 @@ static void stampThreadCpuInfo (ThreadCpuInfo *ti)
   ti->totalTicks =0;
   do {
     rttime_t current_time = tp->stats.cumulative;
-    ti->ticks[idx] = cpu_window.prev_stats_valid ?
+    ti->ticks[idx] = shellContext->cpu_window.prev_stats_valid ?
       (float)get_thread_delta(tp, current_time) : (float)current_time;
     ti->totalTicks += ti->ticks[idx];
-    cpu_window.thread_ref[idx] = (thread_t *)tp;
-    cpu_window.thread_time[idx] = current_time;
+    shellContext->cpu_window.thread_ref[idx] = (thread_t *)tp;
+    shellContext->cpu_window.thread_time[idx] = current_time;
     tp = chRegNextThread ((thread_t *)tp);
     idx++;
     threadCount++;
   } while ((tp != NULL) && (idx < MAX_CPU_INFO_ENTRIES));
-  ti->totalISRTicks = cpu_window.prev_stats_valid ?
-    (float)(currcore->kernel_stats.m_crit_isr.cumulative - cpu_window.prev_isr_time) :
+  ti->totalISRTicks = shellContext->cpu_window.prev_stats_valid ?
+    (float)(currcore->kernel_stats.m_crit_isr.cumulative - shellContext->cpu_window.prev_isr_time) :
     (float)currcore->kernel_stats.m_crit_isr.cumulative;
   ti->totalTicks += ti->totalISRTicks;
   tp =  chRegFirstThread();
@@ -1013,12 +1045,12 @@ static void stampThreadCpuInfo (ThreadCpuInfo *ti)
   } while ((tp != NULL) && (idx < MAX_CPU_INFO_ENTRIES));
 
   for (idx = 0; idx < threadCount; idx++) {
-    cpu_window.prev_thread_ref[idx] = cpu_window.thread_ref[idx];
-    cpu_window.prev_thread_time[idx] = cpu_window.thread_time[idx];
+    shellContext->cpu_window.prev_thread_ref[idx] = shellContext->cpu_window.thread_ref[idx];
+    shellContext->cpu_window.prev_thread_time[idx] = shellContext->cpu_window.thread_time[idx];
   }
-  cpu_window.prev_thread_count = threadCount;
-  cpu_window.prev_isr_time = currcore->kernel_stats.m_crit_isr.cumulative;
-  cpu_window.prev_stats_valid = 1;
+  shellContext->cpu_window.prev_thread_count = threadCount;
+  shellContext->cpu_window.prev_isr_time = currcore->kernel_stats.m_crit_isr.cumulative;
+  shellContext->cpu_window.prev_stats_valid = 1;
 }
 
 /** @brief Return CPU usage percentage for a thread index. */
@@ -1040,13 +1072,13 @@ static rttime_t get_thread_delta(const thread_t *tp, rttime_t current_time)
 {
   uint32_t idx;
 
-  if (!cpu_window.prev_stats_valid) {
+  if (!shellContext->cpu_window.prev_stats_valid) {
     return 0;
   }
 
-  for (idx = 0; idx < cpu_window.prev_thread_count; idx++) {
-    if (cpu_window.prev_thread_ref[idx] == tp) {
-      return current_time - cpu_window.prev_thread_time[idx];
+  for (idx = 0; idx < shellContext->cpu_window.prev_thread_count; idx++) {
+    if (shellContext->cpu_window.prev_thread_ref[idx] == tp) {
+      return current_time - shellContext->cpu_window.prev_thread_time[idx];
     }
   }
 

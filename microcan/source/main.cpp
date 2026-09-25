@@ -40,6 +40,10 @@ namespace {
 /** @brief Early initializer to set up ChibiOS and the heap. */
 void _init_chibios() __attribute__ ((constructor(101)));
 void _init_chibios() {
+#ifdef TRACE
+  // Shared stdutil defaults to LPSD1, which is stopped until ROLE.shell starts.
+  chp = nullptr;
+#endif
   halInit();
   chSysInit();
   initHeap ();
@@ -62,11 +66,6 @@ int main(void)
   RgbLed::start();
   trngStart(&TRNGD1, NULL);
   
-#ifdef TRACE
-  consoleInit();
-  consoleLaunch();
-#endif
-  
   RgbLed::setColor(HSV{0.3, 1, 0.1});
   RgbLed::setMotif(500, 0b1010101010101010);
 
@@ -88,19 +87,20 @@ int main(void)
   // depend on Ressource::storage.start()
   Adc::start();
   
-  if (param_cget<"ROLE.identification">() == true) {
-    // mode identification
-    DebugTrace ("passage en mode identification");
-    RgbLed::setMotif(150, 0b1010100000000000);
-    RgbLed::setColor(HSV{0.8, 1, 0.5});
-    goto end;
-  }
-
   {
+    // Keep the boot mode stable while UAVCAN starts (including dynamic ID
+    // allocation). Parameter changes take effect on the next restart.
+    const bool identificationMode = param_cget<"ROLE.identification">();
+    if (identificationMode) {
+      DebugTrace("passage en mode identification");
+      RgbLed::setMotif(150, 0b1010100000000000);
+      RgbLed::setColor(HSV{0.8, 1, 0.5});
+    }
+
     const int8_t nodeId = param_cget<"uavcan.node_id">();
     DebugTrace("paramètre nodeid = %d", nodeId);
     if (const DeviceStatus status =
-	CANSlave::start(nodeId, param_cget<"uavcan.dynid.fd">()); not status) {
+	CANSlave::start(nodeId, param_cget<"uavcan.dynid.fd">(), identificationMode); not status) {
       if (status.err == DeviceStatus::CONFLICT) {
 	RgbLed::setMotif(100, 0b110011000);
 	RgbLed::setColor(HSV{0.0, 1, 0.5});
@@ -109,7 +109,13 @@ int main(void)
 	RgbLed::setColor(HSV{0.1, 1, 0.5});
       }
       goto end;
-    } 
+    }
+
+    // The node remains reachable for configuration and firmware updates.
+    // Preserve the identification motif instead of displaying the node ID.
+    if (identificationMode) {
+      goto end;
+    }
   }
    
   RgbLed::setNodeId(CANSlave::getNodeId());

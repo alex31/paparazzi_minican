@@ -25,8 +25,13 @@
       // and GPS reconfiguration over UBX on startup.
       {"bus.serial.baudrate", {.min = 0, .max = 460'800, .v = 115'200}},
       {"hardware.nickname", {.v = "nickname"}},
-      // fancy led pattern if role.identification is true
+      // Identification LED + UAVCAN management + configured shell; other roles stay stopped.
+      // Changing this boot mode requires a restart.
       {"ROLE.identification", {.v = true}},
+#ifdef TRACE
+      // Diagnostic UART J3, allocated only on activation; restart required.
+      {"ROLE.shell", {.v = false}},
+#endif
 	
       {"ROLE.health.survey", {.v = true}},
       //      {"role.health.survey.periodms", {.min = 100, .max = 10'000, .v = 1'000}},

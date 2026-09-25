@@ -5,6 +5,7 @@
 #include "UAVCanSlave.hpp"
 #include "deviceResource.hpp"
 #include "UAVCAN/dsdlStringUtils.hpp"
+#include "ttyConsole.hpp"
 
 #if USE_SERVO_ROLE
 #include "servoRole.hpp"
@@ -330,8 +331,8 @@ namespace CANSlave {
   }
 
   
-  /** @brief Initialize and start the UAVCAN node and all enabled roles. */
-  DeviceStatus start(int8_t _nodeId, bool dynamicId_fd)
+  /** @brief Start management and the optional shell; suspend other roles when identifying. */
+  DeviceStatus start(int8_t _nodeId, bool dynamicId_fd, bool identificationMode)
   {
     static int8_t nodeId = _nodeId;
     static  UAVCAN::Config uavCanCfg = {
@@ -384,47 +385,56 @@ namespace CANSlave {
 				  processFirmwareUpdateRequest>();
 
     bool rolesOk = true;
+#ifdef TRACE
+    // Diagnostics remain available in identification mode when configured.
+    // Start them first, so subsequent role start failures can be read.
+    rolesOk = rolesOk && addRole<ShellRole, FixedString("ROLE.shell")>();
+#endif
+    if (!identificationMode) {
+      // Do not construct or subscribe application roles while identifying:
+      // missing sensors and conflicting configurations must not block access.
 #if USE_MICROPHONE_ROLE
-    // ADCv3 allocates its DMA stream dynamically. Reserve it before optional
-    // roles that can consume the remaining streams.
-    rolesOk = rolesOk && addRole<MicrophoneRole, FixedString("ROLE.adc.microphone.im68a130")>();
+      // ADCv3 allocates its DMA stream dynamically. Reserve it before optional
+      // roles that can consume the remaining streams.
+      rolesOk = rolesOk && addRole<MicrophoneRole, FixedString("ROLE.adc.microphone.im68a130")>();
 #endif
 #if USE_SERVO_ROLE
-    rolesOk = rolesOk && addRole<ServoRole, FixedString("ROLE.servo.pwm"),  FixedString("ROLE.servo.smart")>();
+      rolesOk = rolesOk && addRole<ServoRole, FixedString("ROLE.servo.pwm"),  FixedString("ROLE.servo.smart")>();
 #endif
 #if USE_BARO_MPL3115A2_ROLE
-    rolesOk = rolesOk && addRole<Baro_MPL3115A2_Role, FixedString("ROLE.i2c.barometer.mpl3115a2")>();
+      rolesOk = rolesOk && addRole<Baro_MPL3115A2_Role, FixedString("ROLE.i2c.barometer.mpl3115a2")>();
 #endif
 #if USE_QMC5883_ROLE
-    rolesOk = rolesOk && addRole<Qmc5883Role, FixedString("ROLE.i2c.magnetometer.q5883")>();
+      rolesOk = rolesOk && addRole<Qmc5883Role, FixedString("ROLE.i2c.magnetometer.q5883")>();
 #endif
 #if USE_OPT4060_ROLE
-    rolesOk = rolesOk && addRole<Opt4060Role, FixedString("ROLE.i2c.light.opt4060")>();
+      rolesOk = rolesOk && addRole<Opt4060Role, FixedString("ROLE.i2c.light.opt4060")>();
 #endif
 #if USE_VL53L4CX_ROLE
-    rolesOk = rolesOk && addRole<Vl53l4cxRole, FixedString("ROLE.i2c.range.vl53l4cx")>();
+      rolesOk = rolesOk && addRole<Vl53l4cxRole, FixedString("ROLE.i2c.range.vl53l4cx")>();
 #endif
 #if USE_ESC_DSHOT_ROLE
-    rolesOk = rolesOk && addRole<EscDshot, FixedString("ROLE.esc.dshot")>();
+      rolesOk = rolesOk && addRole<EscDshot, FixedString("ROLE.esc.dshot")>();
 #endif
 #if USE_RC_SBUS_ROLE
-    rolesOk = rolesOk && addRole<RC_Sbus, FixedString("ROLE.sbus")>();
+      rolesOk = rolesOk && addRole<RC_Sbus, FixedString("ROLE.sbus")>();
 #endif
 #if USE_GPS_UBX_ROLE
-    rolesOk = rolesOk && addRole<GpsUBX, FixedString("ROLE.gnss.ubx")>();
+      rolesOk = rolesOk && addRole<GpsUBX, FixedString("ROLE.gnss.ubx")>();
 #endif
 #if USE_SERIAL_STREAM_ROLE
-    rolesOk = rolesOk && addRole<SerialStream, FixedString("ROLE.tunnel.serial")>();
+      rolesOk = rolesOk && addRole<SerialStream, FixedString("ROLE.tunnel.serial")>();
 #endif
 #if USE_LED2812_ROLE
-    rolesOk = rolesOk && addRole<RgbLedRole, FixedString("ROLE.led2812")>();
+      rolesOk = rolesOk && addRole<RgbLedRole, FixedString("ROLE.led2812")>();
 #endif
 #if USE_VOLTMETER_ROLE
-    rolesOk = rolesOk && addRole<VoltmeterRole, FixedString("ROLE.voltmeter")>();
+      rolesOk = rolesOk && addRole<VoltmeterRole, FixedString("ROLE.voltmeter")>();
 #endif
 #if USE_TEMPLATE_ROLE
-    rolesOk = rolesOk && addRole<TemplateRole, FixedString("ROLE.template")>();
+      rolesOk = rolesOk && addRole<TemplateRole, FixedString("ROLE.template")>();
 #endif
+    }
 
     if (not rolesOk) {
       node.setStatusMode(UAVCAN_PROTOCOL_NODESTATUS_MODE_OFFLINE);
@@ -436,6 +446,9 @@ namespace CANSlave {
 	return roleStatus;
       }
     
+    if (identificationMode) {
+      node.setStatusMode(UAVCAN_PROTOCOL_NODESTATUS_MODE_MAINTENANCE);
+    }
     node.start();
     
     for (auto rp : roles)
@@ -446,7 +459,10 @@ namespace CANSlave {
 	return roleStatus;
       }
     
-    
+    if (identificationMode) {
+      return DeviceStatus(DeviceStatus::ALL, DeviceStatus::OK);
+    }
+
     if (param_cget<"ROLE.health.survey">()) {
       HealthSurvey::start(node);
     }

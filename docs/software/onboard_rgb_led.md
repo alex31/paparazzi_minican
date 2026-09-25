@@ -35,7 +35,10 @@ Patterns set in [microcan/source/main.cpp](../../microcan/source/main.cpp):
 - MFS init failure: blue, motif 0b10101010, period 200 ms
 - Persistent storage init failure: purple (dim), motif 0b10101010, period 200 ms
 - Identification mode (ROLE.identification=true): purple (bright),
-  motif 0b1010100000000000, period 150 ms
+  motif 0b1010100000000000, period 150 ms. The UAVCAN node remains available in
+  MAINTENANCE mode for configuration, restart and firmware updates; application
+  roles are not started, except the shell if `ROLE.shell=true`.
+  The node ID display is suppressed in this mode.
 - CAN start failure (resource conflict): red, motif 0b110011000, period 100 ms
 - CAN start failure (other): orange, motif 0b10101010, period 200 ms
 - Normal operation: node ID display takes over once CAN starts

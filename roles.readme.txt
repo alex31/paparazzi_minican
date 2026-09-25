@@ -89,7 +89,9 @@ Services/protocoles gérés par le nœud (pubSub/UAVCanSlave)
 - Mise à jour firmware : `uavcan.protocol.file.BeginFirmwareUpdate` (req/res) + `uavcan.protocol.file.Read` (client) pour récupérer l’image.
 - Réception passive : souscription aux `uavcan.protocol.NodeStatus` reçus (monitoring).
 
-Remarque : les rôles sont instanciés au démarrage selon les paramètres persistants et utilisent `sendBroadcast` du nœud UAVCAN. Les services ci-dessus sont fournis par la couche pubSub/UAVCanSlave indépendamment des rôles applicatifs. Si `ROLE.identification` est vrai, la carte passe en mode identification (LED interne) et le nœud UAVCAN n’est pas démarré.
+Remarque : les rôles sont instanciés au démarrage selon les paramètres persistants et utilisent `sendBroadcast` du nœud UAVCAN. Les services ci-dessus sont fournis par la couche pubSub/UAVCanSlave indépendamment des rôles applicatifs. Si `ROLE.identification` est vrai au démarrage, la carte affiche le motif violet et démarre le nœud UAVCAN en mode MAINTENANCE : découverte/allocation d'ID, paramètres, redémarrage et mise à jour du firmware restent accessibles. Le shell démarre si `ROLE.shell=true`. Les autres rôles, y compris HealthSurvey, ne sont pas démarrés. Pour sortir de ce mode, mettre `ROLE.identification=false`, sauvegarder et redémarrer depuis DroneCAN GUI.
+
+L'identification ne modifie ni les indicateurs d'activation des autres rôles ni leurs réglages : tous leurs paramètres restent visibles et conservent leurs valeurs. À l’exception du shell, même un rôle configuré avec `ROLE.*=true` reste arrêté dans ce mode. Après désactivation de l'identification, sauvegarde et redémarrage, les rôles reprennent selon la configuration conservée, sans devoir les reconfigurer.
 
 - Microphone IM68A130 (`ROLE.adc.microphone.im68a130`)
   - PA4 / ADC2 / TIM6, acquisition à 24 kHz ; pas de dépendance I2C.
@@ -109,3 +111,10 @@ Remarque : les rôles sont instanciés au démarrage selon les paramètres persi
   - I2C1 partagé, pilote ST ; aucune dépendance aux rôles microphone/RGBW.
   - Envoie : `uavcan.equipment.range_sensor.Measurement`, distance valide la plus proche en mètres.
   - Détails des trois rôles : docs/software/roles/independent_sensors.md.
+
+- ShellRole (`ROLE.shell`, seulement si TRACE est compilé)
+  - Console de diagnostic J3 / LPUART1, 115200 bit/s, 8N1 ; aucun message applicatif CAN.
+  - Désactivé par défaut ; activer via DroneCAN GUI, sauvegarder et redémarrer.
+  - Buffers, historique, statistiques et piles des deux threads alloués à l’activation.
+  - Conservé en mode identification uniquement si ROLE.shell=true ; les paramètres restent inchangés. NOSHELL=1 l’exclut du firmware.
+  - Détails : docs/software/roles/shell.md ; test T17 dans procedure_de_test.md.

@@ -272,7 +272,6 @@ CSRC = $(ALLCSRC) \
        $(CHIBIOS)/os/various/syscalls.c \
        $(VARIOUS)/stdutil.c \
        $(VARIOUS)/printf.c \
-       $(VARIOUS)/microrl/microrlShell.c \
        $(VARIOUS)/microrl/microrl.c \
        $(VARIOUS)/hal_stm32_dma.c \
        $(VARIOUS)/M95P/hal_xsnor_stm_m95p.c \
@@ -288,6 +287,10 @@ CSRC = $(ALLCSRC) \
 
 
 CSRC += $(DSDLC_CSRC) 
+
+# Keep the shared formatter; our heap-backed worker replaces its serial API.
+# The unused legacy worker and its static stack are removed by section GC.
+$(BUILDDIR)/obj/printf.o: CFLAGS += -Dchprintf=legacy_chprintf -Dchvprintf=legacy_chvprintf
 
 
 # C++ sources that can be compiled in ARM or THUMB mode depending on the global

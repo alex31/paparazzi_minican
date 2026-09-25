@@ -125,3 +125,19 @@ The Makefile uses STM32CubeProgrammer over UART with:
 
 Bootloader size is set in the top level Makefile (see BOOTLOADER_SIZE).
 Generated *.uavcan.bin images are suitable for UAVCAN firmware update.
+
+Identification mode (`ROLE.identification=true`) keeps the UAVCAN node running
+in MAINTENANCE mode, so DroneCAN GUI can update the firmware without first
+disabling identification. Application roles stay stopped during this mode, except the shell if `ROLE.shell=true`.
+
+Older firmware that stops before CAN initialization in identification mode must
+first leave that mode through the diagnostic UART (`st ROLE.identification
+false`, then `restart`), or receive the corrected firmware through a wired
+programming interface. A board already running the old bug cannot receive its
+own fix over an inactive CAN interface.
+
+The diagnostic shell is now an optional runtime role (`ROLE.shell=false` by
+default). Enable it through DroneCAN GUI, save and
+restart before connecting to J3. `make -C microcan NOSHELL=1 firmware` removes
+the role at compile time (use a separate build directory when comparing builds).
+Identification keeps the serial console available if `ROLE.shell=true`. See [shell role](roles/shell.md).
