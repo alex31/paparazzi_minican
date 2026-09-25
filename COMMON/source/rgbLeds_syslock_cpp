@@ -1,0 +1,229 @@
+/**
+ * @file rgbLeds_syslock_cpp
+ * @brief Onboard WS2812 LED implementation using ChibiOS system locks.
+ */
+#include <ch.h>
+#include <hal.h>
+#include "rgbLeds.hpp"
+
+/*
+ * Concatenate preprocessor tokens A and B after macro-expanding them.
+ */
+#define CONCAT_NX(st1, st2) st1 ## st2
+#define CONCAT3_NX(st1, st2, st3) st1 ## st2 ## st3
+#define CONCAT(st1, st2) CONCAT_NX(st1, st2)
+#define CONCAT3(st1, st2, st3) CONCAT3_NX(st1, st2, st3)
+
+static constexpr PWMDriver &ledPwm =  CONCAT(PWMD, RGBLED_TIM);
+static constexpr uint32_t dmaMux = CONCAT3(STM32_DMAMUX1_TIM, RGBLED_TIM, _UP);
+static constexpr LedTiming ledTiming = getClockByTimer(&ledPwm);
+using Led_t = Led2812<uint16_t, ledTiming.t0h, ledTiming.t1h> ;
+
+namespace {
+  __attribute__ ((section(DMA_SECTION "_clear"), aligned(4)))
+  Led2812Strip<1, Led_t> leds(&ledPwm, ledTiming,
+			      STM32_DMA_STREAM_ID_ANY,
+			      dmaMux,
+			      static_cast<TimerChannel>(RGBLED_TIM_CH - 1U));
+  
+  THD_WORKING_AREA(waLedsAnim, 512) __attribute__((section(FAST_SECTION "_clear")));	
+  void  ledsAnim(void *arg);
+  void  ledsAnimMinimal(void *arg);
+  void  displayId(uint8_t id);
+  RGB   rgb;
+  bool off = false;
+  bool wheelOfDeathMode = false;
+  systime_t periodI = TIME_S2I(10);
+  uint16_t motif = 0xffff;
+  uint8_t motifIndex = 0;
+  uint8_t nodeId = 0;
+}
+
+/** @brief Start the full LED animation thread. */
+void RgbLed::start()
+{
+  chThdCreateStatic(waLedsAnim, sizeof(waLedsAnim), NORMALPRIO, &ledsAnim, NULL);
+}
+
+/** @brief Start the minimal LED animation thread. */
+void RgbLed::startMinimal()
+{
+  chThdCreateStatic(waLedsAnim, sizeof(waLedsAnim), NORMALPRIO, &ledsAnimMinimal, NULL);
+}
+
+/** @brief Set the LED color using RGB input. */
+void RgbLed::setColor(const RGB &_rgb)
+{
+  chSysLock();
+  rgb = _rgb;
+  chSysUnlock();
+}
+
+/** @brief Set the LED color using HSV input. */
+void RgbLed::setColor(const HSV &hsv)
+{
+  chSysLock();
+  rgb = hsv2rgb(hsv);
+  chSysUnlock();
+}
+
+/** @brief Turn the LED off. */
+void RgbLed::lightOff()
+{
+  chSysLock();
+  off = true;
+  chSysUnlock();
+}
+
+/** @brief Turn the LED on. */
+void RgbLed::lightOn()
+{
+  chSysLock();
+  off = false;
+  chSysUnlock();
+}
+
+/** @brief Toggle the LED on/off state. */
+void RgbLed::lightToggle()
+{
+  chSysLock();
+  off = not off;
+  chSysUnlock();
+}
+
+/** @brief Enable the "wheel of death" animation. */
+void RgbLed::setWheelOfDeath()
+{
+  chSysLock();
+  wheelOfDeathMode = true;
+  chSysUnlock();
+}
+
+/** @brief Store the node ID for display. */
+void RgbLed::setNodeId(uint8_t id)
+{
+  id = std::min(id, static_cast<uint8_t>(124U));
+  chSysLock();
+  nodeId = id;
+  chSysUnlock();
+}
+ 
+/** @brief Configure the motif period and bitmask. */
+void RgbLed::setMotif(uint16_t _periodMs, uint16_t _motif)
+{
+  chSysLock();
+  periodI = TIME_MS2I(_periodMs);
+  motif = _motif;
+  chSysUnlock();
+}
+
+namespace {
+  /** @brief Full animation loop handling wheel, node ID, and motif display. */
+  void  ledsAnim (void *arg)	
+  {
+    (void)arg;					
+    chRegSetThreadName("ledsAnim");		
+    systime_t ts = chVTGetSystemTimeX();
+    while(true) {
+      const systime_t now = chVTGetSystemTimeX();
+      chSysLock();
+      if (wheelOfDeathMode) {
+	chSysUnlock();
+	static float hue = 0;
+	leds[0].setHSV(HSV{hue, 1, 0.2f});
+	hue = hue + 0.03f;
+	if (hue > 1.0f)
+	  hue = 0;
+      } else if (nodeId != 0) {
+	const uint8_t localId = nodeId;
+	chSysUnlock();
+	displayId(localId);
+      } else if (not off) {
+	if (chTimeDiffX(ts, now) > periodI) {
+	  ts = now;
+	  leds[0].setRGB(motif & (1U << motifIndex) ? rgb : RGB{0,0,0});
+	  motifIndex = (motifIndex + 1U) % (sizeof motif * 8U);
+	}
+	chSysUnlock();
+      } else {
+	chSysUnlock();
+	leds[0].setRGB(RGB{0,0,0});
+      }
+      leds.emitFrame();
+      chThdSleepMilliseconds(10);
+    }
+  }
+
+  /** @brief Minimal animation loop used when float operations are avoided. */
+  void  ledsAnimMinimal (void *arg)	
+  {
+    (void)arg;					
+    chRegSetThreadName("ledsAnim");		
+    systime_t ts = chVTGetSystemTimeX();
+    while(true) {
+      const systime_t now = chVTGetSystemTimeX();
+      chSysLock();
+      if (chTimeDiffX(ts, now) > periodI) {
+	ts = now;
+	leds[0].setRGB(motif & (1U << motifIndex) ? rgb : RGB{0,0,0});
+	motifIndex = (motifIndex + 1U) % (sizeof motif * 8U);
+      }
+      chSysUnlock();
+      leds.emitFrame();
+      chThdSleepMilliseconds(10);
+    }
+  }
+  
+  /*
+    Blanc ⚪️	(peu importe H, S=0, V=1)
+    Rouge 🔴	0.0f
+    Jaune 🟡	0.166f (environ 60°)
+    Vert  🟢	0.333f (environ 120°)
+    Bleu  🔵	0.666f (environ 240°)
+
+    Le node affiche le NodeId décimal digit par digit, de gauche à droite.
+    
+    Pour chaque digit :
+    
+    Afficher la couleur correspondant au digit pendant 0.8 seconde.
+    Éteindre la LED pendant 0,3 seconde pour bien séparer chaque digit.
+
+    Après avoir affiché tous les digits, le NodeId complet est suivi d'une pause plus longue
+    (LED éteinte pendant 2 secondes),
+    puis la séquence se répète en boucle.
+
+    id = digitA*25 + digitB*5 + digitC
+    
+   */
+  /** @brief Display a node ID using color-coded blinks. */
+  void  displayId(uint8_t id)
+  {
+    static constexpr float value = 0.10f;
+    static const float huesat[5][2] =  {
+      {0.001, 0.001},	// ⚪️ 0 
+      {0, 1},		// 🔴 1 
+      {.166, 1},	// 🟡 2 		
+      {.333, 1},	// 🟢 3 
+      {.666, 1}		// 🔵 4 
+    };
+
+    const uint8_t digits[3] = {
+      static_cast<uint8_t>(id / 25U),
+      static_cast<uint8_t>((id / 5U) % 5U),
+      static_cast<uint8_t>(id % 5U),
+    };
+
+    for (size_t i = 0; i < 3; ++i) {
+      leds[0].setHSV(HSV{huesat[digits[i]][0], huesat[digits[i]][1], value});
+      leds.emitFrame();
+      chThdSleepMilliseconds(500);
+      leds[0].setRGB(RGB{0,0,0});
+      leds.emitFrame();
+      chThdSleepMilliseconds(300);
+    }
+
+    chThdSleepSeconds(1);
+  }
+
+  
+}
