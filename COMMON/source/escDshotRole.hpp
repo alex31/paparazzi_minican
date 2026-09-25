@@ -61,6 +61,7 @@ private:
   uint8_t numChannels = 1;
   DshotChannelMap channelMap{};
   uint16_t rpmFrqDiv = 0;
+  uint8_t polePairs = 1;
   sysinterval_t loopPeriod = TIME_MS2I(10);
   uint16_t throttles[4] = {};
   DSHOTDriver dshotd;

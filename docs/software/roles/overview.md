@@ -55,13 +55,19 @@ Params:
 - role.esc.dshot.channel_mask
 - role.esc.dshot.cmd_rate (ChibiOS ticks)
 - role.esc.dshot.rpm_freq_div (CAN publication divider; 0 disables publication)
+- role.esc.dshot.motor_poles (even number from 2 to 100, default 2; common to all motors)
+  Set to the motor's pole count, e.g. 14 for a 14-pole motor, and reboot the node.
+  The default preserves the previous RPM scale; configure the actual pole count
+  to obtain mechanical RPM for your motors. Odd values prevent the role from starting.
 
 Telemetry:
 - uavcan.equipment.esc.Status if bidirectional DShot is enabled.
 - Every active channel's eRPM/EDT response is processed on each DShot cycle,
   including when CAN publication is disabled. The divider only limits CAN output.
 - At each publication interval, channels with a valid eRPM received during that
-  interval publish their latest eRPM and stored EDT data.
+  interval publish their latest mechanical RPM (`eRPM / (motor_poles / 2)`, rounded
+  down) and stored EDT data. Temperature is converted from Celsius to kelvin;
+  voltage and current are published in volts and amperes.
 
 Wiring:
 - TIM1 CH1..CH4 on PA08..PA11 (MicroCAN)

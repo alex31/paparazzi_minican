@@ -56,6 +56,7 @@
       {"role.esc.dshot.channel_mask", {.min=0b0001, .max=0b1111, .v = 0b0001}},
       {"role.esc.dshot.cmd_rate",  {.min=100, .max=1000, .v = 100}},
       {"role.esc.dshot.rpm_freq_div",  {.min=0, .max=1000, .v = 0}}, // CAN publication divider; 0 disables publication
+      {"role.esc.dshot.motor_poles", {.min=2, .max=100, .v = 2}}, // Even pole count, shared by all motors
 #endif
 
 #if USE_GPS_UBX_ROLE

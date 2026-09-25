@@ -40,6 +40,14 @@ DeviceStatus EscDshot::start(UAVCAN::Node& /*node*/)
   numChannels = channelMap.count;
   loopPeriod = param_cget<"role.esc.dshot.cmd_rate">();
   rpmFrqDiv = param_cget<"role.esc.dshot.rpm_freq_div">();
+  const uint16_t motorPoles = param_cget<"role.esc.dshot.motor_poles">();
+  if ((motorPoles < 2) || ((motorPoles % 2) != 0)) {
+    if (m_node) {
+      m_node->infoCb("esc.dshot: motor_poles must be even and >= 2 (got %u)", motorPoles);
+    }
+    return DeviceStatus(DeviceStatus::ESC_DSHOT, DeviceStatus::INVALID_PARAM, motorPoles);
+  }
+  polePairs = motorPoles / 2;
 
   if ((numChannels == 0) || (numChannels > 4)) {
     if (m_node) {
@@ -149,12 +157,12 @@ void  EscDshot::periodic(void *)
       }
       if (publishTelemetry && (pendingErpm[channel] != DSHOT_BIDIR_ERR_CRC)) {
 	  msgEscStatus.esc_index = slot + mapIndex1;
-	  msgEscStatus.rpm = pendingErpm[channel];
+	  msgEscStatus.rpm = pendingErpm[channel] / polePairs;
 #if	DSHOT_BIDIR_EXTENTED_TELEMETRY
 	  const DshotTelemetry tlm = dshotGetTelemetry(&dshotd, channel);
 	  msgEscStatus.voltage =  tlm.frame.voltage / 100.0f;
 	  msgEscStatus.current =  tlm.frame.current / 100.0f;
-	  msgEscStatus.temperature = tlm.frame.temp;
+	  msgEscStatus.temperature = tlm.frame.temp + 273.15f; // EDT Celsius -> DroneCAN kelvin.
 #endif  // TELEMETRY
 	  m_node->sendBroadcast(msgEscStatus, CANARD_TRANSFER_PRIORITY_LOW);
       }

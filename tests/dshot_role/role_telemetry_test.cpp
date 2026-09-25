@@ -2,6 +2,7 @@
 // Hardware/RTOS calls are stubbed; decoder results arrive one cycle at a time.
 #include <array>
 #include <cassert>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <vector>
@@ -63,6 +64,7 @@ struct EscDshot {
     std::array<uint8_t, 4> channelMap{1, 3};
     uint8_t numChannels = 2, mapIndex1 = 4;
     uint16_t rpmFrqDiv = 0;
+    uint8_t polePairs = 1;
     systime_t loopPeriod = 5;
     uint16_t throttles[4]{};
     DSHOTDriver dshotd;
@@ -73,11 +75,12 @@ struct EscDshot {
 
 @PERIODIC@
 
-static void run(unsigned divider) {
+static void run(unsigned divider, unsigned pairs, uint32_t expectedRpm1, uint32_t expectedRpm3) {
     cycle = 0;
     readCount.fill(0);
     EscDshot role;
     role.rpmFrqDiv = divider;
+    role.polePairs = pairs;
     try { role.periodic(nullptr); } catch (const Finished&) {}
     const auto& sent = role.node.sent;
 #if DSHOT_BIDIR
@@ -91,17 +94,17 @@ static void run(unsigned divider) {
     assert(sent.size() == 3);
     const unsigned firstCycle = divider == 3 ? 2 : 0;
     assert(sent[0].cycle == firstCycle && sent[0].status.esc_index == 4);
-    assert(sent[0].status.rpm == 6000);
+    assert(sent[0].status.rpm == expectedRpm1);
     assert(sent[1].cycle == firstCycle && sent[1].status.esc_index == 5);
-    assert(sent[1].status.rpm == 9000);
+    assert(sent[1].status.rpm == expectedRpm3);
     assert(sent[2].cycle == (divider == 3 ? 5U : 3U));
     assert(sent[2].status.esc_index == 5 && sent[2].status.rpm == 0);
-    // The second window has no valid RPM on channel 1: do not repeat 6000.
+    // The second window has no valid RPM on channel 1: do not repeat its RPM.
 #if DSHOT_BIDIR_EXTENTED_TELEMETRY
     if (divider == 3) {
-        assert(sent[0].status.temperature == 43);
-        assert(sent[1].status.temperature == 52);
-        assert(sent[2].status.temperature == 55);
+        assert(std::fabs(sent[0].status.temperature - 316.15f) < 0.001f);
+        assert(std::fabs(sent[1].status.temperature - 325.15f) < 0.001f);
+        assert(std::fabs(sent[2].status.temperature - 328.15f) < 0.001f);
     }
 #endif
 #else
@@ -121,8 +124,10 @@ int main() {
     responses[4][1] = {DSHOT_BIDIR_TLM_EDT, 44};
     responses[4][3] = {DSHOT_BIDIR_TLM_EDT, 54};
     responses[5][3] = {DSHOT_BIDIR_TLM_EDT, 55};
-    run(3);
-    run(1);
-    run(0);
-    puts("DShot role: per-cycle decoding, CAN cadence, channel mapping and RPM freshness OK");
+    for (unsigned divider : {0U, 1U, 3U}) {
+        run(divider, 1, 6000, 9000);
+        run(divider, 7, 857, 1285); // 14-pole motors; fractional RPM rounded down.
+        run(divider, 50, 120, 180); // 100 poles, the maximum configured pole count.
+    }
+    puts("DShot role: per-cycle decoding, CAN cadence, channel mapping, RPM freshness and units OK");
 }
