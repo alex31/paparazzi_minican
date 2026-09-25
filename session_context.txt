@@ -1,0 +1,18 @@
+Session context (Codex CLI)
+===========================
+- Project: MicroCAN/MicroCAN UAVCAN interface cards (STM32G491) with shared code under `COMMON/` and per-board configs under `microcan/` and `microcan/`.
+- Roles: multiple peripherals (servos PWM/smart, DShot ESC, SBUS tunnel, telemetry tunnel, baro sensor). Roles enabled via UAVCAN GetSet parameters (`role.*`).
+- Goal discussed: add new GNSS bridge role to forward UBX GPS data to DroneCAN (`uavcan.equipment.gnss.Fix/Fix2`).
+- Key assets:
+  * Existing UBX decoder reference in `~/DEV/STM32/CHIBIOS/C21DEV/SMARTPROBE_M777/smart_probe/source/ubxNavPvt.*`.
+  * UAVCAN libraries/DSDL under `/home/alex/DEV/STM32/UAVCAN/`.
+  * MCU-specific helpers in `/home/alex/DEV/STM32/CHIBIOS/COMMON/various` (includes `UAVCAN/pubSub.*`).
+- User workflow preference: AI provides detailed spec/todo; user implements code; AI performs review afterwards.
+- Created files this session:
+  * `todo_codex.txt` – detailed implementation plan for the GNSS UBX role.
+  * `session_context.txt` – this summary for quick restart reference.
+- Additional context (persistant parameters):
+  * Persistant param system lives in `/home/alex/DEV/STM32/CHIBIOS/COMMON/various/UAVCAN/persistantParam.*` (and `persistantStorage.*`), shared into this project via `microcan/Makefile` `VARIOUS` path.
+  * RAM cache is `Persistant::Parameter::storedParamsList` defined as `std::array<StoredValue, params_list_len>`; `params_list_len` is derived from the constexpr `params_list` (2 sentinel entries + current `COMMON/source/nodeParameters.hpp` entries = 39 here).
+  * Strings use `TinyString` with pool size computed at compile time via `getTinyStringMemoryPoolSize()` over `params_list`, preventing overflow; `tinyStrSize` is 47 chars, pool size covers the single string param (`hardware.nickname`).
+  * Integer type is `int64_t`, so each parameter slot costs ~16 bytes; cache ~624 bytes total, plus the tiny string pool (~48 bytes).

@@ -1,0 +1,43 @@
+# Review of siowrapper usage in MICROCAN/MICROCAN roles
+
+The following roles and their usage of `sioWrapper` derived classes (`Buffered`, `Continuous`, `Datagram`) were reviewed against the master branch implementation and protocol requirements.
+
+## Summary
+
+| Role | File | Class Used | Appropriateness |
+| :--- | :--- | :--- | :--- |
+| **GpsUBX** | `gpsUbxRole.cpp` | `SIO::Buffered` (Config)<br>`SIO::Continuous` (Stream) | **Excellent**. `Buffered` fits the synchronous command/ack configuration phase. `Continuous` fits the high-throughput, continuous NAV-PVT stream. |
+| **SerialStream** | `serialStreamRole.cpp` | `SIO::Continuous` | **Excellent**. The tunnel handles a continuous, transparent stream of data. `Continuous` (DMA circular buffer) ensures no data loss during high-throughput RX. |
+| **ServoSmart** | `servoSmart.cpp` | `SIO::Datagram` | **Excellent**. The STS3032 protocol is transactional (Command -> Response). `Datagram` (OneShot DMA) correctly models this request/reply pattern. |
+| **RC_Sbus** | `futabaSbusUart.cpp`<br>(via `sbusRole.cpp`) | `SIO::Datagram` | **Debatable / Sub-optimal**. SBUS is a continuous stream of fixed-length frames. While `Datagram` works, the current implementation relies on `readTimeout` and a `chThdSleepMilliseconds(1)` loop to regain synchronization if a frame is misaligned. `SIO::Continuous` would be more suitable as it would allow a robust "sliding window" search for the start byte in the ring buffer without potential data loss or timing-dependent resync logic. |
+
+## Detailed Analysis
+
+### 1. GpsUBX (`gpsUbxRole`)
+-   **Usage:**
+    -   `GpsCfgSio = SIO::Buffered<256U>` for configuration (`ubxSendConfigValset`, etc.).
+    -   `GpsSIO = SIO::Continuous<dmaRxSize, dmaRxFifoDepth>` for runtime RX.
+-   **Verdict:** Correct. Separation of concerns is well handled. `Buffered` simplifies the linear configuration flow, while `Continuous` handles the asynchronous, high-volume telemetry stream efficiently via `sioRxCb`.
+
+### 2. SerialStream (`serialStreamRole`)
+-   **Usage:**
+    -   `SerialSIO = SIO::Continuous<dmaRxSize, dmaRxFifoDepth>`.
+-   **Verdict:** Correct. The role acts as a pipe. `Continuous` provides the necessary circular buffering to absorb bursts and maintain throughput without the overhead of re-arming DMA for every chunk, which fits the "tunnel" use case perfectly.
+
+### 3. ServoSmart (`servoSmart`)
+-   **Usage:**
+    -   `SIO::Datagram`.
+-   **Verdict:** Correct. Smart servos typically operate on a strict "Master sends Command -> Slave sends Reply" basis. The `Datagram` class allows precise control over the transaction, including waiting for the specific response packet.
+
+### 4. RC_Sbus (`sbusRole`)
+-   **Usage:**
+    -   `SBUSDriver` (in `futabaSbusUart.cpp`) uses `SIO::Datagram`.
+-   **Logic:**
+    -   The `receivingLoopThread` calls `sio->readTimeout(..., 25, ...)` to read a full frame.
+    -   If synchronization is lost (start/end bytes don't match), it sleeps for 1ms and retries.
+-   **Verdict:** While functional, this is not the *most* suitable class.
+    -   **Issue:** `Datagram` forces a read of N bytes. If the stream is offset by 1 byte, `Datagram` will read 25 misaligned bytes. The recovery strategy (sleep 1ms) essentially "shifts" the read window in time, hoping to eventually align with the ~14ms frame cadence.
+    -   **Recommendation:** `SIO::Continuous` would be superior here. It would capture the raw byte stream into a ring buffer. The parser could then peek into the buffer to find the header `0x0F` and extract the frame immediately, ensuring faster and deterministic synchronization (O(N) search vs. timing-based guess).
+
+## Conclusion
+The migration to `sioWrapper` is sound. `GpsUBX`, `SerialStream`, and `ServoSmart` use the optimal derived classes for their respective protocols. `RC_Sbus` could technically be improved by switching to `SIO::Continuous` for more robust frame synchronization, but `SIO::Datagram` is acceptable given the current implementation constraints and the fixed-frame nature of SBUS.

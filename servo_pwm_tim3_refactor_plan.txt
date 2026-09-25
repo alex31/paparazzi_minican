@@ -1,0 +1,350 @@
+Plan detaille: extension de ROLE.servo.pwm a 7 sorties logiques sur TIM1 + TIM3
+===============================================================================
+
+Objectif
+--------
+Faire evoluer le role PWM pour supporter 7 sorties logiques:
+- sorties logiques 0..3 sur TIM1_CH1..CH4, broches PA08..PA11
+- sorties logiques 4..6 sur TIM3_CH1, TIM3_CH2, TIM3_CH4, broches PB04, PA04, PB07
+
+Contraintes a respecter
+-----------------------
+1. Les sorties TIM3 ne sont pas "gratuites":
+   - PB04 est partagee avec USART2_RX
+     Utilisee par:
+     - ROLE.sbus
+     - ROLE.gnss.ubx
+     - ROLE.tunnel.serial
+     - ROLE.servo.smart
+   - PB07 est partagee avec I2C1_SDA et deja mutualisee avec:
+     - ROLE.led2812
+     - ROLE.voltmeter
+     - bus I2C (baro, magneto, etc.)
+   - PA04 est actuellement le chip-select SPI externe dans la config carte
+     Il faut la traiter comme une broche partagee localement a la carte.
+
+2. Le role doit reserver explicitement:
+   - TIM1 si au moins une voie logique 0..3 est active
+   - TIM3 si au moins une voie logique 4..6 est active
+   - chaque broche active individuellement
+
+3. Les reglages de PWM doivent etre separes par timer:
+   - un couple frequency / pulse_half_width pour TIM1
+   - un couple frequency / pulse_half_width pour TIM3
+   Cela evite de supposer une frequence unique pour les 7 voies.
+
+4. role.servo.pwm.channel_mask doit passer de 4 bits a 7 bits.
+
+
+Etat actuel a modifier
+----------------------
+Fichier principal:
+- COMMON/source/servoPwm.cpp
+
+Hypotheses codees en dur aujourd'hui:
+- les 4 sorties PWM sont supposees sur un seul timer
+- les canaux sont supposes contigus CH1..CH4
+- le code reserve seulement TIM1
+- le code derive les broches a partir de PA08 + channel
+
+Autres fichiers a adapter:
+- COMMON/source/nodeParameters.hpp
+- docs/software/roles/overview.md
+- roles.readme.txt
+
+Optionnel mais recommande:
+- toute doc de mapping materiel si vous voulez exposer officiellement CH5..CH7
+
+
+Proposition de nouveaux parametres
+----------------------------------
+Conserver:
+- ROLE.servo.pwm
+- role.servo.pwm.map_index1
+- role.servo.pwm.channel_mask
+
+Remplacer:
+- role.servo.pwm.frequency
+- role.servo.pwm.pulse_half_width
+
+Par:
+- role.servo.pwm.ch0-3.frequency
+- role.servo.pwm.ch0-3.pulse_half_width
+- role.servo.pwm.ch4-6.frequency
+- role.servo.pwm.ch4-6.pulse_half_width
+
+Valeurs recommandees:
+- ch0-3.frequency: min 50, max 560, defaut 50
+- ch0-3.pulse_half_width: defaut false
+- ch4-6.frequency: min 50, max 560, defaut 50
+- ch4-6.pulse_half_width: defaut false
+- channel_mask: min 0b0000001, max 0b1111111, defaut 0b0001111
+
+Commentaire recommande pour channel_mask:
+- bit0 = CH1 = TIM1_CH1 = PA08
+- bit1 = CH2 = TIM1_CH2 = PA09
+- bit2 = CH3 = TIM1_CH3 = PA10
+- bit3 = CH4 = TIM1_CH4 = PA11
+- bit4 = CH5 = TIM3_CH1 = PB04
+- bit5 = CH6 = TIM3_CH2 = PA04
+- bit6 = CH7 = TIM3_CH4 = PB07
+
+
+Refactor detaille de servoPwm.cpp
+---------------------------------
+1. Supprimer l'hypothese "un seul timer"
+   A supprimer ou refactorer:
+   - les static_assert qui imposent SRV1..SRV4 sur un seul timer
+   - le PWMDriver unique SERVO_PWMD
+   - le calcul de pin via PA08 + channel
+   - la configuration PWM unique pwmServoCfg
+   - le halfWidthFactor unique
+   - la frequence unique servoPwmFreq
+
+2. Introduire une table de mapping explicite des sorties logiques
+   Creer une structure du style:
+
+   struct LogicalChannelDef {
+     PWMDriver* driver;
+     pwmchannel_t hwChannel;
+     HWResource timerRes;
+     HWResource pinRes;
+     TimerGroup group;
+   };
+
+   Puis une table statique a 7 entrees:
+   - 0 -> PWMD1, channel 0, TIM_1, PA08, Tim1
+   - 1 -> PWMD1, channel 1, TIM_1, PA09, Tim1
+   - 2 -> PWMD1, channel 2, TIM_1, PA10, Tim1
+   - 3 -> PWMD1, channel 3, TIM_1, PA11, Tim1
+   - 4 -> PWMD3, channel 0, TIM_3, PB04, Tim3
+   - 5 -> PWMD3, channel 1, TIM_3, PA04, Tim3
+   - 6 -> PWMD3, channel 3, TIM_3, PB07, Tim3
+
+   Point important:
+   - TIM3 utilise CH1, CH2 et CH4, donc les canaux hardware ne sont pas contigus.
+   - Il faut mapper explicitement CH4 de TIM3 sur pwmchannel_t = 3.
+
+3. Garder la logique actuelle de "packing" des sorties actives
+   Aujourd'hui, si le mask active seulement certaines sorties, les actuator_id restent compacts:
+   - mask bits actifs -> ChannelMap.idx[]
+   - actuator_id startIndex + 0 pilote la premiere sortie active
+   - actuator_id startIndex + 1 pilote la deuxieme sortie active
+
+   Il faut conserver ce comportement.
+   Exemple:
+   - mask = CH1 + CH3 + CH7
+   - actuator_id startIndex + 0 -> CH1
+   - actuator_id startIndex + 1 -> CH3
+   - actuator_id startIndex + 2 -> CH7
+
+4. Elargir ChannelMap
+   Modifier la boucle de construction de mask:
+   - passer de 4 ou 8 bits implicites a 7 sorties logiques reelles
+   - limite count max = 7
+
+5. Creer deux configurations PWM distinctes
+   Exemple:
+   - PWMConfig pwmServoCfgTim1
+   - PWMConfig pwmServoCfgTim3
+
+   Les deux configs doivent partir avec tous les canaux disables.
+   Recommande:
+   - faire une petite fonction helper makeDisabledPwmConfig()
+   - frequency = 2 MHz
+   - period initiale = 40000
+   - callback = NULL
+   - channels = tous disables
+
+6. Introduire des reglages separes par groupe
+   Exemple:
+
+   struct TimerSettings {
+     uint32_t freq;
+     float halfWidthFactor;
+   };
+
+   Charger:
+   - tim1 depuis role.servo.pwm.tim1.frequency et .pulse_half_width
+   - tim3 depuis role.servo.pwm.tim3.frequency et .pulse_half_width
+
+7. Valider les reglages seulement pour les groupes effectivement utilises
+   Reprendre la regle actuelle:
+   - si freq <= 100 alors pulse_half_width doit etre false
+   - si freq > 400 alors pulse_half_width doit etre true
+
+   Important:
+   - ne pas rejeter une config invalide sur TIM3 si aucune sortie TIM3 n'est active
+   - idem pour TIM1
+
+8. Acquisition conditionnelle des timers
+   Dans ServoPWM::start():
+   - detecter si au moins un canal logique de Tim1 est actif
+   - detecter si au moins un canal logique de Tim3 est actif
+   - reserver TIM_1 seulement si necessaire
+   - reserver TIM_3 seulement si necessaire
+
+9. Acquisition conditionnelle des broches
+   Pour chaque sortie logique active:
+   - reserver exactement la pin correspondante via boardResource.tryAcquire(pinRes)
+
+   Important:
+   - ne plus deduire la pin par offset depuis PA08
+   - utiliser la table de mapping
+
+10. Activation des canaux hardware dans la bonne config
+    Pour chaque sortie logique active:
+    - retrouver son PWMConfig cible via group
+    - activer cfg.channels[hwChannel] en PWM_OUTPUT_ACTIVE_HIGH
+
+11. Demarrage des timers
+    Une fois les ressources reservees:
+    - si Tim1 est utilise:
+      - pwmServoCfgTim1.period = servoTickFreq / tim1.freq
+      - pwmStart(&PWMD1, &pwmServoCfgTim1)
+    - si Tim3 est utilise:
+      - pwmServoCfgTim3.period = servoTickFreq / tim3.freq
+      - pwmStart(&PWMD3, &pwmServoCfgTim3)
+
+12. Initialisation des sorties a 1500 us
+    Conserver la boucle existante sur:
+    - srv de startIndex a startIndex + channelMap.count
+    - setPwm(srv, 1500.0f)
+
+13. Refactor de setPwm()
+    Le code ne doit plus utiliser:
+    - un seul PWMDriver
+    - channelMap[index - startIndex] comme canal hardware direct
+
+    A la place:
+    - retrouver la sortie logique selectionnee via channelMap
+    - retrouver sa definition dans la table
+    - choisir le bon halfWidthFactor selon Tim1 ou Tim3
+    - appeler pwmEnableChannel(logical.driver, logical.hwChannel, width)
+
+14. Refactor de setUnitless()
+    Meme principe que setPwm():
+    - calculer pulseWidth via remap()
+    - router vers le bon timer et le bon canal hardware
+
+
+Gestion des conflits de ressources
+----------------------------------
+Le role PWM etendu doit laisser les conflits se gerer naturellement via boardResource:
+
+- CH5 sur PB04 doit entrer en conflit avec:
+  - ROLE.sbus
+  - ROLE.gnss.ubx
+  - ROLE.tunnel.serial
+  - ROLE.servo.smart
+
+- CH7 sur PB07 doit entrer en conflit avec:
+  - I2C (baro, magneto, etc.)
+  - ROLE.led2812
+  - ROLE.voltmeter
+
+- CH6 sur PA04 doit entrer en conflit avec tout usage futur qui reserverait PA04
+  Note:
+  - aujourd'hui il n'y a pas de reservation software explicite de PA04/SPI_1 dans les roles inspectes
+  - mais la broche est bien configuree comme SPI_PERIPH_CS au niveau carte
+  - si vous voulez une protection stricte, il faut aussi introduire une reservation software de PA04
+    dans le code qui pilote ce peripherique externe
+
+
+Points de vigilance
+-------------------
+1. TIM3 CH4 n'est pas channel 2 mais channel 3 cote API PWM.
+   C'est le piege principal.
+
+2. Le code actuel retourne INVALID_PWM_MASK seulement si trop de canaux.
+   Avec le nouveau mask, il faut aussi rejeter:
+   - count == 0
+   - count > 7
+
+3. Le default du mask doit probablement rester 4 voies actives seulement:
+   - 0b0001111
+   Cela preserve le comportement historique.
+
+4. Ne changez pas le comportement de map_index1.
+   Il doit rester l'index du premier servo expose sur le bus.
+
+5. Ne touchez pas a ROLE.esc.dshot dans ce refactor.
+   DShot reste aujourd'hui cale sur TIM1 uniquement.
+   L'extension a TIM3 est un sujet separe.
+
+
+Documentation a mettre a jour
+-----------------------------
+1. COMMON/source/nodeParameters.hpp
+   Mettre a jour:
+   - noms de parametres
+   - commentaire du mask 7 bits
+
+2. docs/software/roles/overview.md
+   Remplacer:
+   - role.servo.pwm.frequency
+   - role.servo.pwm.pulse_half_width
+   par:
+   - role.servo.pwm.tim1.frequency
+   - role.servo.pwm.tim1.pulse_half_width
+   - role.servo.pwm.tim3.frequency
+   - role.servo.pwm.tim3.pulse_half_width
+
+   Et mettre a jour le wiring:
+   - CH1..CH4 -> TIM1 / PA08..PA11
+   - CH5..CH7 -> TIM3 / PB04, PA04, PB07
+
+3. roles.readme.txt
+   Meme mise a jour des parametres et du mapping logique.
+
+
+Strategie de verification
+-------------------------
+1. Verification compilation
+   Faire au minimum une compilation du firmware principal.
+   Le point cle est de verifier:
+   - que PWMD3 est bien disponible
+   - que les types PWMConfig / pwmchannel_t sont corrects
+   - qu'aucune reference aux anciens parametres ne subsiste
+
+2. Verification statique du mapping
+   Tester mentalement ou via logs:
+   - mask = 0b0000001 -> active seulement CH1 / TIM1_CH1
+   - mask = 0b0010000 -> active seulement CH5 / TIM3_CH1
+   - mask = 0b0100000 -> active seulement CH6 / TIM3_CH2
+   - mask = 0b1000000 -> active seulement CH7 / TIM3_CH4
+   - mask = 0b1010101 -> mix TIM1/TIM3 avec packing correct
+
+3. Verification des conflits
+   Cas attendus:
+   - PWM sur CH5 doit refuser si un role USART2 occupe PB04
+   - PWM sur CH7 doit refuser si I2C ou LED2812 ou voltmeter occupe PB07
+   - PWM seulement sur CH1..CH4 ne doit pas reserver TIM3
+   - PWM seulement sur CH5..CH7 ne doit pas reserver TIM1
+
+4. Verification des periodes independantes
+   Cas utiles:
+   - TIM1 a 50 Hz, TIM3 a 400 Hz
+   - verifier que les voies de chaque groupe utilisent leur propre period
+
+
+Ordre d'implementation recommande
+---------------------------------
+1. Modifier les parametres dans nodeParameters.hpp
+2. Refactorer servoPwm.cpp avec la table de mapping et les deux PWMConfig
+3. Compiler
+4. Corriger les erreurs de build
+5. Mettre a jour la doc overview.md
+6. Mettre a jour roles.readme.txt
+7. Recompiler
+
+
+Resultat attendu
+----------------
+Apres refactor, ROLE.servo.pwm doit pouvoir:
+- exposer jusqu'a 7 sorties logiques
+- router les sorties logiques 0..3 vers TIM1
+- router les sorties logiques 4..6 vers TIM3
+- appliquer des frequences et reglages half-width differents par timer
+- conserver le packing des actuator_id sur les voies actives
+- detecter correctement les conflits de ressources avec les autres roles

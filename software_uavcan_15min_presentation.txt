@@ -1,0 +1,254 @@
+MicroCAN Software Presentation (15 minutes)
+Audience: Hardware + software stakeholders
+Scope: Software only (hardware covered separately)
+
+==================================================
+Slide 1 - Title and Scope (0:30)
+==================================================
+On slide:
+- MicroCAN / MicroCAN Software Architecture
+- UAVCAN general-purpose node on STM32G491
+- Hardware presentation is covered separately
+
+Speaker notes:
+- This presentation focuses on the software architecture and extension model.
+- The key idea is that this board is not single-purpose: it is a reusable UAVCAN node platform.
+
+Suggested visual:
+- Board photo + simple block: "UAVCAN bus <-> MicroCAN node <-> peripherals"
+
+
+==================================================
+Slide 2 - What is UAVCAN / DroneCAN? (1:30)
+==================================================
+On slide:
+- Lightweight communication protocol for embedded nodes on CAN
+- Strongly typed messages and services (DSDL data types)
+- Supports telemetry, commands, configuration, and firmware update
+
+Speaker notes:
+- UAVCAN (DroneCAN in this stack) is an application-layer protocol on top of CAN.
+- It standardizes data exchange between distributed embedded nodes.
+- It gives us interoperability and a clean way to compose systems.
+
+Suggested visual:
+- 3 to 5 nodes on one CAN bus with message icons
+
+
+==================================================
+Slide 3 - What is a UAVCAN Node? (1:30)
+==================================================
+On slide:
+- Has a node ID (static or dynamic)
+- Publishes/subscribes broadcast data
+- Answers standard services (NodeInfo, parameters, restart, firmware update)
+
+Speaker notes:
+- A node is an autonomous endpoint on the bus.
+- It exposes identity, status, parameters, and functional data.
+- In this project, one physical board can expose different behaviors through roles.
+
+Suggested visual:
+- Node internals: identity, status, pub/sub, services
+
+
+==================================================
+Slide 4 - Project Goal: General-Purpose Node (1:30)
+==================================================
+On slide:
+- MicroCAN acts as a protocol bridge and I/O concentrator
+- Connects UAVCAN network to PWM, DShot, UART, I2C, LED peripherals
+- Feature set selected by software roles and parameters
+
+Speaker notes:
+- The software is designed to be generic and configurable.
+- Instead of building one firmware per use-case, we enable the required roles.
+
+Suggested visual:
+- Central node with arrows to ESC, servo, GPS, barometer, RC, LED strip
+
+
+==================================================
+Slide 5 - Firmware Architecture Overview (2:00)
+==================================================
+On slide:
+- Two images:
+  - Bootloader
+  - Main application
+- Main app runs UAVCAN node + role system
+- Persistent parameter storage in external memory
+
+Speaker notes:
+- The bootloader and application are intentionally separated.
+- The application handles runtime behavior and the first stage of update.
+- The bootloader applies the new firmware from external memory on reboot.
+
+Code references:
+- docs/software/architecture.md
+- microcan/source/main.cpp
+- microcan/source/UAVCanSlave.cpp
+
+Suggested visual:
+- Sequence: UAVCAN update request -> external memory -> reboot -> bootloader flash
+
+
+==================================================
+Slide 6 - Node Core Responsibilities (2:00)
+==================================================
+On slide:
+- Node initialization and status publication
+- Standard UAVCAN services:
+  - GetNodeInfo
+  - Param GetSet / ExecuteOpcode
+  - RestartNode
+  - BeginFirmwareUpdate + file read flow
+- Dynamic role orchestration at startup
+
+Speaker notes:
+- Core protocol handling is centralized in one place.
+- This keeps role code focused on application behavior.
+
+Code references:
+- microcan/source/UAVCanSlave.cpp
+  - service handlers and subscriptions
+  - role instantiation logic
+
+Suggested visual:
+- One central "Node Core" block with service API boxes around it
+
+
+==================================================
+Slide 7 - Role System: Modular Application Layer (1:30)
+==================================================
+On slide:
+- Roles are independent software features
+- Enable model:
+  - Compile-time: USE_*_ROLE
+  - Runtime: ROLE.* parameters
+- Each role implements subscribe() and start()
+
+Speaker notes:
+- Compile-time toggles remove unused code.
+- Runtime parameters decide which compiled roles are active on boot.
+- This gives both flexibility and control of binary size/resources.
+
+Code references:
+- COMMON/source/roleConf.h
+- COMMON/source/nodeParameters.hpp
+- COMMON/source/roleBase.hpp
+- microcan/source/UAVCanSlave.cpp
+
+Suggested visual:
+- Two switches per role: "compiled?" and "enabled at runtime?"
+
+
+==================================================
+Slide 8 - Implemented Roles (2:00)
+==================================================
+On slide:
+- Actuation roles:
+  - Servo (PWM / smart servo)
+  - ESC DShot
+- Sensor and data roles:
+  - Barometer, Magnetometer, GPS UBX, SBUS RC input
+  - Serial tunnel
+- Utility roles:
+  - LED strip, Voltmeter, Health survey
+
+Speaker notes:
+- Different use-cases are created by selecting role combinations.
+- The project already covers control outputs, sensor ingestion, and telemetry bridge functions.
+
+Code references:
+- roles.readme.txt
+- docs/software/roles/overview.md
+
+Suggested visual:
+- Role catalog table: role name / receives / publishes
+
+
+==================================================
+Slide 9 - Conflict-Free Resource Management (1:00)
+==================================================
+On slide:
+- Hardware resources are explicitly acquired by roles
+- Shared-resource conflicts are blocked at startup
+- Shared-pin remapping supported (especially on MicroCAN)
+
+Speaker notes:
+- A role must acquire timers/UART/I2C/GPIO before starting.
+- If another role already owns a resource, startup fails safely.
+- Dynamic pin scenario configuration handles shared connector constraints.
+
+Code references:
+- COMMON/source/resourceManager.hpp
+- COMMON/source/dynamicPinConfig.cpp
+
+Suggested visual:
+- Resource bitmap + conflict example (LED strip vs voltmeter shared path)
+
+
+==================================================
+Slide 10 - How to Add a New Role (1:30)
+==================================================
+On slide:
+- Start from TemplateRole
+- Add role parameters
+- Register role in UAVCanSlave
+- Acquire resources and implement pub/sub
+- Document role behavior
+
+Speaker notes:
+- The extension workflow is already documented and repeatable.
+- This is the key maintainability point: adding a role, not rewriting architecture.
+
+Step checklist:
+1. Copy template role files and rename class
+2. Add ROLE.my_role and runtime params in nodeParameters
+3. Add USE_MY_ROLE in roleConf
+4. Register addRole<MyRole, FixedString("ROLE.my_role")>()
+5. Acquire hardware resources in start()
+6. Add subscriptions/publications
+7. Update role documentation
+
+Code references:
+- COMMON/source/templateRole.hpp
+- COMMON/source/templateRole.cpp
+- docs/software/adding_roles.md
+
+Suggested visual:
+- "7-step flow" diagram
+
+
+==================================================
+Slide 11 - Closing (0:30)
+==================================================
+On slide:
+- MicroCAN software is a reusable UAVCAN node platform
+- General-purpose behavior is achieved with modular roles
+- Fast path for future features: add role, parameterize, deploy
+
+Speaker notes:
+- Main takeaway: this architecture supports product evolution without destabilizing the core.
+- Questions.
+
+
+==================================================
+Optional Backup Slide - Useful Code Map
+==================================================
+- Entry point / startup: microcan/source/main.cpp
+- Node core: microcan/source/UAVCanSlave.cpp
+- Role base interfaces: COMMON/source/roleBase.hpp
+- Role toggles: COMMON/source/roleConf.h
+- Runtime parameters: COMMON/source/nodeParameters.hpp
+- Role catalog and message map: roles.readme.txt
+- Add-role procedure: docs/software/adding_roles.md
+
+
+==================================================
+Presenter Tips (not for slide)
+==================================================
+- Keep the first 4 slides very high-level for mixed audience.
+- Use one concrete example when explaining roles (e.g., ESC DShot or GPS UBX).
+- On the "add role" slide, emphasize maintainability and reduced integration risk.
+- Target pace: ~1 minute per slide on average, slightly longer on architecture and roles.
