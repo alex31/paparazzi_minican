@@ -8,4 +8,17 @@ build
 microcan/cfg/.boardgen_*.stamp
 microcan/cfg/values.txt
 
+# Local Python environment and generated caches.
+/.venv_dsdlc/
+__pycache__/
+*.py[cod]
+.gdb_history
+
+# Independent dependency checkouts (kept in their own Git repositories).
+/ext/
+/third_party/x-cube-tof1/
+
+# Hardware recordings kept locally.
+/docs/VID_20260921_093815.mp4
+/tools/imav_monitor/captures/
 
