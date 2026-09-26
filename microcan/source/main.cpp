@@ -89,7 +89,7 @@ int main(void)
   
   {
     // Keep the boot mode stable while UAVCAN starts (including dynamic ID
-    // allocation). Parameter changes take effect on the next restart.
+    // allocation). Only this boot snapshot determines which roles are started.
     const bool identificationMode = param_cget<"ROLE.identification">();
     if (identificationMode) {
       DebugTrace("passage en mode identification");
@@ -118,7 +118,11 @@ int main(void)
     }
   }
    
-  RgbLed::setNodeId(CANSlave::getNodeId());
+  // After a normal boot, identification only overrides the LED, never roles.
+  // Install the reader after storage/node startup; the bootloader needs none.
+  RgbLed::setNodeId(CANSlave::getNodeId(), [] {
+    return param_cget<"ROLE.identification">();
+  });
   Adc::setErrorCB([](float psBat, float coreTemp) {
     // four LSB bits of first byte are for the actual status
     // four MSB bits of first byte keep trace of all event since powered up

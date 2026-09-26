@@ -5,12 +5,16 @@ Role system overview:
 - Roles are compiled in if USE_*_ROLE in
   [COMMON/source/roleConf.h](../../../COMMON/source/roleConf.h) is true. The diagnostic shell uses `TRACE` (omitted with `NOSHELL=1`).
 - Roles are instantiated at startup if their ROLE.* parameter is enabled.
-- When ROLE.identification is true, application roles remain stopped and UAVCAN
+- When ROLE.identification is true **at boot**, application roles remain stopped and UAVCAN
   runs in MAINTENANCE mode. Configuration, restart, dynamic ID allocation and
   firmware updates remain available; the onboard LED shows the purple motif.
   The shell remains available if `ROLE.shell=true`.
   Role parameters remain visible and retain their values. Disable identification,
   save and restart to resume the configured roles without reconfiguring them.
+- After a normal boot, changing ROLE.identification only toggles the onboard
+  LED between identification and node ID. Roles and UAVCAN mode are unchanged;
+  the value is read at intervals of at most 200 ms. Use parameter write behavior 0 for a temporary
+  change; behavior 1 saves it for the next boot, and behavior 2 reboots at once.
 - Each role inherits RoleBase and implements subscribe() and start().
 - Hardware resources are acquired via boardResource.tryAcquire(...).
 

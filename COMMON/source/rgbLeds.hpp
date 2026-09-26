@@ -24,6 +24,9 @@ namespace RgbLed {
   void setMotif(uint16_t periodMs, uint16_t motif);
   /** @brief Enable the "wheel of death" animation. */
   void setWheelOfDeath();
-  /** @brief Configure the node ID to display in minimal mode. */
-  void setNodeId(uint8_t id);
+  /**
+   * @brief Display the node ID, with an optional live identification override.
+   * @param identificationRequested Called by the full animation thread; must not block.
+   */
+  void setNodeId(uint8_t id, bool (*identificationRequested)() = nullptr);
 };

@@ -39,6 +39,7 @@ static unsigned shellConstructed, shellSubscribed, shellStarted;
 static unsigned nodeStarts, allocations;
 static bool terminalResistor;
 static uint8_t displayedId;
+static bool (*ledIdentificationRequested)() = nullptr;
 static uint16_t motif;
 struct HSV { float h, s, v; };
 static HSV color{};
@@ -47,7 +48,10 @@ namespace RgbLed {
 void start() {}
 void setMotif(uint16_t, uint16_t value) { motif = value; }
 void setColor(HSV value) { color = value; }
-void setNodeId(uint8_t value) { displayedId = value; }
+void setNodeId(uint8_t value, bool (*check)()) {
+    displayedId = value;
+    ledIdentificationRequested = check;
+}
 }
 struct DeviceStatus {
     enum Source { ALL, RESOURCE };
@@ -113,7 +117,7 @@ struct Node {
         ++nodeStarts;
         modeAtStart = mode;
         if (id <= 0) { ++allocations; id = 42; }
-        if (changeDuringStart) identification = false;
+        if (changeDuringStart) identification = !identification;
     }
     uint8_t getNodeId() const { return id; }
     void infoCb(const char*, ...) {}
@@ -200,12 +204,13 @@ struct BootComplete {};
 int main(int argc, char** argv) {
     assert(argc == 2);
     const std::string_view scenario(argv[1]);
-    const bool identifyAtBoot = scenario != "normal" && scenario != "shell-off" && scenario != "role-error";
+    const bool identifyAtBoot = scenario != "normal" && scenario != "shell-off" &&
+        scenario != "role-error" && scenario != "enabled-during-start";
     identification = identifyAtBoot;
     roleError = identifyAtBoot || scenario == "role-error";
     shellEnabled = scenario != "shell-off" && scenario != "identification-shell-off";
     shellError = scenario == "identification-shell-error";
-    changeDuringStart = scenario == "changed-during-start";
+    changeDuringStart = scenario == "changed-during-start" || scenario == "enabled-during-start";
     if (scenario == "dynamic") configuredId = 0;
     unsigned expectedShell = 0;
 #ifdef TRACE
@@ -218,6 +223,7 @@ int main(int argc, char** argv) {
     if (scenario == "role-error") {
         assert(constructed > 0 && subscribed == 1 + expectedShell);
         assert(nodeStarts == 0 && started == 0 && adcCallbacks == 0);
+        assert(ledIdentificationRequested == nullptr);
         assert(motif == 0b110011000 && color.h == 0.0f);
     } else {
         assert(slaveNode != nullptr && nodeStarts == 1);
@@ -238,6 +244,7 @@ int main(int argc, char** argv) {
             assert(node.mode == UAVCAN_PROTOCOL_NODESTATUS_MODE_MAINTENANCE);
             assert(node.modeAtStart == UAVCAN_PROTOCOL_NODESTATUS_MODE_MAINTENANCE);
             assert(displayedId == 0);
+            assert(ledIdentificationRequested == nullptr); // Boot identification stays latched.
             if (shellError && expectedShell) {
                 // Failed diagnostics must not stop the management services.
                 assert(motif == 0b110011000 && color.h == 0.0f);
@@ -251,6 +258,16 @@ int main(int argc, char** argv) {
             assert(healthStarted == 1 && adcCallbacks == 1);
             assert(node.mode == UAVCAN_PROTOCOL_NODESTATUS_MODE_OPERATIONAL);
             assert(displayedId == configuredId);
+            assert(ledIdentificationRequested != nullptr);
+            assert(ledIdentificationRequested() == (scenario == "enabled-during-start"));
+            // Live changes affect only the LED reader, not roles or NodeStatus.
+            for (bool value : {true, false, true, false}) {
+                identification = value;
+                assert(ledIdentificationRequested() == value);
+                assert(constructed == expected && started == expected && nodeStarts == 1);
+                assert(node.mode == UAVCAN_PROTOCOL_NODESTATUS_MODE_OPERATIONAL);
+                assert(healthStarted == 1 && adcCallbacks == 1);
+            }
         }
     }
     for (auto role : roles) delete role;

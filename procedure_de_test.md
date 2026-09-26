@@ -1,6 +1,6 @@
 # Procédure de test des rôles MicroCAN V5
 
-Public : stagiaire de première année de BTS. Version de la procédure : 25 septembre 2026.
+Public : stagiaire de première année de BTS. Version de la procédure : 26 septembre 2026.
 
 **Objectif : vérifier chaque rôle séparément, depuis son branchement jusqu'au résultat physique et aux messages CAN.** Le projet décrit 15 rôles fonctionnels (dont le shell), un mode d'identification et un modèle de développement, soit 17 rôles. Le modèle `ROLE.template` est exclu de la compilation habituelle ; `ROLE.shell` est absent des versions `NOSHELL=1`.
 
@@ -713,13 +713,21 @@ Après le test, désactiver le rôle. Le tuteur remet la définition de compilat
 
 **Configuration de départ :** conserver une configuration déjà validée avec au moins un rôle actif autre que le shell. Sur un banc sans périphérique, utiliser celle de T01 (`ROLE.health.survey=true`). Ne pas désactiver ce rôle pour entrer en identification. Faire **Fetch All → Save to File** et conserver `resultats_tests/parametres_avant_identification.json`.
 
-**Manipulation :**
+**A — Identification visuelle à chaud, sans interrompre les rôles :**
+
+1. Partir d'un démarrage normal avec `ROLE.identification=false`, un rôle validé actif et `NodeStatus.mode=OPERATIONAL`. Pour cet essai, préférer HealthSurvey sur carte seule ; observer ses messages de tension/température et relever l'uptime (temps écoulé depuis le démarrage).
+2. Régler `uavcan.param_set_behavior=0` (**RAM seulement**). Ne pas cliquer **Store All** ou **Restart** pendant cette partie. La valeur 2 provoquerait un reboot ; la valeur 1 sauvegarderait l'identification pour le prochain démarrage.
+3. Régler `ROLE.identification=true` dans la GUI et envoyer la modification. La LED doit passer au motif violet sans attendre la fin de la séquence du Node ID. Vérifier que les messages du rôle continuent, que le mode reste **OPERATIONAL** et que l'uptime continue d'augmenter sans repartir de zéro. Si le shell est déjà actif, il doit continuer à répondre.
+4. Régler `ROLE.identification=false`, toujours sans sauvegarde ni redémarrage : la LED reprend la séquence du Node ID à son premier chiffre. Les publications et l'uptime doivent continuer. Recommencer pendant un chiffre, un intervalle éteint et la longue pause finale. Le délai de prise en compte par la LED doit être d'environ 200 ms au maximum après réception de l'écriture CAN : la boucle attend la prochaine transition de couleur, avec une attente plafonnée à 200 ms. La carte n'envoie une trame à la LED que lorsque sa couleur change.
+5. Laisser `ROLE.identification=false`, puis rétablir `uavcan.param_set_behavior=1` pour la suite. L'activation des rôles n'a dû changer à aucun moment de cette partie.
+
+**B — Identification présente au boot : comportement de maintenance conservé :**
 
 1. Arrêter tous les essais et couper les alimentations moteurs/servos.
 2. Régler `ROLE.identification=true`, sauvegarder et redémarrer.
 3. Observer le motif violet sur la LED **interne**. La carte doit revenir dans la GUI après son redémarrage, publier `NodeStatus` en mode **MAINTENANCE** et conserver ce motif même une fois son Node ID attribué.
-4. Cliquer **Fetch All** : tous les paramètres des rôles doivent rester visibles. Comparer leurs indicateurs `ROLE.*` et réglages `role.*` à la sauvegarde : ils doivent être identiques, à l'exception de `ROLE.identification`. Le rôle actif avant le test doit toujours afficher `true`, mais ne plus fonctionner. Modifier temporairement `hardware.nickname`, sauvegarder et relire la valeur. Conserver le nom original pour le rétablir à la fin.
-5. Depuis la GUI, remettre uniquement `ROLE.identification=false`, cliquer **Store All** puis **Restart**. Vérifier le retour en mode **OPERATIONAL**, le motif affichant le Node ID et la reprise du rôle précédemment actif avec ses réglages initiaux. Faire **Fetch All** pour confirmer leur conservation. Aucune réactivation individuelle des rôles ni commande série ne doit être nécessaire.
+4. Cliquer **Fetch All** : tous les paramètres des rôles doivent rester visibles. Comparer leurs indicateurs `ROLE.*` et réglages `role.*` à la sauvegarde : ils doivent être identiques, à l'exception de `ROLE.identification`. Le rôle actif avant le test (autre que le shell) doit toujours afficher `true`, mais ne plus fonctionner. Modifier temporairement `hardware.nickname`, sauvegarder et relire la valeur. Conserver le nom original pour le rétablir à la fin.
+5. Depuis la GUI, remettre uniquement `ROLE.identification=false`, cliquer **Store All** puis **Restart**. Vérifier le retour en mode **OPERATIONAL**, le motif affichant le Node ID et la reprise du rôle précédemment actif avec ses réglages initiaux. Faire **Fetch All** pour confirmer leur conservation. Aucune réactivation individuelle des rôles ni commande série ne doit être nécessaire. Dans ce cas de démarrage en identification, enlever le paramètre sans redémarrer ne relance aucun rôle et conserve le motif violet ; le redémarrage reste nécessaire pour sortir du mode de maintenance.
 6. Vérifier aussi un démarrage avec ID dynamique : sauvegarder `uavcan.node_id=0` et `ROLE.identification=true`, lancer le serveur d'allocation de la GUI et redémarrer. La carte doit obtenir un ID et rester configurable. Utiliser cet ID pour la suite, puis rétablir 10 après l'essai.
 
 **Vérification de la mise à jour, avec le tuteur :**
@@ -729,9 +737,9 @@ Après le test, désactiver le rôle. Le tuteur remet la définition de compilat
 3. Vérifier que la carte réapparaît après le flash, consulter sa version et refaire **Fetch All**. Si identification est toujours activé, le mode revient à MAINTENANCE avec la LED violette.
 4. Rétablir le surnom, le Node ID prévu et `ROLE.identification=false`, sauvegarder puis redémarrer.
 
-**Réussite :** LED d'identification et services CAN fonctionnent ensemble ; les autres rôles, sauf le shell activé, sont suspendus, leurs paramètres restent visibles et inchangés, puis ils reprennent après désactivation et redémarrage. Lecture/écriture des paramètres, allocation dynamique et mise à jour complète du firmware réussissent. Sans flash effectivement réalisé, noter « configuration OK, mise à jour non testée ».
+**Réussite :** à chaud après un démarrage normal, l'identification ne change que la LED, sans coupure des rôles ni reboot, et son retrait rétablit le Node ID. Lorsqu'elle est présente au boot, LED d'identification et services CAN fonctionnent ensemble ; les autres rôles, sauf le shell activé, sont suspendus, leurs paramètres restent visibles et inchangés, puis ils reprennent après désactivation et redémarrage. Lecture/écriture des paramètres, allocation dynamique et mise à jour complète du firmware réussissent. Sans flash effectivement réalisé, noter « configuration OK, mise à jour non testée ».
 
-Le shell reste disponible en identification uniquement si `ROLE.shell=true` (voir T17). Les autres rôles, y compris HealthSurvey, restent arrêtés, même si leurs paramètres sont activés. Pour vérifier cette isolation sans actionneur, laisser par exemple `ROLE.health.survey=true` avant l'entrée dans ce mode : `NodeStatus` doit continuer, tandis que les publications de température/tensions cessent ; elles reprennent après sortie du mode et redémarrage.
+Quand l'identification est présente au boot, le shell reste disponible uniquement si `ROLE.shell=true` (voir T17). Les autres rôles, y compris HealthSurvey, restent arrêtés, même si leurs paramètres sont activés. Pour vérifier cette isolation sans actionneur, laisser par exemple `ROLE.health.survey=true` avant l'entrée dans ce mode : `NodeStatus` doit continuer, tandis que les publications de température/tensions cessent ; elles reprennent après sortie du mode et redémarrage.
 
 ### T17 — Shell de diagnostic : `ROLE.shell`
 
@@ -834,10 +842,11 @@ Ces commandes construisent les outils du PC ; elles ne chargent pas de firmware 
 | Symptôme | Vérifications dans l'ordre |
 | --- | --- |
 | Aucune carte dans la GUI | Alimentation, `can0`, débit, CAN_H/CAN_L/GND, terminaisons, allocation d'ID ; avec un ancien firmware, voir la récupération du mode identification au §2.3. |
-| Carte visible en MAINTENANCE avec LED violette | Mode identification : régler `ROLE.identification=false`, sauvegarder et redémarrer pour lancer les autres rôles. |
+| Carte visible en MAINTENANCE avec LED violette | Identification au boot : régler `ROLE.identification=false`, sauvegarder et redémarrer pour lancer les autres rôles. |
 | La carte apparaît puis redémarre | Chute de tension, courant limité, conflit/panne au démarrage, journal série et évolution d'`uptime`. |
 | Un `ROLE.*` manque | Firmware ancien ou option `USE_*_ROLE` non compilée ; consulter le tuteur. |
 | Paramètres perdus après redémarrage | Relire les valeurs acceptées, **Store All**, puis nouveau **Fetch All**. |
+| Carte visible en OPERATIONAL avec LED violette | Identification visuelle à chaud : régler `ROLE.identification=false` pour retrouver le Node ID, sans redémarrer. |
 | Rôle activé mais inactif | Redémarrage effectué ? Autres rôles désactivés ? Capteur alimenté avant le démarrage ? |
 | Message custom inconnu 20900/20901 | Relancer la GUI avec `--dsdl .../DSDL/microcan` ; utiliser les définitions partagées correspondant au firmware. |
 | UART muet | Bon connecteur J3/J4, TX/RX croisés si UART à deux fils, masse, débit, port non occupé et inversion SBUS. |
@@ -886,7 +895,7 @@ Résultat possible : **OK**, **KO**, **partiel** ou **non testé**. « Partiel �
 | T13 — STS3032, mouvement / retour / unités | | |
 | T14 — DShot, CH1 à CH4 / télémétrie / arrêt | | |
 | T15 — Template, fréquences de journalisation | | |
-| T16 — Identification, paramètres / redémarrage / ID dynamique / flash CAN | | |
+| T16 — Identification à chaud / au boot / paramètres / ID dynamique / flash CAN | | |
 | T17 — Shell, activation / commandes / mémoire / identification | | |
 | Coexistence des capteurs et reprise éventuelle | | |
 | Configuration remise en état | | |

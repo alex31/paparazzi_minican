@@ -126,9 +126,14 @@ The Makefile uses STM32CubeProgrammer over UART with:
 Bootloader size is set in the top level Makefile (see BOOTLOADER_SIZE).
 Generated *.uavcan.bin images are suitable for UAVCAN firmware update.
 
-Identification mode (`ROLE.identification=true`) keeps the UAVCAN node running
+Identification selected at boot (`ROLE.identification=true`) keeps the UAVCAN node running
 in MAINTENANCE mode, so DroneCAN GUI can update the firmware without first
 disabling identification. Application roles stay stopped during this mode, except the shell if `ROLE.shell=true`.
+
+Enabling identification during normal operation only changes the LED; roles
+keep running and UAVCAN stays OPERATIONAL. This does not change CAN firmware
+update availability. See [parameter behavior](parameters.md) for temporary vs
+persisted changes.
 
 Older firmware that stops before CAN initialization in identification mode must
 first leave that mode through the diagnostic UART (`st ROLE.identification

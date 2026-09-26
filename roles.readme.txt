@@ -93,6 +93,8 @@ Remarque : les rôles sont instanciés au démarrage selon les paramètres persi
 
 L'identification ne modifie ni les indicateurs d'activation des autres rôles ni leurs réglages : tous leurs paramètres restent visibles et conservent leurs valeurs. À l’exception du shell, même un rôle configuré avec `ROLE.*=true` reste arrêté dans ce mode. Après désactivation de l'identification, sauvegarde et redémarrage, les rôles reprennent selon la configuration conservée, sans devoir les reconfigurer.
 
+Après un démarrage normal (`ROLE.identification=false` au boot), activer ce paramètre à chaud remplace seulement l'affichage du Node ID par le motif violet. Tous les rôles continuent et le mode UAVCAN reste OPERATIONAL. Le désactiver rétablit l'affichage du Node ID, à partir du premier chiffre. La boucle LED attend la prochaine transition de couleur, au maximum 200 ms, puis relit le paramètre ; elle n'envoie une trame que si la couleur change. Utiliser `uavcan.param_set_behavior=0` pour un repérage temporaire sans sauvegarde ; avec 1, la valeur est persistée et s'appliquera au prochain boot, avec 2 le redémarrage est automatique.
+
 - Microphone IM68A130 (`ROLE.adc.microphone.im68a130`)
   - PA4 / ADC2 / TIM6, acquisition à 24 kHz ; pas de dépendance I2C.
   - FFT 512 points avec fenêtre de Hann : pas de 46,87 Hz, bande 100 Hz–3 kHz.

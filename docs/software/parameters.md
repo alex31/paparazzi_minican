@@ -16,10 +16,24 @@ and starts UAVCAN in MAINTENANCE mode without starting application roles,
 including health survey. The shell still starts if `ROLE.shell=true`.
 Node discovery/dynamic ID allocation, parameter access,
 save/erase, restart and firmware updates remain available. Set it to false, save
-and restart through DroneCAN GUI to enable normal role startup. Changes to this
-mode take effect only on restart.
+and restart through DroneCAN GUI to enable normal role startup. This boot
+selection stays fixed until restart (including its purple LED motif).
 
-Identification is a boot-time override, not a configuration reset. All compiled
+After a **normal boot** (`ROLE.identification=false` at startup), changing the
+parameter to true only displays the purple identification pattern instead of
+the node ID. Existing roles, health survey, shell and UAVCAN status keep running
+unchanged. Setting it back to false resumes the node-ID sequence from its first
+digit without a restart. The LED task polls at color transitions and at least
+every 200 ms during pauses. Its adaptive sleep preserves the blink timing while
+avoiding repeated LED transmissions when the color is unchanged.
+
+For temporary identification, use `uavcan.param_set_behavior=0` (RAM only), edit
+`ROLE.identification`, and do not save/restart. Behavior 1 also applies the LED
+change without rebooting but persists it: restarting with true enters boot
+identification and suspends roles. Behavior 2 restarts automatically and thus
+applies the boot policy.
+
+Identification selected at boot is an override, not a configuration reset. All compiled
 roles remain listed in the parameter interface, and their enable flags and
 settings are preserved. Except for the shell, roles whose `ROLE.*` flag is true
 are not started.

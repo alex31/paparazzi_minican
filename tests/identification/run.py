@@ -45,7 +45,7 @@ def main():
                             str(source), "-o", str(binary)], check=True)
             for scenario in ("identification", "identification-shell-off",
                              "identification-shell-error", "dynamic", "changed-during-start",
-                             "normal", "shell-off", "role-error"):
+                             "normal", "shell-off", "role-error", "enabled-during-start"):
                 # Each invocation models a reboot, including production statics.
                 subprocess.run([str(binary), scenario], check=True)
 

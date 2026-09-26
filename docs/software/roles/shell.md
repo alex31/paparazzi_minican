@@ -7,10 +7,12 @@ La console démarre après le nœud UAVCAN. Les paramètres, le redémarrage et 
 mise à jour CAN fonctionnent aussi lorsque le shell est désactivé.
 
 Le changement s'applique au redémarrage, comme pour les autres rôles : il n'y a
-pas de destruction des threads en cours d'utilisation. Le mode identification
+pas de destruction des threads en cours d'utilisation. L'identification au boot
 conserve le shell uniquement si `ROLE.shell=true`. Il ne force pas ce paramètre :
 avec `ROLE.shell=false`, aucun contexte ni pile du shell ne sont alloués.
 Tous les autres rôles restent suspendus, sans modification de leurs paramètres.
+Si l'identification est activée après un démarrage normal, elle modifie seulement
+la LED : le shell et tous les autres rôles déjà lancés continuent à fonctionner.
 
 `NOSHELL=1` retire `TRACE`, le rôle et son paramètre à la compilation. Les
 commandes shell passent sur l'UART physique, sans tunnel de console sur CAN.
